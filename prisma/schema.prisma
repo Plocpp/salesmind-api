@@ -16,6 +16,9 @@
     porte   String
     preco   Float
     estoque Int
+    usuarioId String
+    usuario   Usuario @relation(fields: [usuarioId], references: [id])
+   
   }
 
   model Usuario {
@@ -24,4 +27,6 @@
     email    String @unique
     senha    String
     createdAt DateTime @default(now())
+
+      produtos  Produto[]   // 👈 ISSO AQUI FALTAVA
   }

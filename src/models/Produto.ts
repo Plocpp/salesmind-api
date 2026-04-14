@@ -6,4 +6,5 @@ export interface Produto{
     porte: string;
     preco: number;
     estoque: number;
+    usuarioId: string;
 }
