@@ -1,0 +1,45 @@
+Debugger listening on ws://127.0.0.1:49373/7f855926-7a13-4d49-8356-81f282a63c69
+For help, see: https://nodejs.org/en/docs/inspector
+Debugger attached.
+Debugger listening on ws://127.0.0.1:49381/9bdfb177-db6e-401c-b5b9-89de6b7ac608
+For help, see: https://nodejs.org/en/docs/inspector
+Debugger attached.
+src/controllers/fornecedores.controller.ts(34,74): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/controllers/fornecedores.controller.ts(47,72): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/controllers/fornecedores.controller.ts(57,51): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/controllers/fornecedores.controller.ts(89,64): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/controllers/fornecedores.controller.ts(102,62): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/controllers/fornecedores.controller.ts(112,46): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/controllers/fornecedores.controller.ts(147,68): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/controllers/fornecedores.controller.ts(160,66): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/controllers/fornecedores.controller.ts(170,48): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/frontend/App.tsx(43,38): error TS2322: Type 'Dispatch<SetStateAction<Page>>' is not assignable to type '(page: string) => void'.
+  Types of parameters 'value' and 'page' are incompatible.
+    Type 'string' is not assignable to type 'SetStateAction<Page>'.
+src/frontend/App.tsx(45,32): error TS2322: Type 'Dispatch<SetStateAction<Page>>' is not assignable to type '(page: string) => void'.
+  Types of parameters 'value' and 'page' are incompatible.
+    Type 'string' is not assignable to type 'SetStateAction<Page>'.
+src/frontend/App.tsx(47,42): error TS2322: Type 'Dispatch<SetStateAction<Page>>' is not assignable to type '(page: string) => void'.
+  Types of parameters 'value' and 'page' are incompatible.
+    Type 'string' is not assignable to type 'SetStateAction<Page>'.
+src/frontend/App.tsx(49,59): error TS2322: Type 'Dispatch<SetStateAction<Page>>' is not assignable to type '(page: string) => void'.
+  Types of parameters 'value' and 'page' are incompatible.
+    Type 'string' is not assignable to type 'SetStateAction<Page>'.
+src/services/produto.service.ts(25,13): error TS2322: Type '{ usuarioId: string; nome: string; usuario?: Prisma.UsuarioCreateNestedOneWithoutProdutosInput | undefined; peso: number; porte: string; ... 8 more ...; itensVenda?: Prisma.ItemVendaCreateNestedManyWithoutProdutoInput | undefined; }' is not assignable to type '(Without<ProdutoCreateInput, ProdutoUncheckedCreateInput> & ProdutoUncheckedCreateInput) | (Without<...> & ProdutoCreateInput)'.
+  Type '{ usuarioId: string; nome: string; usuario?: Prisma.UsuarioCreateNestedOneWithoutProdutosInput | undefined; peso: number; porte: string; ... 8 more ...; itensVenda?: Prisma.ItemVendaCreateNestedManyWithoutProdutoInput | undefined; }' is not assignable to type 'Without<ProdutoCreateInput, ProdutoUncheckedCreateInput> & ProdutoUncheckedCreateInput'.
+    Type '{ usuarioId: string; nome: string; usuario?: Prisma.UsuarioCreateNestedOneWithoutProdutosInput | undefined; peso: number; porte: string; ... 8 more ...; itensVenda?: Prisma.ItemVendaCreateNestedManyWithoutProdutoInput | undefined; }' is not assignable to type 'Without<ProdutoCreateInput, ProdutoUncheckedCreateInput>'.
+      Types of property 'usuario' are incompatible.
+        Type 'UsuarioCreateNestedOneWithoutProdutosInput | undefined' is not assignable to type 'undefined'.
+          Type 'UsuarioCreateNestedOneWithoutProdutosInput' is not assignable to type 'undefined'.
+src/services/produto.service.ts(173,17): error TS2339: Property 'usuarioId' does not exist on type 'ProdutoUpdateInput'.
+Waiting for the debugger to disconnect...
+Waiting for the debugger to disconnect...

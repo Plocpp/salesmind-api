@@ -1,0 +1,8 @@
+Debugger listening on ws://127.0.0.1:49441/5352eac9-a76c-4265-be73-11ed80b203d0
+For help, see: https://nodejs.org/en/docs/inspector
+Debugger attached.
+Debugger listening on ws://127.0.0.1:49446/35ca77d2-c42f-4236-a322-563184b0b351
+For help, see: https://nodejs.org/en/docs/inspector
+Debugger attached.
+Waiting for the debugger to disconnect...
+Waiting for the debugger to disconnect...

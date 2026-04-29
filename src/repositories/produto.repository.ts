@@ -1,36 +1,51 @@
+import { Prisma } from "@prisma/client";
 import prisma from "../database/prisma";
-import { Produto } from "../models/Produto";
 
 class ProdutoRepository {
-
-    async criar(data: Produto) {
+    /**
+     * Persiste um novo produto no banco de dados.
+     */
+    async criar(data: Prisma.ProdutoCreateInput) {
         return prisma.produto.create({
-        data
+            data
         });
     }
 
+    /**
+     * Retorna todos os produtos armazenados.
+     * Esta camada não aplica regras de autorização.
+     */
     async listar() {
         return prisma.produto.findMany();
     }
 
+    /**
+     * Busca um produto pelo seu identificador único.
+     */
     async buscarPorId(id: string) {
         return prisma.produto.findUnique({
-        where: { id }
+            where: { id }
         });
     }
 
-    async atualizar(id: string, data: Partial<Produto>) {
+    /**
+     * Atualiza um produto existente no banco.
+     */
+    async atualizar(id: string, data: Prisma.ProdutoUpdateInput) {
         return prisma.produto.update({
-        where: { id },
-        data
+            where: { id },
+            data
         });
     }
 
+    /**
+     * Remove um produto pelo seu identificador.
+     */
     async deletar(id: string) {
         return prisma.produto.delete({
-        where: { id }
+            where: { id }
         });
     }
-    }
+}
 
 export default new ProdutoRepository();

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visão Geral do Sistema Salesmind API</title>
+    <style>
+    body { font-family: Arial, sans-serif; color: #222; margin: 0; padding: 0; background: #f7f9fc; }
+    .page { max-width: 1000px; margin: 0 auto; padding: 24px; }
+    h1, h2 { color: #1e3a8a; }
+    p { line-height: 1.6; }
+    .diagram { margin: 32px 0; }
+    .box { fill: #ffffff; stroke: #1e3a8a; stroke-width: 2; }
+    .box-text { font-size: 14px; font-weight: bold; fill: #1e3a8a; }
+    .subtext { font-size: 12px; fill: #4b5563; }
+    .arrow { stroke: #1e3a8a; stroke-width: 2; marker-end: url(#arrowhead); }
+    .block { background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06); }
+    .step { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+    .step-icon { width: 34px; height: 34px; border-radius: 50%; background: #1e3a8a; color: white; display: grid; place-items: center; font-weight: bold; }
+    .step-content { max-width: 900px; }
+    .code { background: #f3f4f6; padding: 10px 12px; border-radius: 8px; font-family: Consolas, monospace; color: #111827; }
+    </style>
+</head>
+<body>
+    <div class="page">
+    <h1>Visão Geral do Sistema Salesmind API</h1>
+    <p>Esta página mostra, de forma simples e visual, como o sistema se comporta: quem chama, quais rotas existem, como a autenticação funciona e para onde vão os dados.</p>
+
+    <div class="diagram">
+        <svg width="100%" height="440" viewBox="0 0 960 440" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <path d="M0,0 L10,3.5 L0,7 Z" fill="#1e3a8a" />
+            </marker>
+        </defs>
+        <rect x="24" y="24" width="200" height="72" class="box" rx="16" />
+        <text x="124" y="49" text-anchor="middle" class="box-text">Cliente</text>
+        <text x="124" y="69" text-anchor="middle" class="subtext">Browser / Postman</text>
+
+        <rect x="280" y="24" width="220" height="112" class="box" rx="16" />
+        <text x="390" y="49" text-anchor="middle" class="box-text">Express App</text>
+        <text x="390" y="69" text-anchor="middle" class="subtext">app.ts</text>
+        <text x="390" y="89" text-anchor="middle" class="subtext">Rotas / Middlewares</text>
+
+        <rect x="620" y="24" width="320" height="112" class="box" rx="16" />
+        <text x="780" y="49" text-anchor="middle" class="box-text">Banco de Dados</text>
+        <text x="780" y="69" text-anchor="middle" class="subtext">MySQL + Prisma</text>
+        <text x="780" y="89" text-anchor="middle" class="subtext">Tabelas: Usuario, Produto</text>
+
+        <line x1="224" y1="60" x2="280" y2="60" class="arrow" />
+        <line x1="500" y1="80" x2="620" y2="80" class="arrow" />
+
+        <rect x="180" y="180" width="240" height="120" class="box" rx="16" />
+        <text x="300" y="205" text-anchor="middle" class="box-text">Controllers</text>
+        <text x="300" y="225" text-anchor="middle" class="subtext">AuthController</text>
+        <text x="300" y="245" text-anchor="middle" class="subtext">ProdutoController</text>
+
+        <rect x="520" y="180" width="260" height="120" class="box" rx="16" />
+        <text x="650" y="205" text-anchor="middle" class="box-text">Services</text>
+        <text x="650" y="225" text-anchor="middle" class="subtext">AuthService</text>
+        <text x="650" y="245" text-anchor="middle" class="subtext">ProdutoService</text>
+
+        <line x1="380" y1="240" x2="520" y2="240" class="arrow" />
+        <line x1="540" y1="260" x2="620" y2="260" class="arrow" />
+    </svg>
+    </div>
+
+    <div class="block">
+        <h2>Como o sistema funciona</h2>
+        <div class="step">
+        <div class="step-icon">1</div>
+        <div class="step-content">
+            <strong>O cliente envia uma requisição</strong> para as rotas definidas em <code>src/routes</code>.
+        </div>
+        </div>
+        <div class="step">
+        <div class="step-icon">2</div>
+        <div class="step-content">
+            <strong>O middleware de autenticação valida o token</strong> e marca o pedido com <code>userId</code> e <code>role</code>.
+        </div>
+        </div>
+        <div class="step">
+        <div class="step-icon">3</div>
+        <div class="step-content">
+            <strong>Os controllers recebem o pedido</strong> e chamam os serviços para executar a lógica de negócio.
+        </div>
+        </div>
+        <div class="step">
+        <div class="step-icon">4</div>
+        <div class="step-content">
+            <strong>Os serviços usam Prisma</strong> para ler/gravar dados em <code>Usuario</code> e <code>Produto</code> no banco.
+        </div>
+        </div>
+    </div>
+
+    <div class="block">
+        <h2>O que o sistema faz</h2>
+        <ul>
+        <li>Autentica usuários com login e refresh token.</li>
+        <li>Registra novos usuários e permite logout.</li>
+        <li>Gerencia produtos: criar, listar, buscar, atualizar e deletar.</li>
+        <li>Mostra um painel administrativo se o usuário for admin.</li>
+        </ul>
+    </div>
+
+    <div class="block">
+        <h2>Principais pontos para qualquer pessoa entender</h2>
+        <p><strong>Rota de autenticação:</strong> <code>/auth</code> cuida de login, registro e perfil.</p>
+        <p><strong>Rota de produtos:</strong> <code>/produtos</code> cuida do cadastro e controle de produtos.</p>
+        <p><strong>Segurança:</strong> o middleware garante que apenas usuários autenticados usem as APIs.</p>
+        <p><strong>Admin:</strong> o painel de dashboard só está disponível para quem tem <code>role = "admin"</code>.</p>
+    </div>
+    </div>
+</body>
+</html>

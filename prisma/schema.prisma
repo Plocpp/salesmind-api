@@ -9,24 +9,84 @@
   }
 
   model Produto {
-    id      String @id @default(uuid())
-    nome    String
-    marca   String
-    peso    Float
-    porte   String
-    preco   Float
-    estoque Int
-    usuarioId String
-    usuario   Usuario @relation(fields: [usuarioId], references: [id])
-   
+    id          String @id @default(uuid())
+    nome        String
+    peso        Float
+    porte       String
+    preco       Float
+    precoCusto  Float?  // Preço de custo do produto
+    estoque     Int
+    codigo      String? @unique // Código interno do produto
+    codigoBarras String? @unique // Código de barras
+    cor         String? // Cor do produto
+    tamanho     String? // Tamanho (P, M, G, etc.)
+    validade    DateTime? // Data de validade do produto
+    usuarioId   String?
+    marcaId     String?
+    usuario     Usuario? @relation(fields: [usuarioId], references: [id])
+    marca       Marca? @relation(fields: [marcaId], references: [id])
+    itensVenda  ItemVenda[]
   }
 
   model Usuario {
-    id       String @id @default(uuid())
-    nome     String
-    email    String @unique
-    senha    String
+    id        String   @id @default(uuid())
+    nome      String
+    email     String   @unique
+    senha     String
     createdAt DateTime @default(now())
+    refreshToken String? @db.Text
+    role      String   @default("user")
+    produtos  Produto[]
+    vendas    Venda[]
+  }
 
-      produtos  Produto[]   // 👈 ISSO AQUI FALTAVA
+  model Cliente {
+    id        String   @id @default(uuid())
+    nome      String
+    telefone  String?
+    email     String?  @unique
+    createdAt DateTime @default(now())
+    vendas    Venda[]
+  }
+
+  model Fornecedor {
+    id        String   @id @default(uuid())
+    nome      String
+    cnpj      String?  @unique
+    telefone  String?
+    email     String?
+    endereco  String?
+    createdAt DateTime @default(now())
+    marcas    Marca[]
+  }
+
+  model Marca {
+    id           String @id @default(uuid())
+    nome         String @unique
+    fornecedorId String
+    fornecedor   Fornecedor @relation(fields: [fornecedorId], references: [id])
+    produtos     Produto[]
+    createdAt    DateTime @default(now())
+  }
+
+  model Venda {
+    id        String   @id @default(uuid())
+    data      DateTime @default(now())
+    total     Float
+    usuarioId String
+    clienteId String?
+    usuario   Usuario @relation(fields: [usuarioId], references: [id])
+    cliente   Cliente? @relation(fields: [clienteId], references: [id])
+    itens     ItemVenda[]
+  }
+
+  model ItemVenda {
+    id       String @id @default(uuid())
+    quantidade Float // Permite quantidade fracionária (peso)
+    precoUnitario Float
+    desconto  Float @default(0)
+    vendaId  String
+    produtoId String
+    venda    Venda @relation(fields: [vendaId], references: [id])
+    produto  Produto @relation(fields: [produtoId], references: [id])
   }

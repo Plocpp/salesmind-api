@@ -1,6 +1,6 @@
 export interface CreateProdutoDTO {
     nome: string;
-    marca: string;
+    marcaId: string;
     peso: number;
     porte: string;
     preco: number;
@@ -9,7 +9,7 @@ export interface CreateProdutoDTO {
 
 export interface UpdateProdutoDTO {
     nome?: string;
-    marca?: string;
+    marcaId?: string;
     peso?: number;
     porte?: string;
     preco?: number;
