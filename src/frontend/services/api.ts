@@ -2,7 +2,7 @@
 const API_BASE_URL = 'http://localhost:3000';
 
 const apiClient = {
-  request: async (endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data?: any, token?: string) => {
+  request: async (endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data?: any, token?: string | null) => {
     const headers: any = {
       'Content-Type': 'application/json',
     };
@@ -34,13 +34,13 @@ const apiClient = {
     return response.json();
   },
 
-  get: async (endpoint: string, token?: string) => apiClient.request(endpoint, 'GET', undefined, token),
+  get: async (endpoint: string, token?: string | null) => apiClient.request(endpoint, 'GET', undefined, token),
 
-  post: async (endpoint: string, data: any, token?: string) => apiClient.request(endpoint, 'POST', data, token),
+  post: async (endpoint: string, data: any, token?: string | null) => apiClient.request(endpoint, 'POST', data, token),
 
-  put: async (endpoint: string, data: any, token?: string) => apiClient.request(endpoint, 'PUT', data, token),
+  put: async (endpoint: string, data: any, token?: string | null) => apiClient.request(endpoint, 'PUT', data, token),
 
-  delete: async (endpoint: string, token?: string) => apiClient.request(endpoint, 'DELETE', undefined, token),
+  delete: async (endpoint: string, token?: string | null) => apiClient.request(endpoint, 'DELETE', undefined, token),
 };
 
 export const api = {

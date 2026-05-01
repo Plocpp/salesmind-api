@@ -9,35 +9,47 @@
   }
 
   model Produto {
-    id          String @id @default(uuid())
-    nome        String
-    peso        Float
-    porte       String
-    preco       Float
-    precoCusto  Float?  // Preço de custo do produto
-    estoque     Int
-    codigo      String? @unique // Código interno do produto
-    codigoBarras String? @unique // Código de barras
-    cor         String? // Cor do produto
-    tamanho     String? // Tamanho (P, M, G, etc.)
-    validade    DateTime? // Data de validade do produto
-    usuarioId   String?
-    marcaId     String?
-    usuario     Usuario? @relation(fields: [usuarioId], references: [id])
-    marca       Marca? @relation(fields: [marcaId], references: [id])
-    itensVenda  ItemVenda[]
+    id           String   @id @default(uuid())
+    nome         String
+    peso         Float
+    porte        String
+    preco        Float
+    precoCusto   Float?
+    estoque      Int
+
+    codigo       String?  @unique
+    codigoBarras String?  @unique
+    cor          String?
+    tamanho      String?
+    validade     DateTime?
+
+    // 🔐 RELAÇÕES OBRIGATÓRIAS
+    usuarioId    String
+    marcaId      String
+
+    usuario      Usuario @relation(fields: [usuarioId], references: [id])
+    marca        Marca   @relation(fields: [marcaId], references: [id])
+
+    itensVenda   ItemVenda[]
+
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
   }
 
   model Usuario {
-    id        String   @id @default(uuid())
-    nome      String
-    email     String   @unique
-    senha     String
-    createdAt DateTime @default(now())
-    refreshToken String? @db.Text
-    role      String   @default("user")
-    produtos  Produto[]
-    vendas    Venda[]
+    id           String   @id @default(uuid())
+    nome         String
+    email        String   @unique
+    senha        String
+    role         Role     @default(USER)
+
+    refreshToken String?  @db.Text
+
+    produtos     Produto[]
+    vendas       Venda[]
+
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
   }
 
   model Cliente {
@@ -45,8 +57,11 @@
     nome      String
     telefone  String?
     email     String?  @unique
-    createdAt DateTime @default(now())
+
     vendas    Venda[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
   }
 
   model Fornecedor {
@@ -56,37 +71,55 @@
     telefone  String?
     email     String?
     endereco  String?
-    createdAt DateTime @default(now())
+
     marcas    Marca[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
   }
 
   model Marca {
-    id           String @id @default(uuid())
-    nome         String @unique
+    id           String   @id @default(uuid())
+    nome         String   @unique
     fornecedorId String
+
     fornecedor   Fornecedor @relation(fields: [fornecedorId], references: [id])
     produtos     Produto[]
+
     createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
   }
 
   model Venda {
     id        String   @id @default(uuid())
     data      DateTime @default(now())
     total     Float
+
     usuarioId String
     clienteId String?
+
     usuario   Usuario @relation(fields: [usuarioId], references: [id])
     cliente   Cliente? @relation(fields: [clienteId], references: [id])
+
     itens     ItemVenda[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
   }
 
   model ItemVenda {
-    id       String @id @default(uuid())
-    quantidade Float // Permite quantidade fracionária (peso)
-    precoUnitario Float
-    desconto  Float @default(0)
-    vendaId  String
-    produtoId String
-    venda    Venda @relation(fields: [vendaId], references: [id])
-    produto  Produto @relation(fields: [produtoId], references: [id])
+    id             String  @id @default(uuid())
+    quantidade     Float
+    precoUnitario  Float
+    desconto       Float   @default(0)
+
+    vendaId        String
+    produtoId      String
+
+    venda          Venda   @relation(fields: [vendaId], references: [id])
+    produto        Produto @relation(fields: [produtoId], references: [id])
+  }
+  enum Role {
+    USER
+    ADMIN
   }

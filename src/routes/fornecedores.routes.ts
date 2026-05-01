@@ -28,6 +28,13 @@ router.get('/produtos/:id', authMiddleware, fornecedoresController.buscarProduto
 router.put('/produtos/:id', authMiddleware, fornecedoresController.atualizarProduto);
 router.delete('/produtos/:id', authMiddleware, fornecedoresController.deletarProduto);
 
+// 👥 CLIENTES
+router.post('/clientes', authMiddleware, fornecedoresController.criarCliente);
+router.get('/clientes', authMiddleware, fornecedoresController.listarClientes);
+router.get('/clientes/:id', authMiddleware, fornecedoresController.buscarClientePorId);
+router.put('/clientes/:id', authMiddleware, fornecedoresController.atualizarCliente);
+router.delete('/clientes/:id', authMiddleware, fornecedoresController.deletarCliente);
+
 // 📊 DASHBOARD
 router.get('/dashboard/fornecedores', authMiddleware, authorizeRole('ADMIN'), fornecedoresController.dashboardFornecedores);
 

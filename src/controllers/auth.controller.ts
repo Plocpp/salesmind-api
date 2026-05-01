@@ -6,13 +6,11 @@ import { AuthRequest } from "../middlewares/auth.middleware";
 import authService from "../services/auth.service";
 
 class AuthController {
+
     // =========================
     // 🔐 AUTENTICAÇÃO
     // =========================
 
-    /**
-     * Registra um novo usuário e retorna o registro criado.
-     */
     async register(req: Request, res: Response) {
         try {
             const usuario = await authService.register(req.body);
@@ -22,44 +20,42 @@ class AuthController {
         }
     }
 
-    /**
-     * Autentica o usuário e retorna access + refresh tokens.
-     */
     async login(req: Request, res: Response) {
         try {
             const { email, senha } = req.body;
 
             const usuario = await authService.buscarPorEmail(email);
-
             if (!usuario) {
                 return res.status(404).json({ error: "Usuário não encontrado" });
             }
 
             const senhaValida = await bcrypt.compare(senha, usuario.senha);
-
             if (!senhaValida) {
                 return res.status(401).json({ error: "Senha inválida" });
             }
 
             const accessToken = jwt.sign(
                 { userId: usuario.id, role: usuario.role },
-                "access_secret",
+                process.env.JWT_ACCESS_SECRET!,
                 { expiresIn: "15m" }
             );
 
             const refreshToken = jwt.sign(
                 { userId: usuario.id },
-                "refresh_secret",
+                process.env.JWT_REFRESH_SECRET!,
                 { expiresIn: "7d" }
             );
 
-            // 🔥 salva refresh no banco
             await prisma.usuario.update({
                 where: { id: usuario.id },
                 data: { refreshToken }
             });
 
-            return res.json({ accessToken, refreshToken, role: usuario.role });
+            return res.json({
+                accessToken,
+                refreshToken,
+                role: usuario.role
+            });
 
         } catch (error: any) {
             return res.status(400).json({ error: error.message });
@@ -70,16 +66,18 @@ class AuthController {
     // 👤 PERFIL
     // =========================
 
-    /**
-     * Retorna os dados do usuário autenticado.
-     */
+    private getUserId(req: AuthRequest, res: Response): string | null {
+        if (!req.userId) {
+            res.status(401).json({ error: "Usuário não autenticado" });
+            return null;
+        }
+        return req.userId;
+    }
+
     async me(req: AuthRequest, res: Response) {
         try {
-            const userId = req.userId;
-
-            if (!userId) {
-                return res.status(401).json({ error: "Usuário não autenticado" });
-            }
+            const userId = this.getUserId(req, res);
+            if (!userId) return;
 
             const usuario = await prisma.usuario.findUnique({
                 where: { id: userId },
@@ -98,20 +96,14 @@ class AuthController {
         }
     }
 
-    /**
-     * Atualiza o perfil do usuário autenticado.
-     */
     async updateMe(req: AuthRequest, res: Response) {
         try {
-            const userId = req.userId;
-
-            if (!userId) {
-                return res.status(401).json({ error: "Usuário não autenticado" });
-            }
+            const userId = this.getUserId(req, res);
+            if (!userId) return;
 
             const { nome, email } = req.body;
 
-            const usuarioAtualizado = await prisma.usuario.update({
+            const usuario = await prisma.usuario.update({
                 where: { id: userId },
                 data: { nome, email },
                 select: {
@@ -122,23 +114,17 @@ class AuthController {
                 }
             });
 
-            return res.json(usuarioAtualizado);
+            return res.json(usuario);
 
         } catch (error: any) {
             return res.status(500).json({ error: error.message });
         }
     }
 
-    /**
-     * Altera a senha do usuário autenticado após validação da senha atual.
-     */
     async changePassword(req: AuthRequest, res: Response) {
         try {
-            const userId = req.userId;
-
-            if (!userId) {
-                return res.status(401).json({ error: "Usuário não autenticado" });
-            }
+            const userId = this.getUserId(req, res);
+            if (!userId) return;
 
             const { senhaAtual, novaSenha } = req.body;
 
@@ -151,7 +137,6 @@ class AuthController {
             }
 
             const senhaValida = await bcrypt.compare(senhaAtual, usuario.senha);
-
             if (!senhaValida) {
                 return res.status(401).json({ error: "Senha atual incorreta" });
             }
@@ -171,12 +156,9 @@ class AuthController {
     }
 
     // =========================
-    // 🔄 SESSÃO (TOKENS)
+    // 🔄 SESSÃO
     // =========================
 
-    /**
-     * Gera um novo access token usando o refresh token válido.
-     */
     async refresh(req: Request, res: Response) {
         try {
             const { refreshToken } = req.body;
@@ -187,14 +169,13 @@ class AuthController {
 
             const decoded = jwt.verify(
                 refreshToken,
-                "refresh_secret"
+                process.env.JWT_REFRESH_SECRET!
             ) as { userId: string };
 
-            // 🔥 valida no banco (MELHORIA IMPORTANTE)
             const usuario = await prisma.usuario.findFirst({
                 where: {
                     id: decoded.userId,
-                    refreshToken: refreshToken
+                    refreshToken
                 }
             });
 
@@ -202,29 +183,23 @@ class AuthController {
                 return res.status(401).json({ error: "Refresh token inválido" });
             }
 
-            const newAccessToken = jwt.sign(
+            const accessToken = jwt.sign(
                 { userId: usuario.id, role: usuario.role },
-                "access_secret",
+                process.env.JWT_ACCESS_SECRET!,
                 { expiresIn: "15m" }
             );
 
-            return res.json({ accessToken: newAccessToken });
+            return res.json({ accessToken });
 
         } catch {
             return res.status(401).json({ error: "Refresh token inválido" });
         }
     }
 
-    /**
-     * Limpa o refresh token do usuário para encerrar a sessão.
-     */
     async logout(req: AuthRequest, res: Response) {
         try {
-            const userId = req.userId;
-
-            if (!userId) {
-                return res.status(401).json({ error: "Usuário não autenticado" });
-            }
+            const userId = this.getUserId(req, res);
+            if (!userId) return;
 
             await prisma.usuario.update({
                 where: { id: userId },

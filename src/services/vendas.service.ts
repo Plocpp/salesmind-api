@@ -34,15 +34,16 @@ export class VendasService {
     });
   }
 
-  // 🔍 BUSCAR CLIENTE POR TELEFONE OU EMAIL
-  async buscarCliente(telefone?: string, email?: string) {
-    if (!telefone && !email) {
-      throw new Error('Telefone ou email deve ser fornecido');
+  // 🔍 BUSCAR CLIENTE POR NOME, TELEFONE OU EMAIL
+  async buscarCliente(nome?: string, telefone?: string, email?: string) {
+    if (!nome && !telefone && !email) {
+      throw new Error('Nome, telefone ou email deve ser fornecido');
     }
 
     return await prisma.cliente.findFirst({
       where: {
         OR: [
+          nome ? { nome: { contains: nome, mode: 'insensitive' } } : {},
           telefone ? { telefone } : {},
           email ? { email } : {},
         ].filter(condition => Object.keys(condition).length > 0),

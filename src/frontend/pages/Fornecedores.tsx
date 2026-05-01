@@ -1,3 +1,11 @@
+/**
+ * Fornecedores.tsx
+ * Página de gestão de fornecedores com cadastro e edição.
+ * 
+ * Funções principais:
+ * 1) Carregar e exibir fornecedores do backend.
+ * 2) Criar, atualizar e deletar fornecedores.
+ */
 import { useEffect, useState } from "react";
 import { api } from "../services/api";
 

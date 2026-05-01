@@ -1,3 +1,11 @@
+/**
+ * Login.tsx
+ * Página de autenticação do usuário.
+ * 
+ * Funções principais:
+ * 1) Autenticar credenciais via API.
+ * 2) Persistir token e role no localStorage e disparar callback de rota.
+ */
 import React, { useState } from "react";
 import { api } from "../services/api";
 
@@ -5,6 +13,7 @@ interface LoginProps {
     onLogin: (role?: string) => void;
 }
 
+// === Autenticação / Persistência de sessão ===
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const [email, setEmail] = useState("");
     const [senha, setSenha] = useState("");

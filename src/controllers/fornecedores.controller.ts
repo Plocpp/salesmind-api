@@ -1,186 +1,169 @@
-// 🏭 FORNECEDORES E MARCAS - Controlador
-import { Request, Response } from 'express';
-import { FornecedoresMarcasService } from '../services/fornecedores.service';
+import { Request, Response } from "express";
+import { FornecedoresMarcasService } from "../services/fornecedores.service";
+import { asyncHandler } from "../utils/asyncHandler";
 
-const fornecedoresService = new FornecedoresMarcasService();
+const service = new FornecedoresMarcasService();
 
 export class FornecedoresController {
 
-  // 🏭 FORNECEDORES
+    // =========================
+    // 🏭 FORNECEDORES
+    // =========================
 
-  // Criar fornecedor
-  async criarFornecedor(req: Request, res: Response) {
-    try {
-      const fornecedor = await fornecedoresService.criarFornecedor(req.body);
-      res.status(201).json(fornecedor);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+    criarFornecedor = asyncHandler(async (req: Request, res: Response) => {
+        const data = await service.criarFornecedor(req.body);
+        res.status(201).json(data);
+    });
 
-  // Listar fornecedores
-  async listarFornecedores(req: Request, res: Response) {
-    try {
-      const fornecedores = await fornecedoresService.listarFornecedores();
-      res.json(fornecedores);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
+    listarFornecedores = asyncHandler(async (req: Request, res: Response) => {
+        const data = await service.listarFornecedores();
+        res.json(data);
+    });
 
-  // Buscar fornecedor por ID
-  async buscarFornecedorPorId(req: Request, res: Response) {
-    try {
-      const fornecedor = await fornecedoresService.buscarFornecedorPorId(req.params.id);
-      if (!fornecedor) {
-        return res.status(404).json({ error: 'Fornecedor não encontrado' });
-      }
-      res.json(fornecedor);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
+    buscarFornecedorPorId = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const data = await service.buscarFornecedorPorId(id);
 
-  // Atualizar fornecedor
-  async atualizarFornecedor(req: Request, res: Response) {
-    try {
-      const fornecedor = await fornecedoresService.atualizarFornecedor(req.params.id, req.body);
-      res.json(fornecedor);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+        if (!data) {
+        return res.status(404).json({ error: "Fornecedor não encontrado" });
+        }
 
-  // Deletar fornecedor
-  async deletarFornecedor(req: Request, res: Response) {
-    try {
-      await fornecedoresService.deletarFornecedor(req.params.id);
-      res.status(204).send();
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+        res.json(data);
+    });
 
-  // 🏷️ MARCAS
+    atualizarFornecedor = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const data = await service.atualizarFornecedor(id, req.body);
+        res.json(data);
+    });
 
-  // Criar marca
-  async criarMarca(req: Request, res: Response) {
-    try {
-      const marca = await fornecedoresService.criarMarca(req.body);
-      res.status(201).json(marca);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+    deletarFornecedor = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        await service.deletarFornecedor(id);
+        res.status(204).send();
+    });
 
-  // Listar marcas
-  async listarMarcas(req: Request, res: Response) {
-    try {
-      const marcas = await fornecedoresService.listarMarcas();
-      res.json(marcas);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
+    // =========================
+    // 🏷️ MARCAS
+    // =========================
 
-  // Buscar marca por ID
-  async buscarMarcaPorId(req: Request, res: Response) {
-    try {
-      const marca = await fornecedoresService.buscarMarcaPorId(req.params.id);
-      if (!marca) {
-        return res.status(404).json({ error: 'Marca não encontrada' });
-      }
-      res.json(marca);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
+    criarMarca = asyncHandler(async (req: Request, res: Response) => {
+        const data = await service.criarMarca(req.body);
+        res.status(201).json(data);
+    });
 
-  // Atualizar marca
-  async atualizarMarca(req: Request, res: Response) {
-    try {
-      const marca = await fornecedoresService.atualizarMarca(req.params.id, req.body);
-      res.json(marca);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+    listarMarcas = asyncHandler(async (req: Request, res: Response) => {
+        const data = await service.listarMarcas();
+        res.json(data);
+    });
 
-  // Deletar marca
-  async deletarMarca(req: Request, res: Response) {
-    try {
-      await fornecedoresService.deletarMarca(req.params.id);
-      res.status(204).send();
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+    buscarMarcaPorId = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const data = await service.buscarMarcaPorId(id);
 
-  // 📦 PRODUTOS
+        if (!data) {
+        return res.status(404).json({ error: "Marca não encontrada" });
+        }
 
-  // Criar produto
-  async criarProduto(req: Request, res: Response) {
-    try {
-      const produto = await fornecedoresService.criarProduto({
+        res.json(data);
+    });
+
+    atualizarMarca = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const data = await service.atualizarMarca(id, req.body);
+        res.json(data);
+    });
+
+    deletarMarca = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        await service.deletarMarca(id);
+        res.status(204).send();
+    });
+
+    // =========================
+    // 📦 PRODUTOS
+    // =========================
+
+    criarProduto = asyncHandler(async (req: any, res: Response) => {
+        const data = await service.criarProduto({
         ...req.body,
-        usuarioId: (req as any).usuario?.id,
-      });
-      res.status(201).json(produto);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+        usuarioId: req.userId // 🔥 agora correto
+        });
 
-  // Listar produtos
-  async listarProdutos(req: Request, res: Response) {
-    try {
-      const produtos = await fornecedoresService.listarProdutos();
-      res.json(produtos);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
+        res.status(201).json(data);
+    });
 
-  // Buscar produto por ID
-  async buscarProdutoPorId(req: Request, res: Response) {
-    try {
-      const produto = await fornecedoresService.buscarProdutoPorId(req.params.id);
-      if (!produto) {
-        return res.status(404).json({ error: 'Produto não encontrado' });
-      }
-      res.json(produto);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
+    listarProdutos = asyncHandler(async (req: Request, res: Response) => {
+        const data = await service.listarProdutos();
+        res.json(data);
+    });
 
-  // Atualizar produto
-  async atualizarProduto(req: Request, res: Response) {
-    try {
-      const produto = await fornecedoresService.atualizarProduto(req.params.id, req.body);
-      res.json(produto);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+    buscarProdutoPorId = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const data = await service.buscarProdutoPorId(id);
 
-  // Deletar produto
-  async deletarProduto(req: Request, res: Response) {
-    try {
-      await fornecedoresService.deletarProduto(req.params.id);
-      res.status(204).send();
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+        if (!data) {
+        return res.status(404).json({ error: "Produto não encontrado" });
+        }
 
-  // 📊 DASHBOARD
-  async dashboardFornecedores(req: Request, res: Response) {
-    try {
-      const dashboard = await fornecedoresService.dashboardFornecedores();
-      res.json(dashboard);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
+        res.json(data);
+    });
+
+    atualizarProduto = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const data = await service.atualizarProduto(id, req.body);
+        res.json(data);
+    });
+
+    deletarProduto = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        await service.deletarProduto(id);
+        res.status(204).send();
+    });
+
+    // =========================
+    // 👥 CLIENTES
+    // =========================
+
+    criarCliente = asyncHandler(async (req: Request, res: Response) => {
+        const data = await service.criarCliente(req.body);
+        res.status(201).json(data);
+    });
+
+    listarClientes = asyncHandler(async (req: Request, res: Response) => {
+        const data = await service.listarClientes();
+        res.json(data);
+    });
+
+    buscarClientePorId = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const data = await service.buscarClientePorId(id);
+
+        if (!data) {
+            return res.status(404).json({ error: "Cliente não encontrado" });
+        }
+
+        res.json(data);
+    });
+
+    atualizarCliente = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const data = await service.atualizarCliente(id, req.body);
+        res.json(data);
+    });
+
+    deletarCliente = asyncHandler(async (req: Request, res: Response) => {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        await service.deletarCliente(id);
+        res.status(204).send();
+    });
+
+    // =========================
+    // 📊 DASHBOARD
+    // =========================
+
+    dashboardFornecedores = asyncHandler(async (req: Request, res: Response) => {
+        const data = await service.dashboardFornecedores();
+        res.json(data);
+    });
 }

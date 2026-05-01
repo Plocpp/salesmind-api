@@ -1,3 +1,11 @@
+/**
+ * CadastroProdutos.tsx
+ * Página de cadastro e controle de produtos.
+ * 
+ * Funções principais:
+ * 1) Listar, criar e editar produtos com relacionamento de marca.
+ * 2) Gerenciar estoque e ajustes de quantidade.
+ */
 import { useEffect, useState } from "react";
 import { api } from "../services/api";
 

@@ -1,3 +1,11 @@
+/**
+ * Dashboard.tsx
+ * Painel de métricas do sistema.
+ * 
+ * Funções principais:
+ * 1) Consultar métricas e listagem de produtos.
+ * 2) Exibir ações rápidas e estado do dashboard.
+ */
 import { useEffect, useState } from "react";
 import { api } from "../services/api";
 

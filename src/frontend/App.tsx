@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import CadastroProdutos from './pages/CadastroProdutos';
+import Cadastros from './pages/Cadastros';
 import Dashboard from './pages/Dashboard';
 import Fornecedores from './pages/Fornecedores';
 import Login from './pages/Login';
 import Marcas from './pages/Marcas';
 import Vendas from './pages/Vendas';
 
-type Page = 'dashboard' | 'vendas' | 'fornecedores' | 'marcas' | 'cadastro-produtos';
+type Page = 'dashboard' | 'vendas' | 'fornecedores' | 'marcas' | 'cadastro-produtos' | 'cadastros';
 
 const App: React.FC = () => {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -45,6 +46,8 @@ const App: React.FC = () => {
                 return <Marcas onNavigate={setCurrentPage} />;
             case 'cadastro-produtos':
                 return <CadastroProdutos onNavigate={setCurrentPage} />;
+            case 'cadastros':
+                return <Cadastros />;
             default:
                 return <Dashboard onLogout={handleLogout} onNavigate={setCurrentPage} />;
         }
@@ -98,48 +101,18 @@ const App: React.FC = () => {
                 {userRole === 'ADMIN' && (
                     <>
                         <button
-                            onClick={() => setCurrentPage('fornecedores')}
+                            onClick={() => setCurrentPage('cadastros')}
                             style={{
                                 marginRight: '10px',
                                 padding: '8px 16px',
-                                backgroundColor: currentPage === 'fornecedores' ? '#007bff' : '#6c757d',
+                                backgroundColor: currentPage === 'cadastros' ? '#007bff' : '#17a2b8',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '4px',
                                 cursor: 'pointer'
                             }}
                         >
-                            🏭 Fornecedores
-                        </button>
-
-                        <button
-                            onClick={() => setCurrentPage('marcas')}
-                            style={{
-                                marginRight: '10px',
-                                padding: '8px 16px',
-                                backgroundColor: currentPage === 'marcas' ? '#007bff' : '#6c757d',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            🏷️ Marcas
-                        </button>
-
-                        <button
-                            onClick={() => setCurrentPage('cadastro-produtos')}
-                            style={{
-                                marginRight: '10px',
-                                padding: '8px 16px',
-                                backgroundColor: currentPage === 'cadastro-produtos' ? '#007bff' : '#6c757d',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            📦 Produtos
+                            📋 Cadastros
                         </button>
                     </>
                 )}

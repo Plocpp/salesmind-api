@@ -1,3 +1,11 @@
+/**
+ * Cadastros.tsx
+ * Módulo de cadastros mestres do sistema.
+ * 
+ * Funções principais:
+ * 1) Controlar cadastro de marcas, fornecedores e clientes.
+ * 2) Gerenciar vendedores, veículos e entregadores.
+ */
 import { useEffect, useState } from "react";
 import { api } from "../services/api";
 
@@ -120,7 +128,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
         loadAllData();
     }, []);
 
-    const getToken = () => localStorage.getItem('token');
+    const getToken = (): string | undefined => localStorage.getItem('token') ?? undefined;
 
     // ===== MARCAS =====
     const loadMarcas = async () => {
@@ -481,7 +489,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>CNPJ: {fornecedor.cnpj || 'N/A'} | Tel: {fornecedor.telefone || 'N/A'} | Email: {fornecedor.email || 'N/A'}</p>
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>Endereço: {fornecedor.endereco || 'N/A'}</p>
                                     <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                        <button onClick={() => { setEditingFornecedor(fornecedor); setFormFornecedor(formFornecedor); setShowFormFornecedorAba(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
+                                        <button onClick={() => { setEditingFornecedor(fornecedor); setFormFornecedor({ nome: fornecedor.nome, cnpj: fornecedor.cnpj ?? '', telefone: fornecedor.telefone ?? '', email: fornecedor.email ?? '', endereco: fornecedor.endereco ?? '' }); setShowFormFornecedorAba(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
                                         <button onClick={() => deleteFornecedor(fornecedor.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
                                     </div>
                                 </div>
@@ -529,7 +537,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                         <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#666' }}>{cliente.telefone || 'N/A'} | {cliente.email || 'N/A'}</p>
                                     </div>
                                     <div style={{ display: 'flex', gap: '10px' }}>
-                                        <button onClick={() => { setEditingCliente(cliente); setFormCliente(cliente); setShowFormCliente(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
+                                        <button onClick={() => { setEditingCliente(cliente); setFormCliente({ nome: cliente.nome, telefone: cliente.telefone ?? '', email: cliente.email ?? '' }); setShowFormCliente(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
                                         <button onClick={() => deleteCliente(cliente.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
                                     </div>
                                 </div>
@@ -587,7 +595,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                     <h4 style={{ margin: '0' }}>{vendedor.nome} {vendedor.ativo ? '✅' : '❌'}</h4>
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>CPF: {vendedor.cpf || 'N/A'} | Tel: {vendedor.telefone || 'N/A'} | Email: {vendedor.email || 'N/A'}</p>
                                     <div style={{ display: 'flex', gap: '10px' }}>
-                                        <button onClick={() => { setEditingVendedor(vendedor); setFormVendedor(formVendedor); setShowFormVendedor(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
+                                        <button onClick={() => { setEditingVendedor(vendedor); setFormVendedor({ nome: vendedor.nome, email: vendedor.email ?? '', telefone: vendedor.telefone ?? '', cpf: vendedor.cpf ?? '', endereco: vendedor.endereco ?? '', ativo: vendedor.ativo }); setShowFormVendedor(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
                                         <button onClick={() => deleteVendedor(vendedor.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
                                     </div>
                                 </div>
@@ -649,7 +657,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                     <h4 style={{ margin: '0' }}>{veiculo.placa} - {veiculo.modelo} {veiculo.ativo ? '✅' : '❌'}</h4>
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>Marca: {veiculo.marca || 'N/A'} | Ano: {veiculo.ano || 'N/A'} | Cor: {veiculo.cor || 'N/A'} | Cap: {veiculo.capacidade || 'N/A'} kg</p>
                                     <div style={{ display: 'flex', gap: '10px' }}>
-                                        <button onClick={() => { setEditingVeiculo(veiculo); setFormVeiculo(formVeiculo); setShowFormVeiculo(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
+                                        <button onClick={() => { setEditingVeiculo(veiculo); setFormVeiculo({ placa: veiculo.placa, modelo: veiculo.modelo, ano: veiculo.ano?.toString() ?? '', marca: veiculo.marca ?? '', cor: veiculo.cor ?? '', capacidade: veiculo.capacidade?.toString() ?? '', ativo: veiculo.ativo }); setShowFormVeiculo(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
                                         <button onClick={() => deleteVeiculo(veiculo.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
                                     </div>
                                 </div>
@@ -715,7 +723,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>CPF: {entregador.cpf || 'N/A'} | Tel: {entregador.telefone || 'N/A'} | Email: {entregador.email || 'N/A'}</p>
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>Veículo: {entregador.veiculo ? `${entregador.veiculo.placa} - ${entregador.veiculo.modelo}` : 'Nenhum'}</p>
                                     <div style={{ display: 'flex', gap: '10px' }}>
-                                        <button onClick={() => { setEditingEntregador(entregador); setFormEntregador(formEntregador); setShowFormEntregador(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
+                                        <button onClick={() => { setEditingEntregador(entregador); setFormEntregador({ nome: entregador.nome, email: entregador.email ?? '', telefone: entregador.telefone ?? '', cpf: entregador.cpf ?? '', endereco: entregador.endereco ?? '', veiculoId: entregador.veiculoId ?? '', ativo: entregador.ativo }); setShowFormEntregador(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
                                         <button onClick={() => deleteEntregador(entregador.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
                                     </div>
                                 </div>

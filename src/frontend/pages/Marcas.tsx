@@ -1,3 +1,11 @@
+/**
+ * Marcas.tsx
+ * Tela de cadastro e manutenção de marcas e fornecedores associados.
+ * 
+ * Funções principais:
+ * 1) Gerenciar marcas e vincular fornecedores.
+ * 2) Exibir lista de marcas e inserir novos fornecedores inline.
+ */
 import { useEffect, useState } from "react";
 import { api } from "../services/api";
 

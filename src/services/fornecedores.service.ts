@@ -23,6 +23,7 @@ const produtoSchema = z.object({
   peso: z.number().positive(),
   porte: z.string().min(1, 'Porte é obrigatório'),
   preco: z.number().positive(),
+  precoCusto: z.number().optional(),
   estoque: z.number().int().min(0),
   codigo: z.string().optional(),
   codigoBarras: z.string().optional(),
@@ -31,6 +32,12 @@ const produtoSchema = z.object({
   validade: z.date().optional(),
   marcaId: z.string(),
   usuarioId: z.string().optional(),
+});
+
+const clienteSchema = z.object({
+  nome: z.string().min(1, 'Nome é obrigatório'),
+  telefone: z.string().optional(),
+  email: z.string().email().optional().or(z.literal('')),
 });
 
 export class FornecedoresMarcasService {

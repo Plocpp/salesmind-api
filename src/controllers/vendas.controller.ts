@@ -1,81 +1,80 @@
-// 🛒 VENDAS - Controlador
-import { Request, Response } from 'express';
-import { VendasService } from '../services/vendas.service';
+import { Response } from "express";
+import { AuthRequest } from "../middlewares/auth.middleware";
+import { VendasService } from "../services/vendas.service";
 
 const vendasService = new VendasService();
 
-export class VendasController {
+    // 🔥 util
+    const requireUser = (req: AuthRequest) => {
+    if (!req.userId) throw new Error("Usuário não autenticado");
+    return req.userId;
+    };
 
-  // 👤 CRIAR CLIENTE
-  async criarCliente(req: Request, res: Response) {
-    try {
-      const cliente = await vendasService.criarCliente(req.body);
-      res.status(201).json(cliente);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    export class VendasController {
+
+    // =========================
+    // 👤 CLIENTE
+    // =========================
+
+    async criarCliente(req: AuthRequest, res: Response) {
+        const cliente = await vendasService.criarCliente(req.body);
+        return res.status(201).json(cliente);
     }
-  }
 
-  // 🔍 BUSCAR CLIENTE
-  async buscarCliente(req: Request, res: Response) {
-    try {
-      const { telefone, email } = req.query;
-      const cliente = await vendasService.buscarCliente(
-        telefone as string,
-        email as string
-      );
-      res.json(cliente);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+    async buscarCliente(req: AuthRequest, res: Response) {
+        const { nome, telefone, email } = req.query;
+
+        const cliente = await vendasService.buscarCliente(
+            nome as string,
+            telefone as string,
+            email as string
+        );
+
+        return res.json(cliente);
     }
-  }
 
-  // 📦 BUSCAR PRODUTO
-  async buscarProduto(req: Request, res: Response) {
-    try {
-      const { nome, codigo, codigoBarras } = req.query;
-      const produto = await vendasService.buscarProduto({
+    // =========================
+    // 📦 PRODUTO
+    // =========================
+
+    async buscarProduto(req: AuthRequest, res: Response) {
+        const { nome, codigo, codigoBarras } = req.query;
+
+        const produto = await vendasService.buscarProduto({
         nome: nome as string,
         codigo: codigo as string,
         codigoBarras: codigoBarras as string,
-      });
-      res.json(produto);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+        });
 
-  // 🛒 CRIAR VENDA
-  async criarVenda(req: Request, res: Response) {
-    try {
-      // @ts-ignore - usuário adicionado pelo middleware
-      const usuarioId = req.usuario.id;
-      const venda = await vendasService.criarVenda(req.body, usuarioId);
-      res.status(201).json(venda);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+        return res.json(produto);
     }
-  }
 
-  // 📊 LISTAR VENDAS
-  async listarVendas(req: Request, res: Response) {
-    try {
-      // @ts-ignore - usuário adicionado pelo middleware
-      const usuarioId = req.usuario?.id;
-      const vendas = await vendasService.listarVendas(usuarioId);
-      res.json(vendas);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
+    // =========================
+    // 🛒 VENDA
+    // =========================
 
-  // 📈 DASHBOARD VENDAS
-  async dashboardVendas(req: Request, res: Response) {
-    try {
-      const dashboard = await vendasService.dashboardVendas();
-      res.json(dashboard);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    async criarVenda(req: AuthRequest, res: Response) {
+        const userId = requireUser(req);
+
+        const venda = await vendasService.criarVenda(req.body, userId);
+
+        return res.status(201).json(venda);
     }
-  }
+
+    async listarVendas(req: AuthRequest, res: Response) {
+        const userId = requireUser(req);
+
+        const vendas = await vendasService.listarVendas(userId);
+
+        return res.json(vendas);
+    }
+
+    // =========================
+    // 📊 DASHBOARD
+    // =========================
+
+    async dashboardVendas(req: AuthRequest, res: Response) {
+        const dashboard = await vendasService.dashboardVendas();
+        return res.json(dashboard);
+    }
 }

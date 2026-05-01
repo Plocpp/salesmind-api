@@ -59,7 +59,7 @@ class ProdutoService {
 
         return await prisma.produto.findMany({
             where: {
-                ...(role !== "admin" && { usuarioId: userId }),
+                ...(role !== "ADMIN" && { usuarioId: userId }),
                 ...(marca && { marcaId: marca })
             },
             include: {
@@ -149,7 +149,7 @@ class ProdutoService {
         return await prisma.produto.findFirst({
             where: {
                 id,
-                ...(role !== "admin" && { usuarioId: userId })
+                ...(role !== "ADMIN" && { usuarioId: userId })
             },
             include: {
                 marca: {
@@ -181,7 +181,7 @@ class ProdutoService {
         const produto = await prisma.produto.findFirst({
             where: {
                 id,
-                ...(role !== "admin" && { usuarioId: userId })
+                ...(role !== "ADMIN" && { usuarioId: userId })
             }
         });
 
@@ -221,7 +221,7 @@ class ProdutoService {
         const produto = await prisma.produto.findFirst({
             where: {
                 id,
-                ...(role !== "admin" && { usuarioId: userId })
+                ...(role !== "ADMIN" && { usuarioId: userId })
             }
         });
 
