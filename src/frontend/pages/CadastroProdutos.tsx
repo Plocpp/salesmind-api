@@ -33,6 +33,7 @@ interface Produto {
     };
 }
 
+
 // 📦 Tipagem Marca
 interface Marca {
     id: string;
@@ -42,6 +43,7 @@ interface Marca {
     };
 }
 
+
 interface Fornecedor {
     id: string;
     nome: string;
@@ -50,6 +52,7 @@ interface Fornecedor {
 interface CadastroProdutosProps {
     onNavigate?: (page: string) => void;
 }
+
 
 export default function CadastroProdutos({ onNavigate }: CadastroProdutosProps) {
     const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -68,6 +71,7 @@ export default function CadastroProdutos({ onNavigate }: CadastroProdutosProps) 
     const [newMarcaNome, setNewMarcaNome] = useState('');
     const [newMarcaFornecedorId, setNewMarcaFornecedorId] = useState('');
 
+    
     // 📝 Formulário completo
     const [formData, setFormData] = useState({
         nome: '',

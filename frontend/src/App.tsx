@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { Page } from "./types/Page";
+import { Page } from "../types/Page";
 
 // 🔥 IMPORTA SEUS COMPONENTES REAIS
-import CadastroProdutos from "./pages/CadastroProdutos";
-import Dashboard from "./pages/Dashboard";
-import Fornecedores from "./pages/Fornecedores";
-import Login from "./pages/Login";
-import Marcas from "./pages/Marcas";
-import Vendas from "./pages/Vendas";
+import Dashboard from "../../src/frontend/pages/Dashboard";
+import CadastroProdutos from "../../src/frontend/pages/CadastroProdutos";
+import Fornecedores from "../../src/frontend/pages/Fornecedores";
+import Login from "../../src/frontend/pages/Login";
+import Marcas from "../../src/frontend/pages/Marcas";
+import Vendas from "../../src/frontend/pages/Vendas";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
