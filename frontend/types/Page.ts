@@ -1,6 +1,6 @@
 export type Page =
     | "dashboard"
-    | "cadastroProdutos"
+    | "cadastro-produtos"
     | "fornecedores"
     | "marcas"
     | "vendas";

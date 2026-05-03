@@ -1,31 +1,38 @@
 // 📦 POPULAR BANCO COM DADOS DE TESTE
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function popularBanco() {
   try {
     console.log('🌱 Populando banco de dados...');
+    
+    const hashedPassword = await bcrypt.hash('123456', 10);
 
     // Criar usuários de teste
     const admin = await prisma.usuario.upsert({
       where: { email: 'admin@test.com' },
-      update: {},
+      update: {
+        senha: hashedPassword
+      },
       create: {
         nome: 'Administrador',
         email: 'admin@test.com',
-        senha: '$2a$10$hashedpassword', // senha: 123456
+        senha: hashedPassword, // senha: 123456
         role: 'ADMIN',
       },
     });
 
     const vendedor = await prisma.usuario.upsert({
       where: { email: 'vendedor@test.com' },
-      update: {},
+      update: {
+        senha: hashedPassword
+      },
       create: {
         nome: 'Vendedor',
         email: 'vendedor@test.com',
-        senha: '$2a$10$hashedpassword', // senha: 123456
+        senha: hashedPassword, // senha: 123456
         role: 'VENDEDOR',
       },
     });

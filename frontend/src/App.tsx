@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Page } from "../types/Page";
+import { type Page } from "../types/Page";
 
 // 🔥 IMPORTA SEUS COMPONENTES REAIS
-import Dashboard from "../../src/frontend/pages/Dashboard";
 import CadastroProdutos from "../../src/frontend/pages/CadastroProdutos";
+import Dashboard from "../../src/frontend/pages/Dashboard";
 import Fornecedores from "../../src/frontend/pages/Fornecedores";
 import Login from "../../src/frontend/pages/Login";
 import Marcas from "../../src/frontend/pages/Marcas";
@@ -38,21 +38,23 @@ function App() {
     setUserRole("");
   };
 
+  const handleNavigate = (page: string) => setCurrentPage(page as Page);
+
   const renderPage = () => {
     switch (currentPage) {
       case "vendas":
         return <Vendas />;
       case "fornecedores":
-        return <Fornecedores onNavigate={setCurrentPage} />;
+        return <Fornecedores onNavigate={handleNavigate} />;
       case "marcas":
-        return <Marcas onNavigate={setCurrentPage} />;
+        return <Marcas onNavigate={handleNavigate} />;
       case "cadastro-produtos":
-        return <CadastroProdutos onNavigate={setCurrentPage} />;
+        return <CadastroProdutos onNavigate={handleNavigate} />;
       default:
         return (
           <Dashboard
             onLogout={handleLogout}
-            onNavigate={setCurrentPage}
+            onNavigate={handleNavigate}
           />
         );
     }
