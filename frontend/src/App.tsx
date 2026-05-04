@@ -5,24 +5,25 @@ import { type Page } from "../types/Page";
 import CadastroProdutos from "../../src/frontend/pages/CadastroProdutos";
 import Dashboard from "../../src/frontend/pages/Dashboard";
 import Fornecedores from "../../src/frontend/pages/Fornecedores";
-import Login from "../../src/frontend/pages/Login";
 import Marcas from "../../src/frontend/pages/Marcas";
 import Vendas from "../../src/frontend/pages/Vendas";
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>("dashboard");
   const [userRole, setUserRole] = useState<string>("");
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    const role = localStorage.getItem("userRole");
+useEffect(() => {
+  const token = localStorage.getItem("token");
+  const role = localStorage.getItem("userRole");
 
-    if (token) {
-      setIsLoggedIn(true);
-      setUserRole(role || "");
-    }
-  }, []);
+  if (token) {
+    setIsLoggedIn(true);
+    setUserRole(role || "");
+  } else {
+    setIsLoggedIn(false);
+  }
+}, []);
 
   const handleLogin = (role?: string) => {
     setIsLoggedIn(true);
@@ -38,7 +39,7 @@ function App() {
     setUserRole("");
   };
 
-  const handleNavigate = (page: string) => setCurrentPage(page as Page);
+  const handleNavigate = (page: string) => setCurrentPage(page);
 
   const renderPage = () => {
     switch (currentPage) {
@@ -60,8 +61,8 @@ function App() {
     }
   };
 
-  if (!isLoggedIn) {
-    return <Login onLogin={handleLogin} />;
+  if (isLoggedIn === null) {
+    return <div>Carregando...</div>; // ou spinner bonito depois
   }
 
   return (

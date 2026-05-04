@@ -37,8 +37,8 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       {/* Sidebar */}
       <aside style={{ width: '250px', backgroundColor: '#fff', borderRight: '1px solid #ddd', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px', borderBottom: '1px solid #ddd', textAlign: 'center' }}>
-          <div style={{ fontSize: '12px', color: '#888' }}>Clique para adicionar logotipo</div>
-          <div style={{ fontWeight: 'bold', marginTop: '5px' }}>Programa de Transporte</div>
+          <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#17a2b8' }}>🐾 SalesMind</div>
+          <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>Pet Shop System</div>
         </div>
 
         <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 0' }}>
@@ -73,20 +73,24 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
             
             {intelOpen && (
               <div style={{ backgroundColor: '#f9f9f9', padding: '5px 0' }}>
-                {['Consultas', 'Vacinação', 'Aniversários', 'Log'].map(sub => {
-                  const subId = sub.toLowerCase();
-                  const isActive = currentPage === subId;
+                {[
+                  { label: 'Km por Litro', id: 'km-por-litro' },
+                  { label: 'Manutenção Veículo', id: 'manutencao-veiculo' },
+                  { label: 'Peso da Carga', id: 'peso-carga' },
+                  { label: 'Log', id: 'log' },
+                ].map(sub => {
+                  const isActive = currentPage === sub.id;
                   return (
                     <div 
-                      key={sub}
-                      onClick={() => onNavigate(subId)}
+                      key={sub.id}
+                      onClick={() => onNavigate(sub.id)}
                       style={{
                         padding: '8px 20px 8px 50px', cursor: 'pointer', fontSize: '13px',
                         backgroundColor: isActive ? '#d1d5db' : 'transparent',
                         color: isActive ? '#333' : '#666'
                       }}
                     >
-                      {sub}
+                      {sub.label}
                     </div>
                   );
                 })}
@@ -120,8 +124,12 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
           <span style={{ fontSize: '13px', color: '#666', marginRight: '20px', cursor: 'pointer' }}>Novidades</span>
           
           <div style={{ display: 'flex', alignItems: 'center', marginRight: '20px', cursor: 'pointer' }}>
-            <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#ccc', marginRight: '8px' }}></div>
-            <span style={{ fontSize: '13px', color: '#555' }}>James | Programa de Transporte <ChevronDown size={12} style={{ display: 'inline', marginLeft: '4px' }} /></span>
+            <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#17a2b8', marginRight: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 'bold' }}>
+              {(localStorage.getItem('userName') || userRole || 'U').charAt(0).toUpperCase()}
+            </div>
+            <span style={{ fontSize: '13px', color: '#555' }}>
+              {localStorage.getItem('userName') || userRole || 'Usuário'} | SalesMind <ChevronDown size={12} style={{ display: 'inline', marginLeft: '4px' }} />
+            </span>
           </div>
 
           <button style={{ display: 'flex', alignItems: 'center', border: '1px solid #b366ff', backgroundColor: 'transparent', color: '#b366ff', borderRadius: '15px', padding: '4px 12px', fontSize: '12px', cursor: 'pointer', marginRight: '10px' }}>

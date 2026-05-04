@@ -1,15 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import CadastroProdutos from './pages/CadastroProdutos';
 import Cadastros from './pages/Cadastros';
 import Dashboard from './pages/Dashboard';
 import Fornecedores from './pages/Fornecedores';
+import KmPorLitro from './pages/KmPorLitro';
 import Login from './pages/Login';
+import ManutencaoVeiculo from './pages/ManutencaoVeiculo';
 import Marcas from './pages/Marcas';
+import PesoCarga from './pages/PesoCarga';
 import Placeholder from './pages/Placeholder';
 import Vendas from './pages/Vendas';
 
-const App: React.FC = () => {
+
+
+
+function App() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [currentPage, setCurrentPage] = useState<string>('dashboard');
     const [userRole, setUserRole] = useState<string>('');
@@ -58,12 +64,12 @@ const App: React.FC = () => {
                 return <Placeholder title="Agenda" />;
             case 'comissionamento':
                 return <Placeholder title="Comissionamento" />;
-            case 'consultas':
-                return <Placeholder title="Consultas (Inteligência)" />;
-            case 'vacinação':
-                return <Placeholder title="Vacinação (Inteligência)" />;
-            case 'aniversários':
-                return <Placeholder title="Aniversários (Inteligência)" />;
+            case 'km-por-litro':
+                return <KmPorLitro />;
+            case 'manutencao-veiculo':
+                return <ManutencaoVeiculo />;
+            case 'peso-carga':
+                return <PesoCarga />;
             case 'log':
                 return <Placeholder title="Log (Inteligência)" />;
             case 'internacao':
@@ -82,15 +88,15 @@ const App: React.FC = () => {
     }
 
     return (
-        <Layout 
-            onNavigate={setCurrentPage} 
-            currentPage={currentPage} 
+        <Layout
+            onNavigate={setCurrentPage}
+            currentPage={currentPage}
             onLogout={handleLogout}
             userRole={userRole}
         >
             {renderPage()}
         </Layout>
     );
-};
+}
 
 export default App;

@@ -1,0 +1,18 @@
+export type Page =
+  | "dashboard"
+  | "vendas"
+  | "fornecedores"
+  | "marcas"
+  | "cadastro-produtos"
+  | "cadastros"
+  | "atendimento"
+  | "clientes"
+  | "agenda"
+  | "comissionamento"
+  | "km-por-litro"
+  | "manutencao-veiculo"
+  | "peso-carga"
+  | "log"
+  | "internacao"
+  | "estoque"
+  | "financeiro";
