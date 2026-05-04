@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import authRoutes from "./routes/auth.routes";
 import fornecedoresRoutes from "./routes/fornecedores.routes";
 import produtoRoutes from "./routes/produto.routes";
@@ -8,6 +9,7 @@ import vendasRoutes from "./routes/vendas.routes";
 // Centraliza todas as rotas da API e configura o parser JSON.
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 
 app.use("/auth", authRoutes);

@@ -1,17 +1,17 @@
 import React, { useEffect, useState } from 'react';
+import Layout from './components/Layout';
 import CadastroProdutos from './pages/CadastroProdutos';
 import Cadastros from './pages/Cadastros';
 import Dashboard from './pages/Dashboard';
 import Fornecedores from './pages/Fornecedores';
 import Login from './pages/Login';
 import Marcas from './pages/Marcas';
+import Placeholder from './pages/Placeholder';
 import Vendas from './pages/Vendas';
-
-type Page = 'dashboard' | 'vendas' | 'fornecedores' | 'marcas' | 'cadastro-produtos' | 'cadastros';
 
 const App: React.FC = () => {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
-    const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+    const [currentPage, setCurrentPage] = useState<string>('dashboard');
     const [userRole, setUserRole] = useState<string>('');
 
     useEffect(() => {
@@ -38,6 +38,8 @@ const App: React.FC = () => {
 
     const renderPage = () => {
         switch (currentPage) {
+            case 'dashboard':
+                return <Dashboard onLogout={handleLogout} onNavigate={setCurrentPage} />;
             case 'vendas':
                 return <Vendas />;
             case 'fornecedores':
@@ -48,8 +50,30 @@ const App: React.FC = () => {
                 return <CadastroProdutos onNavigate={setCurrentPage} />;
             case 'cadastros':
                 return <Cadastros />;
+            case 'atendimento':
+                return <Placeholder title="Atendimento clínico" />;
+            case 'clientes':
+                return <Placeholder title="Clientes" />;
+            case 'agenda':
+                return <Placeholder title="Agenda" />;
+            case 'comissionamento':
+                return <Placeholder title="Comissionamento" />;
+            case 'consultas':
+                return <Placeholder title="Consultas (Inteligência)" />;
+            case 'vacinação':
+                return <Placeholder title="Vacinação (Inteligência)" />;
+            case 'aniversários':
+                return <Placeholder title="Aniversários (Inteligência)" />;
+            case 'log':
+                return <Placeholder title="Log (Inteligência)" />;
+            case 'internacao':
+                return <Placeholder title="Internação" />;
+            case 'estoque':
+                return <Placeholder title="Estoque e serviços" />;
+            case 'financeiro':
+                return <Placeholder title="Financeiro" />;
             default:
-                return <Dashboard onLogout={handleLogout} onNavigate={setCurrentPage} />;
+                return <Placeholder title="Página não encontrada" />;
         }
     };
 
@@ -58,82 +82,14 @@ const App: React.FC = () => {
     }
 
     return (
-        <div>
-            {/* 🧭 NAVEGAÇÃO */}
-            <nav style={{
-                backgroundColor: '#f8f9fa',
-                padding: '10px',
-                borderBottom: '1px solid #dee2e6',
-                marginBottom: '20px'
-            }}>
-                <button
-                    onClick={() => setCurrentPage('dashboard')}
-                    style={{
-                        marginRight: '10px',
-                        padding: '8px 16px',
-                        backgroundColor: currentPage === 'dashboard' ? '#007bff' : '#6c757d',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                    }}
-                >
-                    📊 Dashboard
-                </button>
-
-                {(userRole === 'ADMIN' || userRole === 'VENDEDOR') && (
-                    <button
-                        onClick={() => setCurrentPage('vendas')}
-                        style={{
-                            marginRight: '10px',
-                            padding: '8px 16px',
-                            backgroundColor: currentPage === 'vendas' ? '#007bff' : '#6c757d',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        🛒 Vendas
-                    </button>
-                )}
-
-                {userRole === 'ADMIN' && (
-                    <>
-                        <button
-                            onClick={() => setCurrentPage('cadastros')}
-                            style={{
-                                marginRight: '10px',
-                                padding: '8px 16px',
-                                backgroundColor: currentPage === 'cadastros' ? '#007bff' : '#17a2b8',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            📋 Cadastros
-                        </button>
-                    </>
-                )}
-
-                <button
-                    onClick={handleLogout}
-                    style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#dc3545',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                    }}
-                >
-                    🚪 Logout
-                </button>
-            </nav>
-
+        <Layout 
+            onNavigate={setCurrentPage} 
+            currentPage={currentPage} 
+            onLogout={handleLogout}
+            userRole={userRole}
+        >
             {renderPage()}
-        </div>
+        </Layout>
     );
 };
 
