@@ -7,6 +7,20 @@
  * 2) Gerenciar vendedores, veículos e entregadores.
  */
 import { useEffect, useState } from "react";
+import {
+    Bike,
+    Briefcase,
+    Car,
+    Factory,
+    Pencil,
+    Plus,
+    Save,
+    Tag,
+    Trash2,
+    Truck,
+    Users,
+    X
+} from "lucide-react";
 import { api } from "../services/api";
 
 // 📋 Tipagens
@@ -72,6 +86,15 @@ interface CadastrosProps {
     onNavigate?: (page: string) => void;
 }
 
+const tabConfig: { id: AbaAtiva; label: string; icon: React.ReactNode }[] = [
+    { id: 'marcas',       label: 'Marcas',       icon: <Tag size={15} /> },
+    { id: 'fornecedores', label: 'Fornecedores',  icon: <Factory size={15} /> },
+    { id: 'clientes',     label: 'Clientes',      icon: <Users size={15} /> },
+    { id: 'vendedores',   label: 'Vendedores',    icon: <Briefcase size={15} /> },
+    { id: 'veiculos',     label: 'Veículos',      icon: <Car size={15} /> },
+    { id: 'entregadores', label: 'Entregadores',  icon: <Bike size={15} /> },
+];
+
 export default function Cadastros({ onNavigate }: CadastrosProps) {
     const [activeTab, setActiveTab] = useState<AbaAtiva>('marcas');
     const [loading, setLoading] = useState(false);
@@ -82,10 +105,6 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
     const [editingMarca, setEditingMarca] = useState<Marca | null>(null);
     const [formMarca, setFormMarca] = useState({ nome: '', fornecedorId: '' });
     const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
-    const [showFormFornecedor, setShowFormFornecedor] = useState(false);
-    const [newFornecedorData, setNewFornecedorData] = useState({
-        nome: '', cnpj: '', telefone: '', email: '', endereco: ''
-    });
 
     // Estados para Fornecedores
     const [showFormFornecedorAba, setShowFormFornecedorAba] = useState(false);
@@ -365,7 +384,10 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
         setLoading(false);
     };
 
-    const abaStyle = (tabName: AbaAtiva) => ({
+    const abaStyle = (tabName: AbaAtiva): React.CSSProperties => ({
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
         padding: '12px 20px',
         backgroundColor: activeTab === tabName ? '#007bff' : '#f8f9fa',
         color: activeTab === tabName ? 'white' : '#495057',
@@ -376,33 +398,52 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
         borderRadius: tabName === 'marcas' ? '8px 0 0 0' : tabName === 'entregadores' ? '0 8px 0 0' : '0'
     });
 
+    const btnNew = (show: boolean): React.CSSProperties => ({
+        display: 'flex', alignItems: 'center', gap: '6px',
+        padding: '10px 20px',
+        backgroundColor: show ? '#6c757d' : '#28a745',
+        color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer'
+    });
+
+    const btnSubmit: React.CSSProperties = {
+        display: 'flex', alignItems: 'center', gap: '6px',
+        padding: '10px 20px',
+        backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer'
+    };
+
+    const btnEdit: React.CSSProperties = {
+        display: 'flex', alignItems: 'center', gap: '5px',
+        padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer'
+    };
+
+    const btnDelete: React.CSSProperties = {
+        display: 'flex', alignItems: 'center', gap: '5px',
+        padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
+    };
+
     return (
         <div style={{ padding: '20px' }}>
-            <h1>📋 Sistema de Cadastros</h1>
+            <h1>Sistema de Cadastros</h1>
             
             {/* ABAS */}
             <div style={{ display: 'flex', marginBottom: '20px', borderRadius: '8px', overflow: 'hidden', border: '2px solid #dee2e6' }}>
-                {(['marcas', 'fornecedores', 'clientes', 'vendedores', 'veiculos', 'entregadores'] as AbaAtiva[]).map(tab => (
-                    <button key={tab} onClick={() => setActiveTab(tab)} style={abaStyle(tab)}>
-                        {tab === 'marcas' && '🏷️ Marcas'}
-                        {tab === 'fornecedores' && '🏭 Fornecedores'}
-                        {tab === 'clientes' && '👥 Clientes'}
-                        {tab === 'vendedores' && '💼 Vendedores'}
-                        {tab === 'veiculos' && '🚐 Veículos'}
-                        {tab === 'entregadores' && '🚚 Entregadores'}
+                {tabConfig.map(tab => (
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={abaStyle(tab.id)}>
+                        {tab.icon} {tab.label}
                     </button>
                 ))}
             </div>
 
             {/* CONTEÚDO DAS ABAS */}
             <div style={{ backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '8px' }}>
+
                 {/* ABA MARCAS */}
                 {activeTab === 'marcas' && (
                     <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                             <h2>Gerenciar Marcas</h2>
-                            <button onClick={() => setShowFormMarca(!showFormMarca)} style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                {showFormMarca ? '❌ Cancelar' : '➕ Nova Marca'}
+                            <button onClick={() => setShowFormMarca(!showFormMarca)} style={btnNew(showFormMarca)}>
+                                {showFormMarca ? <><X size={16} /> Cancelar</> : <><Plus size={16} /> Nova Marca</>}
                             </button>
                         </div>
 
@@ -420,8 +461,8 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                         {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                                     </select>
                                 </div>
-                                <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                    {editingMarca ? '💾 Atualizar' : '✅ Criar'}
+                                <button type="submit" style={btnSubmit}>
+                                    {editingMarca ? <><Save size={16} /> Atualizar</> : <><Plus size={16} /> Criar</>}
                                 </button>
                             </form>
                         )}
@@ -433,9 +474,9 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                         <h4 style={{ margin: '0' }}>{marca.nome}</h4>
                                         <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#666' }}>Fornecedor: {marca.fornecedor.nome}</p>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '10px' }}>
-                                        <button onClick={() => { setEditingMarca(marca); setFormMarca({nome: marca.nome, fornecedorId: marca.fornecedorId}); setShowFormMarca(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
-                                        <button onClick={() => deleteMarca(marca.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button onClick={() => { setEditingMarca(marca); setFormMarca({nome: marca.nome, fornecedorId: marca.fornecedorId}); setShowFormMarca(true); }} style={btnEdit}><Pencil size={14} /></button>
+                                        <button onClick={() => deleteMarca(marca.id)} style={btnDelete}><Trash2 size={14} /></button>
                                     </div>
                                 </div>
                             ))}
@@ -448,36 +489,21 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                     <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                             <h2>Gerenciar Fornecedores</h2>
-                            <button onClick={() => setShowFormFornecedorAba(!showFormFornecedorAba)} style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                {showFormFornecedorAba ? '❌ Cancelar' : '➕ Novo Fornecedor'}
+                            <button onClick={() => setShowFormFornecedorAba(!showFormFornecedorAba)} style={btnNew(showFormFornecedorAba)}>
+                                {showFormFornecedorAba ? <><X size={16} /> Cancelar</> : <><Plus size={16} /> Novo Fornecedor</>}
                             </button>
                         </div>
 
                         {showFormFornecedorAba && (
                             <form onSubmit={saveFornecedor} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
                                 <h3>{editingFornecedor ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Nome:</label>
-                                    <input type="text" value={formFornecedor.nome} onChange={(e) => setFormFornecedor({...formFornecedor, nome: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>CNPJ:</label>
-                                    <input type="text" value={formFornecedor.cnpj} onChange={(e) => setFormFornecedor({...formFornecedor, cnpj: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Telefone:</label>
-                                    <input type="text" value={formFornecedor.telefone} onChange={(e) => setFormFornecedor({...formFornecedor, telefone: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Email:</label>
-                                    <input type="email" value={formFornecedor.email} onChange={(e) => setFormFornecedor({...formFornecedor, email: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Endereço:</label>
-                                    <input type="text" value={formFornecedor.endereco} onChange={(e) => setFormFornecedor({...formFornecedor, endereco: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                    {editingFornecedor ? '💾 Atualizar' : '✅ Criar'}
+                                <div style={{ marginBottom: '10px' }}><label>Nome:</label><input type="text" value={formFornecedor.nome} onChange={(e) => setFormFornecedor({...formFornecedor, nome: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>CNPJ:</label><input type="text" value={formFornecedor.cnpj} onChange={(e) => setFormFornecedor({...formFornecedor, cnpj: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Telefone:</label><input type="text" value={formFornecedor.telefone} onChange={(e) => setFormFornecedor({...formFornecedor, telefone: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Email:</label><input type="email" value={formFornecedor.email} onChange={(e) => setFormFornecedor({...formFornecedor, email: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Endereço:</label><input type="text" value={formFornecedor.endereco} onChange={(e) => setFormFornecedor({...formFornecedor, endereco: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <button type="submit" style={btnSubmit}>
+                                    {editingFornecedor ? <><Save size={16} /> Atualizar</> : <><Plus size={16} /> Criar</>}
                                 </button>
                             </form>
                         )}
@@ -488,9 +514,9 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                     <h4 style={{ margin: '0' }}>{fornecedor.nome}</h4>
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>CNPJ: {fornecedor.cnpj || 'N/A'} | Tel: {fornecedor.telefone || 'N/A'} | Email: {fornecedor.email || 'N/A'}</p>
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>Endereço: {fornecedor.endereco || 'N/A'}</p>
-                                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                        <button onClick={() => { setEditingFornecedor(fornecedor); setFormFornecedor({ nome: fornecedor.nome, cnpj: fornecedor.cnpj ?? '', telefone: fornecedor.telefone ?? '', email: fornecedor.email ?? '', endereco: fornecedor.endereco ?? '' }); setShowFormFornecedorAba(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
-                                        <button onClick={() => deleteFornecedor(fornecedor.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
+                                    <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                                        <button onClick={() => { setEditingFornecedor(fornecedor); setFormFornecedor({ nome: fornecedor.nome, cnpj: fornecedor.cnpj ?? '', telefone: fornecedor.telefone ?? '', email: fornecedor.email ?? '', endereco: fornecedor.endereco ?? '' }); setShowFormFornecedorAba(true); }} style={btnEdit}><Pencil size={14} /></button>
+                                        <button onClick={() => deleteFornecedor(fornecedor.id)} style={btnDelete}><Trash2 size={14} /></button>
                                     </div>
                                 </div>
                             ))}
@@ -503,28 +529,19 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                     <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                             <h2>Gerenciar Clientes</h2>
-                            <button onClick={() => setShowFormCliente(!showFormCliente)} style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                {showFormCliente ? '❌ Cancelar' : '➕ Novo Cliente'}
+                            <button onClick={() => setShowFormCliente(!showFormCliente)} style={btnNew(showFormCliente)}>
+                                {showFormCliente ? <><X size={16} /> Cancelar</> : <><Plus size={16} /> Novo Cliente</>}
                             </button>
                         </div>
 
                         {showFormCliente && (
                             <form onSubmit={saveCliente} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
                                 <h3>{editingCliente ? 'Editar Cliente' : 'Novo Cliente'}</h3>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Nome:</label>
-                                    <input type="text" value={formCliente.nome} onChange={(e) => setFormCliente({...formCliente, nome: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Telefone:</label>
-                                    <input type="text" value={formCliente.telefone} onChange={(e) => setFormCliente({...formCliente, telefone: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Email:</label>
-                                    <input type="email" value={formCliente.email} onChange={(e) => setFormCliente({...formCliente, email: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                    {editingCliente ? '💾 Atualizar' : '✅ Criar'}
+                                <div style={{ marginBottom: '10px' }}><label>Nome:</label><input type="text" value={formCliente.nome} onChange={(e) => setFormCliente({...formCliente, nome: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Telefone:</label><input type="text" value={formCliente.telefone} onChange={(e) => setFormCliente({...formCliente, telefone: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Email:</label><input type="email" value={formCliente.email} onChange={(e) => setFormCliente({...formCliente, email: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <button type="submit" style={btnSubmit}>
+                                    {editingCliente ? <><Save size={16} /> Atualizar</> : <><Plus size={16} /> Criar</>}
                                 </button>
                             </form>
                         )}
@@ -536,9 +553,9 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                         <h4 style={{ margin: '0' }}>{cliente.nome}</h4>
                                         <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#666' }}>{cliente.telefone || 'N/A'} | {cliente.email || 'N/A'}</p>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '10px' }}>
-                                        <button onClick={() => { setEditingCliente(cliente); setFormCliente({ nome: cliente.nome, telefone: cliente.telefone ?? '', email: cliente.email ?? '' }); setShowFormCliente(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
-                                        <button onClick={() => deleteCliente(cliente.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button onClick={() => { setEditingCliente(cliente); setFormCliente({ nome: cliente.nome, telefone: cliente.telefone ?? '', email: cliente.email ?? '' }); setShowFormCliente(true); }} style={btnEdit}><Pencil size={14} /></button>
+                                        <button onClick={() => deleteCliente(cliente.id)} style={btnDelete}><Trash2 size={14} /></button>
                                     </div>
                                 </div>
                             ))}
@@ -551,40 +568,23 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                     <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                             <h2>Gerenciar Vendedores</h2>
-                            <button onClick={() => setShowFormVendedor(!showFormVendedor)} style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                {showFormVendedor ? '❌ Cancelar' : '➕ Novo Vendedor'}
+                            <button onClick={() => setShowFormVendedor(!showFormVendedor)} style={btnNew(showFormVendedor)}>
+                                {showFormVendedor ? <><X size={16} /> Cancelar</> : <><Plus size={16} /> Novo Vendedor</>}
                             </button>
                         </div>
 
                         {showFormVendedor && (
                             <form onSubmit={saveVendedor} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
                                 <h3>{editingVendedor ? 'Editar Vendedor' : 'Novo Vendedor'}</h3>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Nome:</label>
-                                    <input type="text" value={formVendedor.nome} onChange={(e) => setFormVendedor({...formVendedor, nome: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>CPF:</label>
-                                    <input type="text" value={formVendedor.cpf} onChange={(e) => setFormVendedor({...formVendedor, cpf: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Email:</label>
-                                    <input type="email" value={formVendedor.email} onChange={(e) => setFormVendedor({...formVendedor, email: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Telefone:</label>
-                                    <input type="text" value={formVendedor.telefone} onChange={(e) => setFormVendedor({...formVendedor, telefone: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Endereço:</label>
-                                    <input type="text" value={formVendedor.endereco} onChange={(e) => setFormVendedor({...formVendedor, endereco: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <label>
-                                    <input type="checkbox" checked={formVendedor.ativo} onChange={(e) => setFormVendedor({...formVendedor, ativo: e.target.checked})} /> Ativo
-                                </label>
+                                <div style={{ marginBottom: '10px' }}><label>Nome:</label><input type="text" value={formVendedor.nome} onChange={(e) => setFormVendedor({...formVendedor, nome: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>CPF:</label><input type="text" value={formVendedor.cpf} onChange={(e) => setFormVendedor({...formVendedor, cpf: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Email:</label><input type="email" value={formVendedor.email} onChange={(e) => setFormVendedor({...formVendedor, email: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Telefone:</label><input type="text" value={formVendedor.telefone} onChange={(e) => setFormVendedor({...formVendedor, telefone: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Endereço:</label><input type="text" value={formVendedor.endereco} onChange={(e) => setFormVendedor({...formVendedor, endereco: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <label><input type="checkbox" checked={formVendedor.ativo} onChange={(e) => setFormVendedor({...formVendedor, ativo: e.target.checked})} /> Ativo</label>
                                 <br />
-                                <button type="submit" style={{ padding: '10px 20px', marginTop: '10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                    {editingVendedor ? '💾 Atualizar' : '✅ Criar'}
+                                <button type="submit" style={{ ...btnSubmit, marginTop: '10px' }}>
+                                    {editingVendedor ? <><Save size={16} /> Atualizar</> : <><Plus size={16} /> Criar</>}
                                 </button>
                             </form>
                         )}
@@ -594,9 +594,9 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                 <div key={vendedor.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '6px' }}>
                                     <h4 style={{ margin: '0' }}>{vendedor.nome} {vendedor.ativo ? '✅' : '❌'}</h4>
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>CPF: {vendedor.cpf || 'N/A'} | Tel: {vendedor.telefone || 'N/A'} | Email: {vendedor.email || 'N/A'}</p>
-                                    <div style={{ display: 'flex', gap: '10px' }}>
-                                        <button onClick={() => { setEditingVendedor(vendedor); setFormVendedor({ nome: vendedor.nome, email: vendedor.email ?? '', telefone: vendedor.telefone ?? '', cpf: vendedor.cpf ?? '', endereco: vendedor.endereco ?? '', ativo: vendedor.ativo }); setShowFormVendedor(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
-                                        <button onClick={() => deleteVendedor(vendedor.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button onClick={() => { setEditingVendedor(vendedor); setFormVendedor({ nome: vendedor.nome, email: vendedor.email ?? '', telefone: vendedor.telefone ?? '', cpf: vendedor.cpf ?? '', endereco: vendedor.endereco ?? '', ativo: vendedor.ativo }); setShowFormVendedor(true); }} style={btnEdit}><Pencil size={14} /></button>
+                                        <button onClick={() => deleteVendedor(vendedor.id)} style={btnDelete}><Trash2 size={14} /></button>
                                     </div>
                                 </div>
                             ))}
@@ -609,44 +609,24 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                     <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                             <h2>Gerenciar Veículos de Entrega</h2>
-                            <button onClick={() => setShowFormVeiculo(!showFormVeiculo)} style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                {showFormVeiculo ? '❌ Cancelar' : '➕ Novo Veículo'}
+                            <button onClick={() => setShowFormVeiculo(!showFormVeiculo)} style={btnNew(showFormVeiculo)}>
+                                {showFormVeiculo ? <><X size={16} /> Cancelar</> : <><Plus size={16} /> Novo Veículo</>}
                             </button>
                         </div>
 
                         {showFormVeiculo && (
                             <form onSubmit={saveVeiculo} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
                                 <h3>{editingVeiculo ? 'Editar Veículo' : 'Novo Veículo'}</h3>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Placa:</label>
-                                    <input type="text" value={formVeiculo.placa} onChange={(e) => setFormVeiculo({...formVeiculo, placa: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Modelo:</label>
-                                    <input type="text" value={formVeiculo.modelo} onChange={(e) => setFormVeiculo({...formVeiculo, modelo: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Marca:</label>
-                                    <input type="text" value={formVeiculo.marca} onChange={(e) => setFormVeiculo({...formVeiculo, marca: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Ano:</label>
-                                    <input type="number" value={formVeiculo.ano} onChange={(e) => setFormVeiculo({...formVeiculo, ano: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Cor:</label>
-                                    <input type="text" value={formVeiculo.cor} onChange={(e) => setFormVeiculo({...formVeiculo, cor: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Capacidade (kg):</label>
-                                    <input type="number" step="0.1" value={formVeiculo.capacidade} onChange={(e) => setFormVeiculo({...formVeiculo, capacidade: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <label>
-                                    <input type="checkbox" checked={formVeiculo.ativo} onChange={(e) => setFormVeiculo({...formVeiculo, ativo: e.target.checked})} /> Ativo
-                                </label>
+                                <div style={{ marginBottom: '10px' }}><label>Placa:</label><input type="text" value={formVeiculo.placa} onChange={(e) => setFormVeiculo({...formVeiculo, placa: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Modelo:</label><input type="text" value={formVeiculo.modelo} onChange={(e) => setFormVeiculo({...formVeiculo, modelo: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Marca:</label><input type="text" value={formVeiculo.marca} onChange={(e) => setFormVeiculo({...formVeiculo, marca: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Ano:</label><input type="number" value={formVeiculo.ano} onChange={(e) => setFormVeiculo({...formVeiculo, ano: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Cor:</label><input type="text" value={formVeiculo.cor} onChange={(e) => setFormVeiculo({...formVeiculo, cor: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Capacidade (kg):</label><input type="number" step="0.1" value={formVeiculo.capacidade} onChange={(e) => setFormVeiculo({...formVeiculo, capacidade: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <label><input type="checkbox" checked={formVeiculo.ativo} onChange={(e) => setFormVeiculo({...formVeiculo, ativo: e.target.checked})} /> Ativo</label>
                                 <br />
-                                <button type="submit" style={{ padding: '10px 20px', marginTop: '10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                    {editingVeiculo ? '💾 Atualizar' : '✅ Criar'}
+                                <button type="submit" style={{ ...btnSubmit, marginTop: '10px' }}>
+                                    {editingVeiculo ? <><Save size={16} /> Atualizar</> : <><Plus size={16} /> Criar</>}
                                 </button>
                             </form>
                         )}
@@ -656,9 +636,9 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                 <div key={veiculo.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '6px' }}>
                                     <h4 style={{ margin: '0' }}>{veiculo.placa} - {veiculo.modelo} {veiculo.ativo ? '✅' : '❌'}</h4>
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>Marca: {veiculo.marca || 'N/A'} | Ano: {veiculo.ano || 'N/A'} | Cor: {veiculo.cor || 'N/A'} | Cap: {veiculo.capacidade || 'N/A'} kg</p>
-                                    <div style={{ display: 'flex', gap: '10px' }}>
-                                        <button onClick={() => { setEditingVeiculo(veiculo); setFormVeiculo({ placa: veiculo.placa, modelo: veiculo.modelo, ano: veiculo.ano?.toString() ?? '', marca: veiculo.marca ?? '', cor: veiculo.cor ?? '', capacidade: veiculo.capacidade?.toString() ?? '', ativo: veiculo.ativo }); setShowFormVeiculo(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
-                                        <button onClick={() => deleteVeiculo(veiculo.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button onClick={() => { setEditingVeiculo(veiculo); setFormVeiculo({ placa: veiculo.placa, modelo: veiculo.modelo, ano: veiculo.ano?.toString() ?? '', marca: veiculo.marca ?? '', cor: veiculo.cor ?? '', capacidade: veiculo.capacidade?.toString() ?? '', ativo: veiculo.ativo }); setShowFormVeiculo(true); }} style={btnEdit}><Pencil size={14} /></button>
+                                        <button onClick={() => deleteVeiculo(veiculo.id)} style={btnDelete}><Trash2 size={14} /></button>
                                     </div>
                                 </div>
                             ))}
@@ -671,34 +651,19 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                     <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                             <h2>Gerenciar Entregadores</h2>
-                            <button onClick={() => setShowFormEntregador(!showFormEntregador)} style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                {showFormEntregador ? '❌ Cancelar' : '➕ Novo Entregador'}
+                            <button onClick={() => setShowFormEntregador(!showFormEntregador)} style={btnNew(showFormEntregador)}>
+                                {showFormEntregador ? <><X size={16} /> Cancelar</> : <><Plus size={16} /> Novo Entregador</>}
                             </button>
                         </div>
 
                         {showFormEntregador && (
                             <form onSubmit={saveEntregador} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
                                 <h3>{editingEntregador ? 'Editar Entregador' : 'Novo Entregador'}</h3>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Nome:</label>
-                                    <input type="text" value={formEntregador.nome} onChange={(e) => setFormEntregador({...formEntregador, nome: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>CPF:</label>
-                                    <input type="text" value={formEntregador.cpf} onChange={(e) => setFormEntregador({...formEntregador, cpf: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Email:</label>
-                                    <input type="email" value={formEntregador.email} onChange={(e) => setFormEntregador({...formEntregador, email: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Telefone:</label>
-                                    <input type="text" value={formEntregador.telefone} onChange={(e) => setFormEntregador({...formEntregador, telefone: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label>Endereço:</label>
-                                    <input type="text" value={formEntregador.endereco} onChange={(e) => setFormEntregador({...formEntregador, endereco: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} />
-                                </div>
+                                <div style={{ marginBottom: '10px' }}><label>Nome:</label><input type="text" value={formEntregador.nome} onChange={(e) => setFormEntregador({...formEntregador, nome: e.target.value})} required style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>CPF:</label><input type="text" value={formEntregador.cpf} onChange={(e) => setFormEntregador({...formEntregador, cpf: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Email:</label><input type="email" value={formEntregador.email} onChange={(e) => setFormEntregador({...formEntregador, email: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Telefone:</label><input type="text" value={formEntregador.telefone} onChange={(e) => setFormEntregador({...formEntregador, telefone: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
+                                <div style={{ marginBottom: '10px' }}><label>Endereço:</label><input type="text" value={formEntregador.endereco} onChange={(e) => setFormEntregador({...formEntregador, endereco: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }} /></div>
                                 <div style={{ marginBottom: '10px' }}>
                                     <label>Veículo Atribuído:</label>
                                     <select value={formEntregador.veiculoId} onChange={(e) => setFormEntregador({...formEntregador, veiculoId: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '5px' }}>
@@ -706,12 +671,10 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                         {veiculos.map(v => <option key={v.id} value={v.id}>{v.placa} - {v.modelo}</option>)}
                                     </select>
                                 </div>
-                                <label>
-                                    <input type="checkbox" checked={formEntregador.ativo} onChange={(e) => setFormEntregador({...formEntregador, ativo: e.target.checked})} /> Ativo
-                                </label>
+                                <label><input type="checkbox" checked={formEntregador.ativo} onChange={(e) => setFormEntregador({...formEntregador, ativo: e.target.checked})} /> Ativo</label>
                                 <br />
-                                <button type="submit" style={{ padding: '10px 20px', marginTop: '10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                    {editingEntregador ? '💾 Atualizar' : '✅ Criar'}
+                                <button type="submit" style={{ ...btnSubmit, marginTop: '10px' }}>
+                                    {editingEntregador ? <><Save size={16} /> Atualizar</> : <><Plus size={16} /> Criar</>}
                                 </button>
                             </form>
                         )}
@@ -722,9 +685,9 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
                                     <h4 style={{ margin: '0' }}>{entregador.nome} {entregador.ativo ? '✅' : '❌'}</h4>
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>CPF: {entregador.cpf || 'N/A'} | Tel: {entregador.telefone || 'N/A'} | Email: {entregador.email || 'N/A'}</p>
                                     <p style={{ margin: '5px 0', fontSize: '14px', color: '#666' }}>Veículo: {entregador.veiculo ? `${entregador.veiculo.placa} - ${entregador.veiculo.modelo}` : 'Nenhum'}</p>
-                                    <div style={{ display: 'flex', gap: '10px' }}>
-                                        <button onClick={() => { setEditingEntregador(entregador); setFormEntregador({ nome: entregador.nome, email: entregador.email ?? '', telefone: entregador.telefone ?? '', cpf: entregador.cpf ?? '', endereco: entregador.endereco ?? '', veiculoId: entregador.veiculoId ?? '', ativo: entregador.ativo }); setShowFormEntregador(true); }} style={{ padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️</button>
-                                        <button onClick={() => deleteEntregador(entregador.id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️</button>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button onClick={() => { setEditingEntregador(entregador); setFormEntregador({ nome: entregador.nome, email: entregador.email ?? '', telefone: entregador.telefone ?? '', cpf: entregador.cpf ?? '', endereco: entregador.endereco ?? '', veiculoId: entregador.veiculoId ?? '', ativo: entregador.ativo }); setShowFormEntregador(true); }} style={btnEdit}><Pencil size={14} /></button>
+                                        <button onClick={() => deleteEntregador(entregador.id)} style={btnDelete}><Trash2 size={14} /></button>
                                     </div>
                                 </div>
                             ))}

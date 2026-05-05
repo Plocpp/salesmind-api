@@ -7,6 +7,7 @@
  * 2) Criar, atualizar e deletar fornecedores.
  */
 import { useEffect, useState } from "react";
+import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { api } from "../services/api";
 
 // 📦 Tipagem Fornecedor
@@ -120,13 +121,14 @@ export default function Fornecedores({ onNavigate }: FornecedoresProps) {
 
     return (
         <div style={{ padding: '20px' }}>
-            <h1>🏭 Gerenciar Fornecedores</h1>
+            <h1>Gerenciar Fornecedores</h1>
 
             <button
                 onClick={() => setShowForm(!showForm)}
                 style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
                     padding: '10px 20px',
-                    backgroundColor: '#28a745',
+                    backgroundColor: showForm ? '#6c757d' : '#28a745',
                     color: 'white',
                     border: 'none',
                     borderRadius: '4px',
@@ -134,7 +136,7 @@ export default function Fornecedores({ onNavigate }: FornecedoresProps) {
                     marginBottom: '20px'
                 }}
             >
-                {showForm ? '❌ Cancelar' : '➕ Novo Fornecedor'}
+                {showForm ? <><X size={16} /> Cancelar</> : <><Plus size={16} /> Novo Fornecedor</>}
             </button>
 
             {showForm && (
@@ -203,6 +205,7 @@ export default function Fornecedores({ onNavigate }: FornecedoresProps) {
                     <button
                         type="submit"
                         style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
                             padding: '10px 20px',
                             backgroundColor: '#007bff',
                             color: 'white',
@@ -211,7 +214,7 @@ export default function Fornecedores({ onNavigate }: FornecedoresProps) {
                             cursor: 'pointer'
                         }}
                     >
-                        {editingFornecedor ? '💾 Salvar' : '➕ Criar'}
+                        {editingFornecedor ? <><Save size={16} /> Salvar</> : <><Plus size={16} /> Criar</>}
                     </button>
                 </form>
             )}
@@ -231,26 +234,27 @@ export default function Fornecedores({ onNavigate }: FornecedoresProps) {
                         <p><strong>Endereço:</strong> {fornecedor.endereco}</p>
                         <p><strong>Marcas:</strong> {fornecedor.marcas.length}</p>
 
-                        <div style={{ marginTop: '10px' }}>
+                        <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
                             <button
                                 onClick={() => handleEdit(fornecedor)}
                                 style={{
-                                    padding: '5px 10px',
+                                    display: 'flex', alignItems: 'center', gap: '5px',
+                                    padding: '6px 12px',
                                     backgroundColor: '#ffc107',
                                     color: 'black',
                                     border: 'none',
                                     borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    marginRight: '10px'
+                                    cursor: 'pointer'
                                 }}
                             >
-                                ✏️ Editar
+                                <Pencil size={14} /> Editar
                             </button>
 
                             <button
                                 onClick={() => handleDelete(fornecedor.id)}
                                 style={{
-                                    padding: '5px 10px',
+                                    display: 'flex', alignItems: 'center', gap: '5px',
+                                    padding: '6px 12px',
                                     backgroundColor: '#dc3545',
                                     color: 'white',
                                     border: 'none',
@@ -258,7 +262,7 @@ export default function Fornecedores({ onNavigate }: FornecedoresProps) {
                                     cursor: 'pointer'
                                 }}
                             >
-                                🗑️ Excluir
+                                <Trash2 size={14} /> Excluir
                             </button>
                         </div>
                     </div>

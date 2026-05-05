@@ -81,16 +81,16 @@ export default function Dashboard({ onLogout, onNavigate }: DashboardProps) {
     const chartData =
         vendData && vendData.produtosMaisVendidos.length > 0
             ? vendData.produtosMaisVendidos.map((p) => ({
-                  name: p.produto.length > 14 ? p.produto.slice(0, 14) + "…" : p.produto,
-                  valor: p.quantidade,
-              }))
+                    name: p.produto.length > 14 ? p.produto.slice(0, 14) + "…" : p.produto,
+                    valor: p.quantidade,
+                }))
             : [
-                  { name: "Seg", valor: 400 },
-                  { name: "Ter", valor: 700 },
-                  { name: "Qua", valor: 500 },
-                  { name: "Qui", valor: 900 },
-                  { name: "Sex", valor: 1200 },
-              ];
+                    { name: "Seg", valor: 400 },
+                    { name: "Ter", valor: 700 },
+                    { name: "Qua", valor: 500 },
+                    { name: "Qui", valor: 900 },
+                    { name: "Sex", valor: 1200 },
+                ];
 
     const chartTitle =
         vendData && vendData.produtosMaisVendidos.length > 0

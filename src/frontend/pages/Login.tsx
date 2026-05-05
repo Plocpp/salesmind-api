@@ -7,6 +7,7 @@
  * 2) Persistir token e role no localStorage e disparar callback de rota.
  */
 import React, { useState } from "react";
+import { LogIn } from "lucide-react";
 import { api } from "../services/api";
 
 interface LoginProps {
@@ -51,7 +52,12 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             onChange={(e) => setSenha(e.target.value)}
         />
 
-        <button onClick={handleLogin}>Entrar</button>
+        <button
+            onClick={handleLogin}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+            <LogIn size={16} /> Entrar
+        </button>
         </div>
     );
 };

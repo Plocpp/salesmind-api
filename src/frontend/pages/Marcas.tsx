@@ -7,6 +7,7 @@
  * 2) Exibir lista de marcas e inserir novos fornecedores inline.
  */
 import { useEffect, useState } from "react";
+import { ArrowLeft, Pencil, Plus, Save, Trash2, UserPlus, X } from "lucide-react";
 import { api } from "../services/api";
 
 // 📦 Tipagem Marca
@@ -169,13 +170,14 @@ export default function Marcas({ onNavigate }: MarcasProps) {
 
     return (
         <div style={{ padding: '20px' }}>
-            <h1>🏷️ Gerenciar Marcas</h1>
+            <h1>Gerenciar Marcas</h1>
 
             <button
                 onClick={() => setShowForm(!showForm)}
                 style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
                     padding: '10px 20px',
-                    backgroundColor: '#28a745',
+                    backgroundColor: showForm ? '#6c757d' : '#28a745',
                     color: 'white',
                     border: 'none',
                     borderRadius: '4px',
@@ -183,7 +185,7 @@ export default function Marcas({ onNavigate }: MarcasProps) {
                     marginBottom: '20px'
                 }}
             >
-                {showForm ? '❌ Cancelar' : '➕ Nova Marca'}
+                {showForm ? <><X size={16} /> Cancelar</> : <><Plus size={16} /> Nova Marca</>}
             </button>
 
             {showForm && (
@@ -207,7 +209,7 @@ export default function Marcas({ onNavigate }: MarcasProps) {
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-                        <div>
+                        <div style={{ flex: 1 }}>
                             <label>Fornecedor:</label>
                             <select
                                 value={formData.fornecedorId}
@@ -228,15 +230,19 @@ export default function Marcas({ onNavigate }: MarcasProps) {
                             type="button"
                             onClick={() => setUseNewFornecedor(prev => !prev)}
                             style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
                                 padding: '8px 12px',
                                 backgroundColor: useNewFornecedor ? '#6c757d' : '#17a2b8',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '4px',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
                             }}
                         >
-                            {useNewFornecedor ? 'Voltar para Fornecedor existente' : 'Cadastrar fornecedor'}
+                            {useNewFornecedor
+                                ? <><ArrowLeft size={14} /> Fornecedor existente</>
+                                : <><UserPlus size={14} /> Cadastrar fornecedor</>}
                         </button>
                     </div>
 
@@ -292,6 +298,7 @@ export default function Marcas({ onNavigate }: MarcasProps) {
                                 type="button"
                                 onClick={criarFornecedorInline}
                                 style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
                                     width: '100%',
                                     padding: '10px 20px',
                                     backgroundColor: '#28a745',
@@ -301,7 +308,7 @@ export default function Marcas({ onNavigate }: MarcasProps) {
                                     cursor: 'pointer'
                                 }}
                             >
-                                ➕ Cadastrar Fornecedor
+                                <Plus size={16} /> Cadastrar Fornecedor
                             </button>
                         </div>
                     )}
@@ -309,6 +316,7 @@ export default function Marcas({ onNavigate }: MarcasProps) {
                     <button
                         type="submit"
                         style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
                             padding: '10px 20px',
                             backgroundColor: '#007bff',
                             color: 'white',
@@ -317,7 +325,7 @@ export default function Marcas({ onNavigate }: MarcasProps) {
                             cursor: 'pointer'
                         }}
                     >
-                        {editingMarca ? '💾 Salvar' : '➕ Criar'}
+                        {editingMarca ? <><Save size={16} /> Salvar</> : <><Plus size={16} /> Criar</>}
                     </button>
                 </form>
             )}
@@ -350,26 +358,27 @@ export default function Marcas({ onNavigate }: MarcasProps) {
                             </div>
                         )}
 
-                        <div style={{ marginTop: '10px' }}>
+                        <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
                             <button
                                 onClick={() => handleEdit(marca)}
                                 style={{
-                                    padding: '5px 10px',
+                                    display: 'flex', alignItems: 'center', gap: '5px',
+                                    padding: '6px 12px',
                                     backgroundColor: '#ffc107',
                                     color: 'black',
                                     border: 'none',
                                     borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    marginRight: '10px'
+                                    cursor: 'pointer'
                                 }}
                             >
-                                ✏️ Editar
+                                <Pencil size={14} /> Editar
                             </button>
 
                             <button
                                 onClick={() => handleDelete(marca.id)}
                                 style={{
-                                    padding: '5px 10px',
+                                    display: 'flex', alignItems: 'center', gap: '5px',
+                                    padding: '6px 12px',
                                     backgroundColor: '#dc3545',
                                     color: 'white',
                                     border: 'none',
@@ -377,7 +386,7 @@ export default function Marcas({ onNavigate }: MarcasProps) {
                                     cursor: 'pointer'
                                 }}
                             >
-                                🗑️ Excluir
+                                <Trash2 size={14} /> Excluir
                             </button>
                         </div>
                     </div>
