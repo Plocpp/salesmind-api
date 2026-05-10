@@ -51,17 +51,18 @@ interface Fornecedor {
 
 interface CadastroProdutosProps {
     onNavigate?: (page: string) => void;
+    initialTab?: 'produtos' | 'compras' | 'movimentacao';
 }
 
 
-export default function CadastroProdutos({ onNavigate }: CadastroProdutosProps) {
+export default function CadastroProdutos({ onNavigate, initialTab = 'produtos' }: CadastroProdutosProps) {
     const [produtos, setProdutos] = useState<Produto[]>([]);
     const [marcas, setMarcas] = useState<Marca[]>([]);
     const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [editingProduto, setEditingProduto] = useState<Produto | null>(null);
-    const [activeTab, setActiveTab] = useState<'produtos' | 'compras' | 'movimentacao'>('produtos');
+    const [activeTab, setActiveTab] = useState<'produtos' | 'compras' | 'movimentacao'>(initialTab);
     const [selectedAddProductId, setSelectedAddProductId] = useState<string>('');
     const [selectedRemoveProductId, setSelectedRemoveProductId] = useState<string>('');
     const [addQuantity, setAddQuantity] = useState('');
@@ -96,6 +97,10 @@ export default function CadastroProdutos({ onNavigate }: CadastroProdutosProps) 
         loadMarcas();
         loadFornecedores();
     }, []);
+
+    useEffect(() => {
+        setActiveTab(initialTab);
+    }, [initialTab]);
 
     useEffect(() => {
         if (produtos.length > 0) {

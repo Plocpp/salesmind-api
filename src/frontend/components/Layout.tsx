@@ -1,153 +1,225 @@
-import React, { ReactNode, useState } from 'react';
-import { 
-  Home, Stethoscope, Users, Calendar, ShoppingCart, Percent, 
-  Lightbulb, Database, Bed, Box, DollarSign, ChevronDown, 
-  HelpCircle, Settings, ChevronRight
-} from 'lucide-react';
+import { type ReactNode, useMemo, useState } from "react";
+import {
+  Bed,
+  Box,
+  Calendar,
+  ChevronDown,
+  ChevronRight,
+  Database,
+  DollarSign,
+  Gauge,
+  HelpCircle,
+  Home,
+  Lightbulb,
+  Percent,
+  ShoppingCart,
+  Stethoscope,
+  Users,
+} from "lucide-react";
+import { type Page } from "../types/Page";
 
 interface LayoutProps {
   children: ReactNode;
-  onNavigate: (page: string) => void;
-  currentPage: string;
+  onNavigate: (page: Page) => void;
+  currentPage: Page;
   onLogout: () => void;
   userRole: string;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLogout, userRole }) => {
-  const [intelOpen, setIntelOpen] = useState(true);
+interface MenuItem {
+  id: Page;
+  label: string;
+  icon?: ReactNode;
+}
 
-  const menuItems = [
-    { id: 'dashboard', label: 'Painel de controle', icon: <Home size={18} /> },
-    { id: 'atendimento', label: 'Atendimento clínico', icon: <Stethoscope size={18} /> },
-    { id: 'clientes', label: 'Clientes', icon: <Users size={18} /> },
-    { id: 'agenda', label: 'Agenda', icon: <Calendar size={18} /> },
-    { id: 'vendas', label: 'Vendas', icon: <ShoppingCart size={18} />, hidden: userRole !== 'ADMIN' && userRole !== 'VENDEDOR' },
-    { id: 'comissionamento', label: 'Comissionamento', icon: <Percent size={18} /> },
-  ];
+interface MenuGroup {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  items: MenuItem[];
+}
 
-  const bottomMenuItems = [
-    { id: 'cadastros', label: 'Cadastros', icon: <Database size={18} />, hidden: userRole !== 'ADMIN' },
-    { id: 'internacao', label: 'Internação', icon: <Bed size={18} /> },
-    { id: 'estoque', label: 'Estoque e Compras', icon: <Box size={18} /> },
-    { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={18} /> },
-  ];
+const groups: MenuGroup[] = [
+  {
+    id: "operacao",
+    label: "Operacao",
+    icon: <Home size={18} />,
+    items: [
+      { id: "dashboard", label: "Painel de controle" },
+      { id: "atendimento", label: "Atendimento clinico", icon: <Stethoscope size={16} /> },
+      { id: "clientes", label: "Clientes", icon: <Users size={16} /> },
+      { id: "agenda", label: "Agenda", icon: <Calendar size={16} /> },
+      { id: "vendas", label: "Vendas", icon: <ShoppingCart size={16} /> },
+      { id: "comissionamento", label: "Comissionamento", icon: <Percent size={16} /> },
+    ],
+  },
+  {
+    id: "cadastros",
+    label: "Cadastros",
+    icon: <Database size={18} />,
+    items: [
+      { id: "cadastros", label: "Todos os cadastros" },
+      { id: "cadastro-produtos", label: "Produtos" },
+      { id: "marcas", label: "Marcas" },
+      { id: "fornecedores", label: "Fornecedores" },
+      { id: "clientes", label: "Clientes" },
+    ],
+  },
+  {
+    id: "estoque",
+    label: "Estoque e Compras",
+    icon: <Box size={18} />,
+    items: [
+      { id: "estoque", label: "Visao geral" },
+      { id: "estoque-produtos", label: "Produtos" },
+      { id: "estoque-movimentacao", label: "Movimentacao" },
+      { id: "estoque-compras", label: "Compras" },
+      { id: "fornecedores", label: "Fornecedores" },
+    ],
+  },
+  {
+    id: "clinica",
+    label: "Clinica",
+    icon: <Stethoscope size={18} />,
+    items: [
+      { id: "atendimento", label: "Atendimento" },
+      { id: "agenda", label: "Agenda" },
+      { id: "internacao", label: "Internacao", icon: <Bed size={16} /> },
+    ],
+  },
+  {
+    id: "financeiro",
+    label: "Financeiro",
+    icon: <DollarSign size={18} />,
+    items: [
+      { id: "financeiro", label: "Financeiro" },
+      { id: "comissionamento", label: "Comissionamento" },
+      { id: "vendas", label: "Vendas" },
+    ],
+  },
+  {
+    id: "inteligencia",
+    label: "Inteligencia",
+    icon: <Lightbulb size={18} />,
+    items: [
+      { id: "km-por-litro", label: "Km por litro", icon: <Gauge size={16} /> },
+      { id: "manutencao-veiculo", label: "Manutencao veiculo" },
+      { id: "peso-carga", label: "Peso da carga" },
+      { id: "log", label: "Log" },
+    ],
+  },
+];
+
+const itemStyle = (active: boolean) => ({
+  alignItems: "center",
+  backgroundColor: active ? "#e6f7fa" : "transparent",
+  border: "none",
+  borderLeft: active ? "3px solid #17a2b8" : "3px solid transparent",
+  color: active ? "#0f6170" : "#4b5563",
+  cursor: "pointer",
+  display: "flex",
+  fontSize: "13px",
+  gap: "10px",
+  padding: "9px 18px 9px 42px",
+  textAlign: "left" as const,
+  width: "100%",
+});
+
+export default function Layout({ children, onNavigate, currentPage, onLogout, userRole }: LayoutProps) {
+  const initialOpen = useMemo(() => {
+    return groups.reduce<Record<string, boolean>>((acc, group) => {
+      acc[group.id] = group.items.some((item) => item.id === currentPage);
+      return acc;
+    }, {});
+  }, []);
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    operacao: true,
+    ...initialOpen,
+  });
+
+  const toggleGroup = (id: string) => {
+    setOpenGroups((current) => ({ ...current, [id]: !current[id] }));
+  };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: '#f4f5f7', fontFamily: 'sans-serif' }}>
-      {/* Sidebar */}
-      <aside style={{ width: '250px', backgroundColor: '#fff', borderRight: '1px solid #ddd', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px', borderBottom: '1px solid #ddd', textAlign: 'center' }}>
-          <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#17a2b8' }}>🐾 SalesMind</div>
-          <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>Pet Shop System</div>
+    <div style={{ display: "flex", height: "100vh", width: "100vw", backgroundColor: "#f3f4f6", fontFamily: "Inter, Arial, sans-serif" }}>
+      <aside style={{ width: "272px", backgroundColor: "#fff", borderRight: "1px solid #e5e7eb", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "20px", borderBottom: "1px solid #e5e7eb" }}>
+          <div style={{ fontSize: "20px", fontWeight: 800, color: "#17a2b8" }}>SalesMind</div>
+          <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>Pet Shop System</div>
         </div>
 
-        <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 0' }}>
-          {menuItems.filter(m => !m.hidden).map(item => (
-            <div 
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              style={{
-                display: 'flex', alignItems: 'center', padding: '10px 20px', cursor: 'pointer',
-                backgroundColor: currentPage === item.id ? '#17a2b8' : 'transparent',
-                color: currentPage === item.id ? '#fff' : '#555',
-                borderLeft: currentPage === item.id ? '4px solid #138496' : '4px solid transparent'
-              }}
-            >
-              <span style={{ marginRight: '15px' }}>{item.icon}</span>
-              <span style={{ fontSize: '14px' }}>{item.label}</span>
-            </div>
-          ))}
+        <nav style={{ flex: 1, overflowY: "auto", padding: "10px 0" }}>
+          {groups.map((group) => {
+            const isOpen = openGroups[group.id];
+            const hasActiveItem = group.items.some((item) => item.id === currentPage);
 
-          {/* Inteligência Menu (Collapsible) */}
-          <div>
-            <div 
-              onClick={() => setIntelOpen(!intelOpen)}
-              style={{
-                display: 'flex', alignItems: 'center', padding: '10px 20px', cursor: 'pointer', color: '#555'
-              }}
-            >
-              <span style={{ marginRight: '15px' }}><Lightbulb size={18} /></span>
-              <span style={{ fontSize: '14px', flex: 1 }}>Inteligência</span>
-              <span>{intelOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
-            </div>
-            
-            {intelOpen && (
-              <div style={{ backgroundColor: '#f9f9f9', padding: '5px 0' }}>
-                {[
-                  { label: 'Km por Litro', id: 'km-por-litro' },
-                  { label: 'Manutenção Veículo', id: 'manutencao-veiculo' },
-                  { label: 'Peso da Carga', id: 'peso-carga' },
-                  { label: 'Log', id: 'log' },
-                ].map(sub => {
-                  const isActive = currentPage === sub.id;
-                  return (
-                    <div 
-                      key={sub.id}
-                      onClick={() => onNavigate(sub.id)}
-                      style={{
-                        padding: '8px 20px 8px 50px', cursor: 'pointer', fontSize: '13px',
-                        backgroundColor: isActive ? '#d1d5db' : 'transparent',
-                        color: isActive ? '#333' : '#666'
-                      }}
-                    >
-                      {sub.label}
-                    </div>
-                  );
-                })}
+            return (
+              <div key={group.id}>
+                <button
+                  onClick={() => toggleGroup(group.id)}
+                  style={{
+                    alignItems: "center",
+                    backgroundColor: hasActiveItem ? "#f8fafc" : "transparent",
+                    border: "none",
+                    color: hasActiveItem ? "#111827" : "#374151",
+                    cursor: "pointer",
+                    display: "flex",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    gap: "12px",
+                    padding: "11px 18px",
+                    textAlign: "left",
+                    width: "100%",
+                  }}
+                >
+                  {group.icon}
+                  <span style={{ flex: 1 }}>{group.label}</span>
+                  {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+
+                {isOpen && (
+                  <div style={{ padding: "2px 0 6px" }}>
+                    {group.items.map((item) => {
+                      const active = currentPage === item.id;
+                      return (
+                        <button key={`${group.id}-${item.id}`} onClick={() => onNavigate(item.id)} style={itemStyle(active)}>
+                          {item.icon}
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-
-          {bottomMenuItems.filter(m => !m.hidden).map(item => (
-            <div 
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              style={{
-                display: 'flex', alignItems: 'center', padding: '10px 20px', cursor: 'pointer',
-                backgroundColor: currentPage === item.id ? '#17a2b8' : 'transparent',
-                color: currentPage === item.id ? '#fff' : '#555',
-                borderLeft: currentPage === item.id ? '4px solid #138496' : '4px solid transparent'
-              }}
-            >
-              <span style={{ marginRight: '15px' }}>{item.icon}</span>
-              <span style={{ fontSize: '14px' }}>{item.label}</span>
-              <span style={{ marginLeft: 'auto' }}><ChevronDown size={14} /></span>
-            </div>
-          ))}
+            );
+          })}
         </nav>
       </aside>
 
-      {/* Main Content */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Topbar */}
-        <header style={{ height: '50px', backgroundColor: '#fff', borderBottom: '1px solid #ddd', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 20px' }}>
-          <span style={{ fontSize: '13px', color: '#666', marginRight: '20px', cursor: 'pointer' }}>Novidades</span>
-          
-          <div style={{ display: 'flex', alignItems: 'center', marginRight: '20px', cursor: 'pointer' }}>
-            <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#17a2b8', marginRight: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 'bold' }}>
-              {(localStorage.getItem('userName') || userRole || 'U').charAt(0).toUpperCase()}
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <header style={{ height: "54px", backgroundColor: "#fff", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 20px" }}>
+          <button style={{ display: "flex", alignItems: "center", border: "1px solid #d1d5db", backgroundColor: "#fff", color: "#374151", borderRadius: "16px", padding: "5px 12px", fontSize: "12px", cursor: "pointer", marginRight: "12px" }}>
+            <HelpCircle size={14} style={{ marginRight: "6px" }} /> Ajuda
+          </button>
+
+          <div style={{ display: "flex", alignItems: "center", marginRight: "18px" }}>
+            <div style={{ width: "28px", height: "28px", borderRadius: "50%", backgroundColor: "#17a2b8", marginRight: "8px", display: "grid", placeItems: "center", color: "#fff", fontSize: "12px", fontWeight: 800 }}>
+              {(localStorage.getItem("userName") || userRole || "U").charAt(0).toUpperCase()}
             </div>
-            <span style={{ fontSize: '13px', color: '#555' }}>
-              {localStorage.getItem('userName') || userRole || 'Usuário'} | SalesMind <ChevronDown size={12} style={{ display: 'inline', marginLeft: '4px' }} />
+            <span style={{ fontSize: "13px", color: "#4b5563" }}>
+              {localStorage.getItem("userName") || userRole || "Usuario"}
             </span>
           </div>
 
-          <button style={{ display: 'flex', alignItems: 'center', border: '1px solid #b366ff', backgroundColor: 'transparent', color: '#b366ff', borderRadius: '15px', padding: '4px 12px', fontSize: '12px', cursor: 'pointer', marginRight: '10px' }}>
-            <HelpCircle size={14} style={{ marginRight: '5px' }} /> Ajuda
-          </button>
-          
-          <button onClick={onLogout} style={{ border: 'none', backgroundColor: 'transparent', color: '#dc3545', fontSize: '13px', cursor: 'pointer' }}>
+          <button onClick={onLogout} style={{ border: "none", backgroundColor: "transparent", color: "#dc2626", fontSize: "13px", cursor: "pointer", fontWeight: 700 }}>
             Sair
           </button>
         </header>
 
-        {/* Page Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-          {children}
-        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "22px" }}>{children}</div>
       </main>
     </div>
   );
-};
-
-export default Layout;
+}

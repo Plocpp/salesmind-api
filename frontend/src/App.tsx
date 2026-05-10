@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type Page } from "../types/Page";
+import { type Page } from "../../src/frontend/types/Page";
 
 // 🔥 IMPORTA SEUS COMPONENTES REAIS
 import CadastroProdutos from "../../src/frontend/pages/CadastroProdutos";

@@ -6,12 +6,13 @@
  * 1) Controlar cadastro de marcas, fornecedores e clientes.
  * 2) Gerenciar vendedores, veículos e entregadores.
  */
-import { useEffect, useState } from "react";
+import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useState } from "react";
 import {
     Bike,
     Briefcase,
     Car,
     Factory,
+    Package,
     Pencil,
     Plus,
     Save,
@@ -80,13 +81,14 @@ interface Entregador {
     ativo: boolean;
 }
 
-type AbaAtiva = 'marcas' | 'fornecedores' | 'clientes' | 'vendedores' | 'veiculos' | 'entregadores';
+type AbaAtiva = 'produtos' | 'marcas' | 'fornecedores' | 'clientes' | 'vendedores' | 'veiculos' | 'entregadores';
 
 interface CadastrosProps {
     onNavigate?: (page: string) => void;
 }
 
-const tabConfig: { id: AbaAtiva; label: string; icon: React.ReactNode }[] = [
+const tabConfig: { id: AbaAtiva; label: string; icon: ReactNode }[] = [
+    { id: 'produtos',     label: 'Produtos',      icon: <Package size={15} /> },
     { id: 'marcas',       label: 'Marcas',       icon: <Tag size={15} /> },
     { id: 'fornecedores', label: 'Fornecedores',  icon: <Factory size={15} /> },
     { id: 'clientes',     label: 'Clientes',      icon: <Users size={15} /> },
@@ -96,7 +98,7 @@ const tabConfig: { id: AbaAtiva; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function Cadastros({ onNavigate }: CadastrosProps) {
-    const [activeTab, setActiveTab] = useState<AbaAtiva>('marcas');
+    const [activeTab, setActiveTab] = useState<AbaAtiva>('produtos');
     const [loading, setLoading] = useState(false);
 
     // Estados para Marcas
@@ -159,7 +161,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
         }
     };
 
-    const saveMarca = async (e: React.FormEvent) => {
+    const saveMarca = async (e: FormEvent) => {
         e.preventDefault();
         try {
             if (editingMarca) {
@@ -197,7 +199,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
         }
     };
 
-    const saveFornecedor = async (e: React.FormEvent) => {
+    const saveFornecedor = async (e: FormEvent) => {
         e.preventDefault();
         try {
             if (editingFornecedor) {
@@ -228,20 +230,20 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
     // ===== CLIENTES =====
     const loadClientes = async () => {
         try {
-            const response = await api.get('/clientes', getToken());
+            const response = await api.get('/cadastros/clientes', getToken());
             setClientes(response);
         } catch (error) {
             console.error('Erro ao carregar clientes:', error);
         }
     };
 
-    const saveCliente = async (e: React.FormEvent) => {
+    const saveCliente = async (e: FormEvent) => {
         e.preventDefault();
         try {
             if (editingCliente) {
-                await api.put(`/clientes/${editingCliente.id}`, formCliente, getToken());
+                await api.put(`/cadastros/clientes/${editingCliente.id}`, formCliente, getToken());
             } else {
-                await api.post('/clientes', formCliente, getToken());
+                await api.post('/cadastros/clientes', formCliente, getToken());
             }
             setFormCliente({ nome: '', telefone: '', email: '' });
             setEditingCliente(null);
@@ -255,7 +257,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
     const deleteCliente = async (id: string) => {
         if (confirm('Tem certeza?')) {
             try {
-                await api.delete(`/clientes/${id}`, getToken());
+                await api.delete(`/cadastros/clientes/${id}`, getToken());
                 loadClientes();
             } catch (error) {
                 alert('Erro ao deletar cliente');
@@ -273,7 +275,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
         }
     };
 
-    const saveVendedor = async (e: React.FormEvent) => {
+    const saveVendedor = async (e: FormEvent) => {
         e.preventDefault();
         try {
             if (editingVendedor) {
@@ -311,7 +313,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
         }
     };
 
-    const saveVeiculo = async (e: React.FormEvent) => {
+    const saveVeiculo = async (e: FormEvent) => {
         e.preventDefault();
         try {
             const data = { ...formVeiculo, ano: formVeiculo.ano ? parseInt(formVeiculo.ano) : null, capacidade: formVeiculo.capacidade ? parseFloat(formVeiculo.capacidade) : null };
@@ -350,7 +352,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
         }
     };
 
-    const saveEntregador = async (e: React.FormEvent) => {
+    const saveEntregador = async (e: FormEvent) => {
         e.preventDefault();
         try {
             if (editingEntregador) {
@@ -384,7 +386,7 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
         setLoading(false);
     };
 
-    const abaStyle = (tabName: AbaAtiva): React.CSSProperties => ({
+    const abaStyle = (tabName: AbaAtiva): CSSProperties => ({
         display: 'flex',
         alignItems: 'center',
         gap: '6px',
@@ -395,28 +397,28 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
         cursor: 'pointer',
         fontSize: '15px',
         fontWeight: 'bold',
-        borderRadius: tabName === 'marcas' ? '8px 0 0 0' : tabName === 'entregadores' ? '0 8px 0 0' : '0'
+        borderRadius: tabName === 'produtos' ? '8px 0 0 0' : tabName === 'entregadores' ? '0 8px 0 0' : '0'
     });
 
-    const btnNew = (show: boolean): React.CSSProperties => ({
+    const btnNew = (show: boolean): CSSProperties => ({
         display: 'flex', alignItems: 'center', gap: '6px',
         padding: '10px 20px',
         backgroundColor: show ? '#6c757d' : '#28a745',
         color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer'
     });
 
-    const btnSubmit: React.CSSProperties = {
+    const btnSubmit: CSSProperties = {
         display: 'flex', alignItems: 'center', gap: '6px',
         padding: '10px 20px',
         backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer'
     };
 
-    const btnEdit: React.CSSProperties = {
+    const btnEdit: CSSProperties = {
         display: 'flex', alignItems: 'center', gap: '5px',
         padding: '8px 12px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer'
     };
 
-    const btnDelete: React.CSSProperties = {
+    const btnDelete: CSSProperties = {
         display: 'flex', alignItems: 'center', gap: '5px',
         padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
     };
@@ -436,6 +438,47 @@ export default function Cadastros({ onNavigate }: CadastrosProps) {
 
             {/* CONTEÚDO DAS ABAS */}
             <div style={{ backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '8px' }}>
+
+                {/* ABA PRODUTOS */}
+                {activeTab === 'produtos' && (
+                    <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
+                            <div>
+                                <h2 style={{ margin: 0 }}>Cadastro de Produtos</h2>
+                                <p style={{ margin: '6px 0 0', color: '#666', fontSize: '14px' }}>
+                                    Cadastre produtos, preços, estoque, códigos, validade e vínculo com marcas.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => onNavigate?.('cadastro-produtos')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '10px 20px',
+                                    backgroundColor: '#28a745',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold'
+                                }}
+                            >
+                                <Package size={16} /> Abrir Produtos
+                            </button>
+                        </div>
+
+                        <div style={{ backgroundColor: 'white', padding: '18px', borderRadius: '8px', border: '1px solid #dee2e6' }}>
+                            <h3 style={{ marginTop: 0 }}>Opções disponíveis</h3>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                                <div style={{ padding: '14px', borderRadius: '6px', backgroundColor: '#f8fafc' }}>Cadastrar novo produto</div>
+                                <div style={{ padding: '14px', borderRadius: '6px', backgroundColor: '#f8fafc' }}>Editar produtos existentes</div>
+                                <div style={{ padding: '14px', borderRadius: '6px', backgroundColor: '#f8fafc' }}>Controlar preço, custo e estoque</div>
+                                <div style={{ padding: '14px', borderRadius: '6px', backgroundColor: '#f8fafc' }}>Gerar código e código de barras</div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* ABA MARCAS */}
                 {activeTab === 'marcas' && (

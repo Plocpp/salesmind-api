@@ -31,7 +31,7 @@ const produtoSchema = z.object({
   tamanho: z.string().optional(),
   validade: z.date().optional(),
   marcaId: z.string(),
-  usuarioId: z.string().optional(),
+  usuarioId: z.string().min(1, 'Usuario obrigatorio'),
 });
 
 const clienteSchema = z.object({
@@ -39,6 +39,44 @@ const clienteSchema = z.object({
   telefone: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
 });
+
+const clienteCompletoSchema = z.object({
+  nome: z.string().min(1, 'Nome obrigatorio'),
+  telefone: z.string().optional(),
+  cpf: z.string().optional(),
+  email: z.string().email().optional().or(z.literal('')),
+  dataNascimento: z.string().optional().or(z.literal('')),
+  cep: z.string().optional(),
+  endereco: z.string().optional(),
+  numero: z.string().optional(),
+  complemento: z.string().optional(),
+  bairro: z.string().optional(),
+  cidade: z.string().optional(),
+  estado: z.string().optional(),
+  observacoes: z.string().optional(),
+});
+
+type ClienteInput = z.infer<typeof clienteCompletoSchema>;
+
+function normalizarCliente(data: Partial<ClienteInput>) {
+  const cliente = clienteCompletoSchema.partial().parse(data);
+
+  return {
+    ...cliente,
+    email: cliente.email?.trim() || null,
+    cpf: cliente.cpf?.trim() || null,
+    telefone: cliente.telefone?.trim() || null,
+    dataNascimento: cliente.dataNascimento ? new Date(cliente.dataNascimento) : null,
+    cep: cliente.cep?.trim() || null,
+    endereco: cliente.endereco?.trim() || null,
+    numero: cliente.numero?.trim() || null,
+    complemento: cliente.complemento?.trim() || null,
+    bairro: cliente.bairro?.trim() || null,
+    cidade: cliente.cidade?.trim() || null,
+    estado: cliente.estado?.trim().toUpperCase() || null,
+    observacoes: cliente.observacoes?.trim() || null,
+  };
+}
 
 export class FornecedoresMarcasService {
 
@@ -230,6 +268,48 @@ export class FornecedoresMarcasService {
   // 📦 DELETAR PRODUTO
   async deletarProduto(id: string) {
     return await prisma.produto.delete({
+      where: { id },
+    });
+  }
+
+  // CLIENTES
+  async criarCliente(data: ClienteInput) {
+    const parsed = clienteCompletoSchema.parse(data);
+    const clienteValidado = {
+      ...normalizarCliente(parsed),
+      nome: parsed.nome.trim(),
+    };
+
+    return await prisma.cliente.create({
+      data: clienteValidado,
+    });
+  }
+
+  async listarClientes() {
+    return await prisma.cliente.findMany({
+      orderBy: {
+        nome: 'asc',
+      },
+    });
+  }
+
+  async buscarClientePorId(id: string) {
+    return await prisma.cliente.findUnique({
+      where: { id },
+    });
+  }
+
+  async atualizarCliente(id: string, data: Partial<ClienteInput>) {
+    const clienteValidado = normalizarCliente(data);
+
+    return await prisma.cliente.update({
+      where: { id },
+      data: clienteValidado,
+    });
+  }
+
+  async deletarCliente(id: string) {
+    return await prisma.cliente.delete({
       where: { id },
     });
   }

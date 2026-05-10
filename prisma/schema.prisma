@@ -22,6 +22,16 @@
     cor          String?
     tamanho      String?
     validade     DateTime?
+    ncm          String?
+    cest         String?
+    cfop         String?
+    origem       String?
+    cstIcms      String?
+    csosn        String?
+    aliquotaIcms Float?
+    aliquotaPis  Float?
+    aliquotaCofins Float?
+    aliquotaIpi  Float?
 
     // 🔐 RELAÇÕES OBRIGATÓRIAS
     usuarioId    String
@@ -31,6 +41,7 @@
     marca        Marca   @relation(fields: [marcaId], references: [id])
 
     itensVenda   ItemVenda[]
+    itensNotaFiscal NotaFiscalItem[]
 
     createdAt    DateTime @default(now())
     updatedAt    DateTime @updatedAt
@@ -53,15 +64,25 @@
   }
 
   model Cliente {
-    id        String   @id @default(uuid())
-    nome      String
-    telefone  String?
-    email     String?  @unique
+    id             String   @id @default(uuid())
+    nome           String
+    telefone       String?
+    cpf            String?  @unique
+    email          String?  @unique
+    dataNascimento DateTime?
+    cep            String?
+    endereco       String?
+    numero         String?
+    complemento    String?
+    bairro         String?
+    cidade         String?
+    estado         String?
+    observacoes    String?
 
-    vendas    Venda[]
+    vendas         Venda[]
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+    createdAt      DateTime @default(now())
+    updatedAt      DateTime @updatedAt
   }
 
   model Fornecedor {
@@ -119,7 +140,150 @@
     venda          Venda   @relation(fields: [vendaId], references: [id])
     produto        Produto @relation(fields: [produtoId], references: [id])
   }
+
+  model Vendedor {
+    id        String   @id @default(uuid())
+    nome      String
+    email     String?  @unique
+    telefone  String?
+    cpf       String?  @unique
+    endereco  String?
+    ativo     Boolean  @default(true)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+  }
+
+  model VeiculoEntrega {
+    id          String       @id @default(uuid())
+    placa       String       @unique
+    modelo      String
+    ano         Int?
+    marca       String?
+    cor         String?
+    capacidade  Float?
+    ativo       Boolean      @default(true)
+
+    entregadores Entregador[]
+
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+  }
+
+  model Entregador {
+    id        String   @id @default(uuid())
+    nome      String
+    email     String?  @unique
+    telefone  String?
+    cpf       String?  @unique
+    endereco  String?
+    ativo     Boolean  @default(true)
+    veiculoId String?
+
+    veiculo   VeiculoEntrega? @relation(fields: [veiculoId], references: [id])
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+  }
+
+  model FiscalIntegration {
+    id           String   @id @default(uuid())
+    provider     String
+    status       String   @default("NAO_CONFIGURADO")
+    ambiente     String   @default("HOMOLOGACAO")
+    baseUrl      String?
+    clientId     String?
+    clientSecret String?  @db.Text
+    accessToken  String?  @db.Text
+    refreshToken String?  @db.Text
+    observacoes  String?  @db.Text
+
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+  }
+
+  model FiscalCompanyConfig {
+    id                String   @id @default(uuid())
+    razaoSocial       String?
+    nomeFantasia      String?
+    cnpj              String?
+    inscricaoEstadual String?
+    inscricaoMunicipal String?
+    crt               String?
+    regimeTributario  String?
+    uf                String?
+    municipio         String?
+    ambiente          String   @default("HOMOLOGACAO")
+    certificadoStatus String   @default("NAO_CONFIGURADO")
+    serieNfe          String?
+    serieNfce         String?
+
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+  }
+
+  model NotaFiscal {
+    id                  String   @id @default(uuid())
+    tipo                String
+    modelo              String   @default("NFE")
+    finalidade          String   @default("NORMAL")
+    status              String   @default("RASCUNHO")
+    numero              String?
+    serie               String?
+    chaveAcesso         String?
+    protocolo           String?
+    emissorNome         String?
+    emissorDocumento    String?
+    destinatarioNome    String?
+    destinatarioDocumento String?
+    dataEmissao         DateTime @default(now())
+    dataEntradaSaida    DateTime?
+    valorProdutos       Float    @default(0)
+    valorTributos       Float    @default(0)
+    valorTotal          Float    @default(0)
+    integrationProvider String?
+    externalId          String?
+    observacoes         String?  @db.Text
+
+    itens               NotaFiscalItem[]
+
+    createdAt           DateTime @default(now())
+    updatedAt           DateTime @updatedAt
+  }
+
+  model NotaFiscalItem {
+    id              String   @id @default(uuid())
+    notaFiscalId    String
+    produtoId       String?
+    codigo          String?
+    descricao       String
+    ncm             String?
+    cest            String?
+    cfop            String?
+    origem          String?
+    cstIcms         String?
+    csosn           String?
+    quantidade      Float
+    valorUnitario   Float
+    valorProduto    Float
+    aliquotaIcms    Float    @default(0)
+    valorIcms       Float    @default(0)
+    aliquotaPis     Float    @default(0)
+    valorPis        Float    @default(0)
+    aliquotaCofins  Float    @default(0)
+    valorCofins     Float    @default(0)
+    aliquotaIpi     Float    @default(0)
+    valorIpi        Float    @default(0)
+    valorTributos   Float    @default(0)
+    valorTotal      Float
+    movimentaEstoque Boolean @default(true)
+
+    notaFiscal      NotaFiscal @relation(fields: [notaFiscalId], references: [id], onDelete: Cascade)
+    produto         Produto?   @relation(fields: [produtoId], references: [id])
+  }
+
   enum Role {
     USER
     ADMIN
+    VENDEDOR
   }
