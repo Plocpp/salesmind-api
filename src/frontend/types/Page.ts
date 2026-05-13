@@ -15,7 +15,4 @@ export type Page =
   | "log"
   | "internacao"
   | "estoque"
-  | "estoque-produtos"
-  | "estoque-movimentacao"
-  | "estoque-compras"
   | "financeiro";

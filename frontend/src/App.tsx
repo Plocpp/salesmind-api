@@ -39,7 +39,7 @@ useEffect(() => {
     setUserRole("");
   };
 
-  const handleNavigate = (page: string) => setCurrentPage(page);
+  const handleNavigate = (page: Page) => setCurrentPage(page);
 
   const renderPage = () => {
     switch (currentPage) {

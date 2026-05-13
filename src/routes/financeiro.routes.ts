@@ -1,18 +1,27 @@
 import { Router } from "express";
-import { FinanceiroController } from "../controllers/financeiro.controller";
+import financeiroController from "../controllers/financeiro.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 
 const router = Router();
-const controller = new FinanceiroController();
 
-router.get("/resumo", authMiddleware, controller.resumo);
-router.get("/integracoes", authMiddleware, controller.listarIntegracoes);
-router.post("/integracoes", authMiddleware, controller.salvarIntegracao);
-router.put("/integracoes/:id", authMiddleware, controller.atualizarIntegracao);
-router.get("/empresa", authMiddleware, controller.obterConfiguracaoEmpresa);
-router.put("/empresa", authMiddleware, controller.salvarConfiguracaoEmpresa);
-router.get("/notas", authMiddleware, controller.listarNotas);
-router.post("/notas", authMiddleware, controller.registrarNota);
-router.put("/produtos/:id/tributacao", authMiddleware, controller.atualizarTributacaoProduto);
+router.use(authMiddleware);
+
+router.post("/lancamentos", financeiroController.criarLancamento);
+router.get("/lancamentos", financeiroController.listarLancamentos);
+router.post("/lancamentos/:id/baixa", financeiroController.baixarLancamento);
+
+router.post("/contas", financeiroController.criarConta);
+router.get("/contas", financeiroController.listarContas);
+
+router.post("/categorias", financeiroController.criarCategoria);
+router.get("/categorias", financeiroController.listarCategorias);
+
+router.post("/formas-pagamento", financeiroController.criarFormaPagamento);
+router.get("/formas-pagamento", financeiroController.listarFormasPagamento);
+
+router.post("/conciliacoes/cartoes", financeiroController.conciliarCartao);
+
+router.get("/demonstrativo", financeiroController.demonstrativo);
+router.get("/fluxo-caixa", financeiroController.fluxoCaixa);
 
 export default router;

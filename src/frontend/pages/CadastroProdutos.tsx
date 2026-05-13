@@ -16,7 +16,6 @@ interface Produto {
     peso: number;
     porte: string;
     preco: number;
-    precoCusto?: number;
     estoque: number;
     codigo: string;
     codigoBarras: string;
@@ -51,18 +50,17 @@ interface Fornecedor {
 
 interface CadastroProdutosProps {
     onNavigate?: (page: string) => void;
-    initialTab?: 'produtos' | 'compras' | 'movimentacao';
 }
 
 
-export default function CadastroProdutos({ onNavigate, initialTab = 'produtos' }: CadastroProdutosProps) {
+export default function CadastroProdutos({ onNavigate }: CadastroProdutosProps) {
     const [produtos, setProdutos] = useState<Produto[]>([]);
     const [marcas, setMarcas] = useState<Marca[]>([]);
     const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [editingProduto, setEditingProduto] = useState<Produto | null>(null);
-    const [activeTab, setActiveTab] = useState<'produtos' | 'compras' | 'movimentacao'>(initialTab);
+    const [activeTab, setActiveTab] = useState<'produtos' | 'compras' | 'movimentacao'>('produtos');
     const [selectedAddProductId, setSelectedAddProductId] = useState<string>('');
     const [selectedRemoveProductId, setSelectedRemoveProductId] = useState<string>('');
     const [addQuantity, setAddQuantity] = useState('');
@@ -78,7 +76,6 @@ export default function CadastroProdutos({ onNavigate, initialTab = 'produtos' }
         nome: '',
         peso: '',
         porte: 'Médio',
-        precoCusto: '',
         preco: '',
         estoque: '',
         codigo: '',
@@ -97,10 +94,6 @@ export default function CadastroProdutos({ onNavigate, initialTab = 'produtos' }
         loadMarcas();
         loadFornecedores();
     }, []);
-
-    useEffect(() => {
-        setActiveTab(initialTab);
-    }, [initialTab]);
 
     useEffect(() => {
         if (produtos.length > 0) {
@@ -184,7 +177,6 @@ export default function CadastroProdutos({ onNavigate, initialTab = 'produtos' }
             const produtoData = {
                 ...formData,
                 peso: parseFloat(formData.peso),
-                precoCusto: parseFloat(formData.precoCusto),
                 preco: parseFloat(formData.preco),
                 estoque: parseInt(formData.estoque),
                 validade: formData.validade ? new Date(formData.validade).toISOString() : null
@@ -203,7 +195,6 @@ export default function CadastroProdutos({ onNavigate, initialTab = 'produtos' }
                 nome: '',
                 peso: '',
                 porte: 'Médio',
-                precoCusto: '',
                 preco: '',
                 estoque: '',
                 codigo: '',
@@ -228,7 +219,6 @@ export default function CadastroProdutos({ onNavigate, initialTab = 'produtos' }
             nome: produto.nome,
             peso: produto.peso.toString(),
             porte: produto.porte,
-            precoCusto: produto.precoCusto?.toString() ?? '',
             preco: produto.preco.toString(),
             estoque: produto.estoque.toString(),
             codigo: produto.codigo,
@@ -578,8 +568,6 @@ export default function CadastroProdutos({ onNavigate, initialTab = 'produtos' }
                                         <input
                                             type="number"
                                             step="0.01"
-                                            value={formData.precoCusto}
-                                            onChange={(e) => setFormData({...formData, precoCusto: e.target.value})}
                                             required
                                             placeholder="Ex: 45.50"
                                             style={{ width: '100%', padding: '10px', border: '1px solid #ced4da', borderRadius: '4px' }}
@@ -761,9 +749,7 @@ export default function CadastroProdutos({ onNavigate, initialTab = 'produtos' }
                                             <div><strong>Fornecedor:</strong> {produto.marca?.fornecedor?.nome || 'N/A'}</div>
                                             <div><strong>Peso:</strong> {produto.peso}kg</div>
                                             <div><strong>Porte:</strong> {produto.porte}</div>
-                                            <div><strong>Preço de Custo:</strong> R$ {(produto.precoCusto ?? 0).toFixed(2)}</div>
                                             <div><strong>Preço de Venda:</strong> R$ {produto.preco.toFixed(2)}</div>
-                                            <div><strong>Margem:</strong> R$ {(produto.preco - (produto.precoCusto ?? 0)).toFixed(2)}</div>
                                             {produto.validade && (
                                                 <div><strong>Validade:</strong> {new Date(produto.validade).toLocaleDateString('pt-BR')}</div>
                                             )}
@@ -983,7 +969,6 @@ export default function CadastroProdutos({ onNavigate, initialTab = 'produtos' }
                             </div>
                             <div style={{ padding: '20px', backgroundColor: '#e9f7ef', borderRadius: '10px' }}>
                                 <h4>Valor total de custo</h4>
-                                <p style={{ fontSize: '28px', fontWeight: 'bold' }}>R$ {produtos.reduce((sum, produto) => sum + produto.estoque * (produto.precoCusto ?? 0), 0).toFixed(2)}</p>
                             </div>
                             <div style={{ padding: '20px', backgroundColor: '#e9f7ef', borderRadius: '10px' }}>
                                 <h4>Valor total de venda</h4>

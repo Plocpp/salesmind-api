@@ -1,225 +1,329 @@
-import { type ReactNode, useMemo, useState } from "react";
 import {
-  Bed,
-  Box,
-  Calendar,
-  ChevronDown,
-  ChevronRight,
-  Database,
-  DollarSign,
-  Gauge,
-  HelpCircle,
-  Home,
-  Lightbulb,
-  Percent,
-  ShoppingCart,
-  Stethoscope,
-  Users,
-} from "lucide-react";
-import { type Page } from "../types/Page";
+    BarChart3,
+    Bed,
+    Boxes,
+    ChevronDown,
+    ChevronRight,
+    CircleHelp,
+    ClipboardList,
+    Database,
+    DollarSign,
+    FileText,
+    Home,
+    Lightbulb,
+    LogOut,
+    Search,
+    ShoppingCart,
+    Stethoscope
+} from 'lucide-react';
+import React, { ReactNode, useState } from 'react';
 
 interface LayoutProps {
   children: ReactNode;
-  onNavigate: (page: Page) => void;
-  currentPage: Page;
+  onNavigate: (page: string) => void;
+  currentPage: string;
   onLogout: () => void;
   userRole: string;
 }
 
-interface MenuItem {
-  id: Page;
-  label: string;
-  icon?: ReactNode;
-}
+const colors = {
+  shell: '#eef3f5',
+  sidebar: '#f8faf9',
+  border: '#d9e2e1',
+  text: '#243332',
+  muted: '#647674',
+  active: '#2f6f73',
+  activeSoft: '#e1eeee',
+  accent: '#6c8f7d',
+  danger: '#a64b4b',
+};
 
-interface MenuGroup {
+type MenuChild = {
   id: string;
   label: string;
-  icon: ReactNode;
-  items: MenuItem[];
-}
+};
 
-const groups: MenuGroup[] = [
-  {
-    id: "operacao",
-    label: "Operacao",
-    icon: <Home size={18} />,
-    items: [
-      { id: "dashboard", label: "Painel de controle" },
-      { id: "atendimento", label: "Atendimento clinico", icon: <Stethoscope size={16} /> },
-      { id: "clientes", label: "Clientes", icon: <Users size={16} /> },
-      { id: "agenda", label: "Agenda", icon: <Calendar size={16} /> },
-      { id: "vendas", label: "Vendas", icon: <ShoppingCart size={16} /> },
-      { id: "comissionamento", label: "Comissionamento", icon: <Percent size={16} /> },
-    ],
-  },
-  {
-    id: "cadastros",
-    label: "Cadastros",
-    icon: <Database size={18} />,
-    items: [
-      { id: "cadastros", label: "Todos os cadastros" },
-      { id: "cadastro-produtos", label: "Produtos" },
-      { id: "marcas", label: "Marcas" },
-      { id: "fornecedores", label: "Fornecedores" },
-      { id: "clientes", label: "Clientes" },
-    ],
-  },
-  {
-    id: "estoque",
-    label: "Estoque e Compras",
-    icon: <Box size={18} />,
-    items: [
-      { id: "estoque", label: "Visao geral" },
-      { id: "estoque-produtos", label: "Produtos" },
-      { id: "estoque-movimentacao", label: "Movimentacao" },
-      { id: "estoque-compras", label: "Compras" },
-      { id: "fornecedores", label: "Fornecedores" },
-    ],
-  },
-  {
-    id: "clinica",
-    label: "Clinica",
-    icon: <Stethoscope size={18} />,
-    items: [
-      { id: "atendimento", label: "Atendimento" },
-      { id: "agenda", label: "Agenda" },
-      { id: "internacao", label: "Internacao", icon: <Bed size={16} /> },
-    ],
-  },
-  {
-    id: "financeiro",
-    label: "Financeiro",
-    icon: <DollarSign size={18} />,
-    items: [
-      { id: "financeiro", label: "Financeiro" },
-      { id: "comissionamento", label: "Comissionamento" },
-      { id: "vendas", label: "Vendas" },
-    ],
-  },
-  {
-    id: "inteligencia",
-    label: "Inteligencia",
-    icon: <Lightbulb size={18} />,
-    items: [
-      { id: "km-por-litro", label: "Km por litro", icon: <Gauge size={16} /> },
-      { id: "manutencao-veiculo", label: "Manutencao veiculo" },
-      { id: "peso-carga", label: "Peso da carga" },
-      { id: "log", label: "Log" },
-    ],
-  },
-];
+type MenuModule = {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number }>;
+  hidden?: boolean;
+  children: MenuChild[];
+};
 
-const itemStyle = (active: boolean) => ({
-  alignItems: "center",
-  backgroundColor: active ? "#e6f7fa" : "transparent",
-  border: "none",
-  borderLeft: active ? "3px solid #17a2b8" : "3px solid transparent",
-  color: active ? "#0f6170" : "#4b5563",
-  cursor: "pointer",
-  display: "flex",
-  fontSize: "13px",
-  gap: "10px",
-  padding: "9px 18px 9px 42px",
-  textAlign: "left" as const,
-  width: "100%",
-});
-
-export default function Layout({ children, onNavigate, currentPage, onLogout, userRole }: LayoutProps) {
-  const initialOpen = useMemo(() => {
-    return groups.reduce<Record<string, boolean>>((acc, group) => {
-      acc[group.id] = group.items.some((item) => item.id === currentPage);
-      return acc;
-    }, {});
-  }, []);
-
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    operacao: true,
-    ...initialOpen,
+const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLogout, userRole }) => {
+  const [openModules, setOpenModules] = useState<Record<string, boolean>>({
+    painel: true,
+    vendas: true,
+    financeiro: true,
+    nfce: false,
+    estoque: false,
+    operacao: false,
+    integracoes: false,
+    inteligencia: false,
+    administracao: false,
   });
 
-  const toggleGroup = (id: string) => {
-    setOpenGroups((current) => ({ ...current, [id]: !current[id] }));
+  const operationModules: MenuModule[] = [
+    {
+      id: 'painel',
+      label: 'Painel',
+      icon: Home,
+      children: [
+        { id: 'dashboard', label: 'Visao Geral' },
+        { id: 'agenda', label: 'Agenda' },
+        { id: 'clientes', label: 'Clientes' },
+      ],
+    },
+    {
+      id: 'vendas',
+      label: 'Vendas',
+      icon: ShoppingCart,
+      hidden: userRole !== 'ADMIN' && userRole !== 'VENDEDOR',
+      children: [
+        { id: 'vendas', label: 'Ponto de Venda' },
+        { id: 'vendas-consulta', label: 'Consulta Vendas' },
+        { id: 'vendas-devolucoes', label: 'Devolucoes e Estornos' },
+        { id: 'comissionamento', label: 'Comissoes' },
+      ],
+    },
+    {
+      id: 'estoque',
+      label: 'Estoque e Compras',
+      icon: Boxes,
+      children: [
+        { id: 'estoque', label: 'Visao de Estoque' },
+        { id: 'cadastro-produtos', label: 'Cadastro de Produtos' },
+        { id: 'fornecedores', label: 'Fornecedores' },
+        { id: 'marcas', label: 'Marcas' },
+      ],
+    },
+    {
+      id: 'operacao',
+      label: 'Operacao Clinica',
+      icon: Stethoscope,
+      children: [
+        { id: 'atendimento', label: 'Atendimento' },
+        { id: 'internacao', label: 'Internacao' },
+      ],
+    },
+  ];
+
+  const managementModules: MenuModule[] = [
+    {
+      id: 'nfce',
+      label: 'NFC-e',
+      icon: FileText,
+      children: [
+        { id: 'nfce-emitir', label: 'Emitir NFC-e' },
+        { id: 'nfce-consultar', label: 'Consultar NFC-e' },
+        { id: 'nfce-cancelar', label: 'Cancelar NFC-e' },
+        { id: 'nfce-historico', label: 'Historico de Emissoes' },
+        { id: 'nfce-danfe', label: 'Gerar DANFE' },
+        { id: 'nfce-inutilizar', label: 'Inutilizar Numeracao' },
+        { id: 'nfce-configuracoes', label: 'Configuracoes' },
+        { id: 'nfce-status', label: 'Status SEFAZ' },
+      ],
+    },
+    {
+      id: 'financeiro',
+      label: 'Financeiro',
+      icon: DollarSign,
+      children: [
+        { id: 'financeiro', label: 'Resumo Financeiro' },
+        { id: 'financeiro-lancamentos', label: 'Lancamentos' },
+        { id: 'financeiro-conciliacao-cartoes', label: 'Conciliacao de Cartoes' },
+        { id: 'financeiro-contas-pagar', label: 'Contas a Pagar' },
+        { id: 'financeiro-demonstrativo', label: 'Demonstrativo (DRE)' },
+        { id: 'financeiro-fluxo-caixa', label: 'Fluxo de Caixa' },
+        { id: 'financeiro-contas-cartoes', label: 'Contas e Cartoes' },
+        { id: 'financeiro-categorias', label: 'Categorias' },
+        { id: 'financeiro-formas-pagamento', label: 'Formas de Pagamento' },
+      ],
+    },
+    {
+      id: 'integracoes',
+      label: 'Integracoes e HUB',
+      icon: Database,
+      children: [
+        { id: 'integracoes-hub', label: 'Hub de Integracao' },
+        { id: 'integracoes-marketplaces', label: 'Marketplaces' },
+        { id: 'integracoes-gateways', label: 'Gateways de Pagamento' },
+        { id: 'integracoes-bancos', label: 'Bancos e Open Finance' },
+        { id: 'integracoes-webhooks', label: 'Webhooks e Eventos' },
+      ],
+    },
+    {
+      id: 'inteligencia',
+      label: 'Inteligencia',
+      icon: Lightbulb,
+      children: [
+        { id: 'km-por-litro', label: 'Km por Litro' },
+        { id: 'manutencao-veiculo', label: 'Manutencao Veiculo' },
+        { id: 'peso-carga', label: 'Peso da Carga' },
+        { id: 'log', label: 'Log de Integracoes' },
+      ],
+    },
+    {
+      id: 'administracao',
+      label: 'Administracao',
+      icon: Bed,
+      hidden: userRole !== 'ADMIN',
+      children: [
+        { id: 'cadastros', label: 'Cadastros Gerais' },
+      ],
+    },
+  ];
+
+  const toggleModule = (moduleId: string) => {
+    setOpenModules((current) => ({ ...current, [moduleId]: !current[moduleId] }));
+  };
+
+  const isModuleActive = (module: MenuModule) => module.children.some((child) => child.id === currentPage);
+
+  const submenuItem = (item: MenuChild) => {
+    const active = currentPage === item.id;
+
+    return (
+      <button
+        key={item.id}
+        onClick={() => onNavigate(item.id)}
+        style={{
+          width: '100%',
+          height: 32,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '0 10px 0 28px',
+          border: 'none',
+          borderRadius: 6,
+          cursor: 'pointer',
+          background: active ? colors.activeSoft : 'transparent',
+          color: active ? colors.active : colors.muted,
+          fontWeight: active ? 700 : 500,
+          textAlign: 'left',
+        }}
+      >
+        <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? colors.active : '#b8c4c3' }} />
+        <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
+      </button>
+    );
+  };
+
+  const moduleItem = (module: MenuModule) => {
+    const Icon = module.icon;
+    const isOpen = openModules[module.id];
+    const active = isModuleActive(module);
+
+    return (
+      <div key={module.id} style={{ display: 'grid', gap: 3 }}>
+        <button
+          onClick={() => toggleModule(module.id)}
+          style={{
+            width: '100%',
+            height: 38,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '0 12px',
+            border: 'none',
+            borderRadius: 8,
+            cursor: 'pointer',
+            background: active ? colors.activeSoft : '#f1f6f5',
+            color: active ? colors.active : colors.text,
+          }}
+        >
+          <Icon size={16} />
+          <span style={{ flex: 1, fontSize: 13, textAlign: 'left', fontWeight: 700 }}>{module.label}</span>
+          {isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+        </button>
+
+        {isOpen && <div style={{ display: 'grid', gap: 2 }}>{module.children.map(submenuItem)}</div>}
+      </div>
+    );
+  };
+
+  const sectionHeader = (label: string, icon?: React.ComponentType<{ size?: number }>) => {
+    const Icon = icon;
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: 30,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '0 8px',
+          color: colors.muted,
+          margin: '12px 0 6px',
+        }}
+      >
+        {Icon && <Icon size={16} />}
+        <span style={{ flex: 1, fontSize: 11, textAlign: 'left', fontWeight: 800, letterSpacing: 0.8 }}>{label}</span>
+      </div>
+    );
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", width: "100vw", backgroundColor: "#f3f4f6", fontFamily: "Inter, Arial, sans-serif" }}>
-      <aside style={{ width: "272px", backgroundColor: "#fff", borderRight: "1px solid #e5e7eb", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "20px", borderBottom: "1px solid #e5e7eb" }}>
-          <div style={{ fontSize: "20px", fontWeight: 800, color: "#17a2b8" }}>SalesMind</div>
-          <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>Pet Shop System</div>
+    <div style={{ display: 'flex', height: '100vh', width: '100vw', background: colors.shell, fontFamily: 'Inter, Segoe UI, Arial, sans-serif', color: colors.text }}>
+      <aside style={{ width: 272, background: colors.sidebar, borderRight: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ height: 72, padding: '14px 18px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 8, background: colors.active, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 }}>SM</div>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: 0 }}>SalesMind</div>
+            <div style={{ fontSize: 12, color: colors.muted }}>Operacao integrada</div>
+          </div>
         </div>
 
-        <nav style={{ flex: 1, overflowY: "auto", padding: "10px 0" }}>
-          {groups.map((group) => {
-            const isOpen = openGroups[group.id];
-            const hasActiveItem = group.items.some((item) => item.id === currentPage);
+        <nav style={{ flex: 1, padding: 14, overflowY: 'auto' }}>
+          {sectionHeader('OPERACAO', ClipboardList)}
+          <div style={{ display: 'grid', gap: 6 }}>
+            {operationModules.filter((item) => !item.hidden).map(moduleItem)}
+          </div>
 
-            return (
-              <div key={group.id}>
-                <button
-                  onClick={() => toggleGroup(group.id)}
-                  style={{
-                    alignItems: "center",
-                    backgroundColor: hasActiveItem ? "#f8fafc" : "transparent",
-                    border: "none",
-                    color: hasActiveItem ? "#111827" : "#374151",
-                    cursor: "pointer",
-                    display: "flex",
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    gap: "12px",
-                    padding: "11px 18px",
-                    textAlign: "left",
-                    width: "100%",
-                  }}
-                >
-                  {group.icon}
-                  <span style={{ flex: 1 }}>{group.label}</span>
-                  {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-
-                {isOpen && (
-                  <div style={{ padding: "2px 0 6px" }}>
-                    {group.items.map((item) => {
-                      const active = currentPage === item.id;
-                      return (
-                        <button key={`${group.id}-${item.id}`} onClick={() => onNavigate(item.id)} style={itemStyle(active)}>
-                          {item.icon}
-                          <span>{item.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {sectionHeader('GESTAO', Boxes)}
+          <div style={{ display: 'grid', gap: 6 }}>
+            {managementModules.filter((item) => !item.hidden).map(moduleItem)}
+          </div>
         </nav>
       </aside>
 
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <header style={{ height: "54px", backgroundColor: "#fff", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 20px" }}>
-          <button style={{ display: "flex", alignItems: "center", border: "1px solid #d1d5db", backgroundColor: "#fff", color: "#374151", borderRadius: "16px", padding: "5px 12px", fontSize: "12px", cursor: "pointer", marginRight: "12px" }}>
-            <HelpCircle size={14} style={{ marginRight: "6px" }} /> Ajuda
-          </button>
-
-          <div style={{ display: "flex", alignItems: "center", marginRight: "18px" }}>
-            <div style={{ width: "28px", height: "28px", borderRadius: "50%", backgroundColor: "#17a2b8", marginRight: "8px", display: "grid", placeItems: "center", color: "#fff", fontSize: "12px", fontWeight: 800 }}>
-              {(localStorage.getItem("userName") || userRole || "U").charAt(0).toUpperCase()}
-            </div>
-            <span style={{ fontSize: "13px", color: "#4b5563" }}>
-              {localStorage.getItem("userName") || userRole || "Usuario"}
-            </span>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <header style={{ height: 64, background: '#ffffff', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 14, padding: '0 22px' }}>
+          <div style={{ height: 38, maxWidth: 420, flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', background: '#f4f7f7', border: `1px solid ${colors.border}`, borderRadius: 8, color: colors.muted }}>
+            <Search size={16} />
+            <span style={{ fontSize: 13 }}>Buscar produto, cliente, venda ou lancamento</span>
           </div>
 
-          <button onClick={onLogout} style={{ border: "none", backgroundColor: "transparent", color: "#dc2626", fontSize: "13px", cursor: "pointer", fontWeight: 700 }}>
-            Sair
+          <button style={{ height: 36, display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${colors.border}`, background: '#fff', color: colors.text, borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 600 }}>
+            <BarChart3 size={16} /> Relatorios
+          </button>
+
+          <button style={{ height: 36, display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${colors.border}`, background: '#fff', color: colors.text, borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 600 }}>
+            <CircleHelp size={16} /> Ajuda
+          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 8 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 8, background: colors.accent, display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 800 }}>
+              {(localStorage.getItem('userName') || userRole || 'U').charAt(0).toUpperCase()}
+            </div>
+            <div style={{ minWidth: 116 }}>
+              <div style={{ fontSize: 13, fontWeight: 800 }}>{localStorage.getItem('userName') || userRole || 'Usuario'}</div>
+              <div style={{ fontSize: 11, color: colors.muted }}>SalesMind</div>
+            </div>
+          </div>
+
+          <button onClick={onLogout} title="Sair" style={{ width: 36, height: 36, border: 'none', borderRadius: 8, background: '#f7eeee', color: colors.danger, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+            <LogOut size={17} />
           </button>
         </header>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "22px" }}>{children}</div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 22 }}>
+          {children}
+        </div>
       </main>
     </div>
   );
-}
+};
+
+export default Layout;

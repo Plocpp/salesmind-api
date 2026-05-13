@@ -1,0 +1,67 @@
+-- Sync incremental do modulo financeiro mantendo base atual.
+-- Adiciona colunas usadas pelo dominio de vendas/financeiro sem reset do banco.
+
+SET @db_name := DATABASE();
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'Venda' AND COLUMN_NAME = 'subtotal') = 0,
+  'ALTER TABLE `Venda` ADD COLUMN `subtotal` DOUBLE NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'Venda' AND COLUMN_NAME = 'descontoTotal') = 0,
+  'ALTER TABLE `Venda` ADD COLUMN `descontoTotal` DOUBLE NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'Venda' AND COLUMN_NAME = 'frete') = 0,
+  'ALTER TABLE `Venda` ADD COLUMN `frete` DOUBLE NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'Venda' AND COLUMN_NAME = 'comissao') = 0,
+  'ALTER TABLE `Venda` ADD COLUMN `comissao` DOUBLE NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'Venda' AND COLUMN_NAME = 'custoTotal') = 0,
+  'ALTER TABLE `Venda` ADD COLUMN `custoTotal` DOUBLE NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'Venda' AND COLUMN_NAME = 'lucro') = 0,
+  'ALTER TABLE `Venda` ADD COLUMN `lucro` DOUBLE NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'Venda' AND COLUMN_NAME = 'margem') = 0,
+  'ALTER TABLE `Venda` ADD COLUMN `margem` DOUBLE NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

@@ -1,0 +1,39 @@
+-- Sync incremental de ItemVenda para métricas financeiras sem reset de base.
+
+SET @db_name := DATABASE();
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'ItemVenda' AND COLUMN_NAME = 'custoUnitario') = 0,
+  'ALTER TABLE `ItemVenda` ADD COLUMN `custoUnitario` DOUBLE NULL',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'ItemVenda' AND COLUMN_NAME = 'subtotal') = 0,
+  'ALTER TABLE `ItemVenda` ADD COLUMN `subtotal` DOUBLE NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'ItemVenda' AND COLUMN_NAME = 'total') = 0,
+  'ALTER TABLE `ItemVenda` ADD COLUMN `total` DOUBLE NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @db_name AND TABLE_NAME = 'ItemVenda' AND COLUMN_NAME = 'comissao') = 0,
+  'ALTER TABLE `ItemVenda` ADD COLUMN `comissao` DOUBLE NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

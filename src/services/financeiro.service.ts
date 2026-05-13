@@ -1,266 +1,365 @@
-import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import prismaClient from "../database/prisma";
 
-const prisma = new PrismaClient();
+const prisma = prismaClient as any;
 
-const integrationSchema = z.object({
-  provider: z.string().min(1),
-  status: z.string().optional(),
-  ambiente: z.string().optional(),
-  baseUrl: z.string().optional(),
-  clientId: z.string().optional(),
-  clientSecret: z.string().optional(),
-  accessToken: z.string().optional(),
-  refreshToken: z.string().optional(),
-  observacoes: z.string().optional(),
-});
+const tipoLancamentoSchema = z.enum([
+  "RECEITA",
+  "DESPESA",
+  "TRANSFERENCIA",
+  "AJUSTE",
+  "ESTORNO",
+  "TAXA",
+  "COMISSAO",
+  "IMPOSTO",
+  "JUROS",
+  "MULTA",
+]);
 
-const companyConfigSchema = z.object({
-  razaoSocial: z.string().optional(),
-  nomeFantasia: z.string().optional(),
-  cnpj: z.string().optional(),
-  inscricaoEstadual: z.string().optional(),
-  inscricaoMunicipal: z.string().optional(),
-  crt: z.string().optional(),
-  regimeTributario: z.string().optional(),
-  uf: z.string().optional(),
-  municipio: z.string().optional(),
-  ambiente: z.string().optional(),
-  certificadoStatus: z.string().optional(),
-  serieNfe: z.string().optional(),
-  serieNfce: z.string().optional(),
-});
+const origemLancamentoSchema = z.enum([
+  "MERCADO_LIVRE",
+  "SHOPEE",
+  "AMAZON",
+  "MAGAZINE_LUIZA",
+  "BLING",
+  "PDV",
+  "ERP",
+  "MANUAL",
+  "API",
+  "VENDA",
+  "GATEWAY",
+  "BANCO",
+]);
 
-const notaItemSchema = z.object({
-  produtoId: z.string().optional().or(z.literal("")),
-  codigo: z.string().optional(),
+const statusLancamentoSchema = z.enum([
+  "PENDENTE",
+  "PAGO",
+  "PARCIAL",
+  "CANCELADO",
+  "VENCIDO",
+  "ESTORNADO",
+  "CONCILIADO",
+]);
+
+const lancamentoSchema = z.object({
   descricao: z.string().min(1),
-  ncm: z.string().optional(),
-  cest: z.string().optional(),
-  cfop: z.string().optional(),
-  origem: z.string().optional(),
-  cstIcms: z.string().optional(),
-  csosn: z.string().optional(),
-  quantidade: z.number().positive(),
-  valorUnitario: z.number().nonnegative(),
-  aliquotaIcms: z.number().nonnegative().optional(),
-  aliquotaPis: z.number().nonnegative().optional(),
-  aliquotaCofins: z.number().nonnegative().optional(),
-  aliquotaIpi: z.number().nonnegative().optional(),
-  movimentaEstoque: z.boolean().optional(),
-});
-
-const notaSchema = z.object({
-  tipo: z.enum(["ENTRADA", "SAIDA"]),
-  modelo: z.enum(["NFE", "NFCE", "NFSE"]).optional(),
-  finalidade: z.string().optional(),
-  status: z.string().optional(),
-  numero: z.string().optional(),
-  serie: z.string().optional(),
-  chaveAcesso: z.string().optional(),
-  protocolo: z.string().optional(),
-  emissorNome: z.string().optional(),
-  emissorDocumento: z.string().optional(),
-  destinatarioNome: z.string().optional(),
-  destinatarioDocumento: z.string().optional(),
-  dataEntradaSaida: z.string().optional().or(z.literal("")),
-  integrationProvider: z.string().optional(),
-  externalId: z.string().optional(),
+  tipo: tipoLancamentoSchema,
+  status: statusLancamentoSchema.optional(),
+  valorBruto: z.number().positive(),
+  valorLiquido: z.number().positive(),
+  competencia: z.coerce.date(),
+  vencimento: z.coerce.date(),
+  pagamento: z.coerce.date().optional(),
+  origem: origemLancamentoSchema.default("MANUAL"),
+  origemReferencia: z.string().optional(),
+  centroCusto: z.string().optional(),
   observacoes: z.string().optional(),
-  itens: z.array(notaItemSchema).min(1),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  empresaId: z.string().optional(),
+  categoriaId: z.string().optional(),
+  contaFinanceiraId: z.string().optional(),
+  formaPagamentoId: z.string().optional(),
+  vendaId: z.string().optional(),
+  clienteId: z.string().optional(),
+  fornecedorId: z.string().optional(),
+  parentId: z.string().optional(),
+  recorrenciaId: z.string().optional(),
 });
 
-function emptyToNull(value?: string | null) {
-  return value?.trim() || null;
-}
+const contaSchema = z.object({
+  nome: z.string().min(1),
+  tipo: z.enum(["BANCO", "CAIXA", "CARTEIRA", "CARTAO", "GATEWAY"]),
+  banco: z.string().optional(),
+  agencia: z.string().optional(),
+  conta: z.string().optional(),
+  saldo: z.number().default(0),
+  saldoBloqueado: z.number().default(0),
+  saldoDisponivel: z.number().default(0),
+  empresaId: z.string().optional(),
+});
 
-function roundMoney(value: number) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
+const categoriaSchema = z.object({
+  nome: z.string().min(1),
+  tipo: tipoLancamentoSchema.optional(),
+  cor: z.string().optional(),
+  icone: z.string().optional(),
+  parentId: z.string().optional(),
+  empresaId: z.string().optional(),
+});
 
-function calcularItem(item: z.infer<typeof notaItemSchema>) {
-  const valorProduto = roundMoney(item.quantidade * item.valorUnitario);
-  const valorIcms = roundMoney(valorProduto * ((item.aliquotaIcms ?? 0) / 100));
-  const valorPis = roundMoney(valorProduto * ((item.aliquotaPis ?? 0) / 100));
-  const valorCofins = roundMoney(valorProduto * ((item.aliquotaCofins ?? 0) / 100));
-  const valorIpi = roundMoney(valorProduto * ((item.aliquotaIpi ?? 0) / 100));
-  const valorTributos = roundMoney(valorIcms + valorPis + valorCofins + valorIpi);
+const formaPagamentoSchema = z.object({
+  nome: z.string().min(1),
+  tipo: z.enum([
+    "DINHEIRO",
+    "PIX",
+    "BOLETO",
+    "CREDITO",
+    "DEBITO",
+    "CARTEIRA_DIGITAL",
+    "GATEWAY",
+    "CREDIARIO",
+    "VOUCHER",
+  ]),
+  taxaPercentual: z.number().default(0),
+  taxaFixa: z.number().default(0),
+  prazoRecebimentoDias: z.number().int().default(0),
+  permiteParcelamento: z.boolean().default(false),
+  permiteAntecipacao: z.boolean().default(false),
+  empresaId: z.string().optional(),
+});
 
-  return {
-    ...item,
-    produtoId: emptyToNull(item.produtoId),
-    valorProduto,
-    aliquotaIcms: item.aliquotaIcms ?? 0,
-    valorIcms,
-    aliquotaPis: item.aliquotaPis ?? 0,
-    valorPis,
-    aliquotaCofins: item.aliquotaCofins ?? 0,
-    valorCofins,
-    aliquotaIpi: item.aliquotaIpi ?? 0,
-    valorIpi,
-    valorTributos,
-    valorTotal: roundMoney(valorProduto + valorTributos),
-    movimentaEstoque: item.movimentaEstoque ?? true,
-  };
-}
+const conciliacaoSchema = z.object({
+  adquirente: z.string().optional(),
+  bandeira: z.string().optional(),
+  nsu: z.string().optional(),
+  authorizationCode: z.string().optional(),
+  parcelas: z.number().int().positive().default(1),
+  valorVenda: z.number().positive(),
+  valorRecebido: z.number().positive(),
+  taxaAplicada: z.number().default(0),
+  dataVenda: z.coerce.date().optional(),
+  dataRecebimento: z.coerce.date().optional(),
+  origemImportacao: z.enum(["API", "CNAB", "OFX", "CSV", "WEBHOOK"]).default("API"),
+  empresaId: z.string().optional(),
+  lancamentoId: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
 
 export class FinanceiroService {
-  async resumo() {
-    const [notas, integracoes, produtosBaixoEstoque] = await Promise.all([
-      prisma.notaFiscal.findMany({
-        include: { itens: true },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-      }),
-      prisma.fiscalIntegration.findMany({ orderBy: { provider: "asc" } }),
-      prisma.produto.findMany({
-        where: { estoque: { lte: 5 } },
-        orderBy: { estoque: "asc" },
-        take: 10,
-      }),
-    ]);
+  async criarLancamento(data: unknown, usuarioId?: string) {
+    const lancamento = lancamentoSchema.parse(data);
+
+    return prisma.$transaction(async (tx: any) => {
+      const criado = await tx.lancamentoFinanceiro.create({
+        data: {
+          ...lancamento,
+          usuarioId,
+          valorPago: lancamento.status === "PAGO" ? lancamento.valorLiquido : 0,
+        },
+      });
+
+      await this.auditar(tx, "LancamentoFinanceiro", criado.id, "CRIACAO", usuarioId, null, criado, criado.id);
+      return criado;
+    });
+  }
+
+  async listarLancamentos(filtros: {
+    usuarioId?: string;
+    status?: string;
+    tipo?: string;
+    origem?: string;
+    empresaId?: string;
+    inicio?: string;
+    fim?: string;
+  }) {
+    const where: Record<string, unknown> = {};
+
+    if (filtros.status) where.status = filtros.status;
+    if (filtros.tipo) where.tipo = filtros.tipo;
+    if (filtros.origem) where.origem = filtros.origem;
+    if (filtros.empresaId) where.empresaId = filtros.empresaId;
+    if (filtros.inicio || filtros.fim) {
+      where.vencimento = {
+        ...(filtros.inicio ? { gte: new Date(filtros.inicio) } : {}),
+        ...(filtros.fim ? { lte: new Date(filtros.fim) } : {}),
+      };
+    }
+
+    return prisma.lancamentoFinanceiro.findMany({
+      where,
+      include: {
+        categoria: true,
+        contaFinanceira: true,
+        formaPagamento: true,
+        cliente: true,
+        fornecedor: true,
+        venda: true,
+      },
+      orderBy: [{ vencimento: "asc" }, { createdAt: "desc" }],
+    });
+  }
+
+  async baixarLancamento(id: string, valorPago: number, usuarioId?: string, dataPagamento = new Date()) {
+    if (valorPago <= 0) {
+      throw new Error("Valor de baixa deve ser maior que zero");
+    }
+
+    return prisma.$transaction(async (tx: any) => {
+      const atual = await tx.lancamentoFinanceiro.findUnique({ where: { id } });
+      if (!atual) {
+        throw new Error("Lancamento financeiro nao encontrado");
+      }
+
+      const novoValorPago = Number(atual.valorPago || 0) + valorPago;
+      const status = novoValorPago >= Number(atual.valorLiquido) ? "PAGO" : "PARCIAL";
+
+      const atualizado = await tx.lancamentoFinanceiro.update({
+        where: { id },
+        data: {
+          valorPago: novoValorPago,
+          status,
+          pagamento: dataPagamento,
+        },
+      });
+
+      await this.auditar(tx, "LancamentoFinanceiro", id, "BAIXA", usuarioId, atual, atualizado, id);
+      return atualizado;
+    });
+  }
+
+  async criarConta(data: unknown) {
+    return prisma.contaFinanceira.create({ data: contaSchema.parse(data) });
+  }
+
+  async listarContas(empresaId?: string) {
+    return prisma.contaFinanceira.findMany({
+      where: empresaId ? { empresaId } : {},
+      orderBy: { nome: "asc" },
+    });
+  }
+
+  async criarCategoria(data: unknown) {
+    return prisma.categoriaFinanceira.create({ data: categoriaSchema.parse(data) });
+  }
+
+  async listarCategorias(empresaId?: string) {
+    return prisma.categoriaFinanceira.findMany({
+      where: empresaId ? { empresaId } : {},
+      include: { children: true, parent: true },
+      orderBy: { nome: "asc" },
+    });
+  }
+
+  async criarFormaPagamento(data: unknown) {
+    return prisma.formaPagamentoFinanceira.create({ data: formaPagamentoSchema.parse(data) });
+  }
+
+  async listarFormasPagamento(empresaId?: string) {
+    return prisma.formaPagamentoFinanceira.findMany({
+      where: empresaId ? { empresaId } : {},
+      orderBy: { nome: "asc" },
+    });
+  }
+
+  async conciliarCartao(data: unknown, usuarioId?: string) {
+    const conciliacao = conciliacaoSchema.parse(data);
+    const valorDiferenca = Number((conciliacao.valorRecebido - conciliacao.valorVenda + conciliacao.taxaAplicada).toFixed(2));
+    const status = Math.abs(valorDiferenca) < 1 ? "CONCILIADO" : "DIVERGENTE";
+    const alerta = status === "DIVERGENTE" ? "taxa_divergente" : null;
+
+    return prisma.$transaction(async (tx: any) => {
+      const criada = await tx.conciliacaoCartao.create({
+        data: {
+          ...conciliacao,
+          valorDiferenca,
+          status,
+          alerta,
+        },
+      });
+
+      if (conciliacao.lancamentoId && status === "CONCILIADO") {
+        const antes = await tx.lancamentoFinanceiro.findUnique({ where: { id: conciliacao.lancamentoId } });
+        const depois = await tx.lancamentoFinanceiro.update({
+          where: { id: conciliacao.lancamentoId },
+          data: { status: "CONCILIADO", valorPago: conciliacao.valorRecebido },
+        });
+        await this.auditar(tx, "LancamentoFinanceiro", conciliacao.lancamentoId, "CONCILIACAO", usuarioId, antes, depois, conciliacao.lancamentoId);
+      }
+
+      return criada;
+    });
+  }
+
+  async demonstrativo(filtros: { inicio?: string; fim?: string; empresaId?: string }) {
+    const where = this.periodoWhere(filtros, "competencia");
+    const lancamentos = await prisma.lancamentoFinanceiro.findMany({ where });
+
+    const receitas = this.somar(lancamentos, ["RECEITA"]);
+    const despesas = this.somar(lancamentos, ["DESPESA", "TAXA", "COMISSAO", "IMPOSTO", "JUROS", "MULTA"]);
+    const lucroLiquido = receitas - despesas;
 
     return {
-      notas,
-      integracoes,
-      produtosBaixoEstoque,
-      totais: {
-        notas: notas.length,
-        valorEntrada: roundMoney(notas.filter((n) => n.tipo === "ENTRADA").reduce((sum, n) => sum + n.valorTotal, 0)),
-        valorSaida: roundMoney(notas.filter((n) => n.tipo === "SAIDA").reduce((sum, n) => sum + n.valorTotal, 0)),
-        tributos: roundMoney(notas.reduce((sum, n) => sum + n.valorTributos, 0)),
-      },
+      receitas,
+      despesas,
+      lucroBruto: receitas,
+      lucroLiquido,
+      margem: receitas > 0 ? Number(((lucroLiquido / receitas) * 100).toFixed(2)) : 0,
+      impostos: this.somar(lancamentos, ["IMPOSTO"]),
+      taxas: this.somar(lancamentos, ["TAXA", "COMISSAO"]),
+      totalLancamentos: lancamentos.length,
     };
   }
 
-  async listarIntegracoes() {
-    return prisma.fiscalIntegration.findMany({ orderBy: { provider: "asc" } });
-  }
+  async fluxoCaixa(filtros: { dias?: number; empresaId?: string }) {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
 
-  async salvarIntegracao(data: z.infer<typeof integrationSchema>) {
-    const parsed = integrationSchema.parse(data);
-    return prisma.fiscalIntegration.create({ data: parsed });
-  }
+    const fim = new Date(hoje);
+    fim.setDate(fim.getDate() + (filtros.dias || 30));
 
-  async atualizarIntegracao(id: string, data: Partial<z.infer<typeof integrationSchema>>) {
-    const parsed = integrationSchema.partial().parse(data);
-    return prisma.fiscalIntegration.update({ where: { id }, data: parsed });
-  }
-
-  async obterConfiguracaoEmpresa() {
-    const config = await prisma.fiscalCompanyConfig.findFirst({ orderBy: { createdAt: "asc" } });
-    return config ?? prisma.fiscalCompanyConfig.create({ data: {} });
-  }
-
-  async salvarConfiguracaoEmpresa(data: z.infer<typeof companyConfigSchema>) {
-    const parsed = companyConfigSchema.parse(data);
-    const current = await this.obterConfiguracaoEmpresa();
-    return prisma.fiscalCompanyConfig.update({
-      where: { id: current.id },
-      data: parsed,
+    const lancamentos = await prisma.lancamentoFinanceiro.findMany({
+      where: {
+        ...(filtros.empresaId ? { empresaId: filtros.empresaId } : {}),
+        vencimento: { gte: hoje, lte: fim },
+        status: { in: ["PENDENTE", "PARCIAL", "VENCIDO"] },
+      },
+      orderBy: { vencimento: "asc" },
     });
+
+    const entradasPrevistas = this.somar(lancamentos, ["RECEITA"]);
+    const saidasPrevistas = this.somar(lancamentos, ["DESPESA", "TAXA", "COMISSAO", "IMPOSTO", "JUROS", "MULTA"]);
+
+    return {
+      periodoDias: filtros.dias || 30,
+      entradasPrevistas,
+      saidasPrevistas,
+      saldoPrevisto: entradasPrevistas - saidasPrevistas,
+      lancamentos,
+    };
   }
 
-  async listarNotas() {
-    return prisma.notaFiscal.findMany({
-      include: { itens: { include: { produto: true } } },
-      orderBy: { createdAt: "desc" },
-    });
-  }
-
-  async registrarNota(data: z.infer<typeof notaSchema>) {
-    const parsed = notaSchema.parse(data);
-    const itens = parsed.itens.map(calcularItem);
-    const valorProdutos = roundMoney(itens.reduce((sum, item) => sum + item.valorProduto, 0));
-    const valorTributos = roundMoney(itens.reduce((sum, item) => sum + item.valorTributos, 0));
-    const valorTotal = roundMoney(itens.reduce((sum, item) => sum + item.valorTotal, 0));
-
-    return prisma.$transaction(async (tx) => {
-      const nota = await tx.notaFiscal.create({
-        data: {
-          tipo: parsed.tipo,
-          modelo: parsed.modelo ?? "NFE",
-          finalidade: parsed.finalidade ?? "NORMAL",
-          status: parsed.status ?? "REGISTRADA",
-          numero: emptyToNull(parsed.numero),
-          serie: emptyToNull(parsed.serie),
-          chaveAcesso: emptyToNull(parsed.chaveAcesso),
-          protocolo: emptyToNull(parsed.protocolo),
-          emissorNome: emptyToNull(parsed.emissorNome),
-          emissorDocumento: emptyToNull(parsed.emissorDocumento),
-          destinatarioNome: emptyToNull(parsed.destinatarioNome),
-          destinatarioDocumento: emptyToNull(parsed.destinatarioDocumento),
-          dataEntradaSaida: parsed.dataEntradaSaida ? new Date(parsed.dataEntradaSaida) : null,
-          integrationProvider: emptyToNull(parsed.integrationProvider),
-          externalId: emptyToNull(parsed.externalId),
-          observacoes: emptyToNull(parsed.observacoes),
-          valorProdutos,
-          valorTributos,
-          valorTotal,
-          itens: {
-            create: itens.map((item) => ({
-              produtoId: item.produtoId,
-              codigo: emptyToNull(item.codigo),
-              descricao: item.descricao,
-              ncm: emptyToNull(item.ncm),
-              cest: emptyToNull(item.cest),
-              cfop: emptyToNull(item.cfop),
-              origem: emptyToNull(item.origem),
-              cstIcms: emptyToNull(item.cstIcms),
-              csosn: emptyToNull(item.csosn),
-              quantidade: item.quantidade,
-              valorUnitario: item.valorUnitario,
-              valorProduto: item.valorProduto,
-              aliquotaIcms: item.aliquotaIcms,
-              valorIcms: item.valorIcms,
-              aliquotaPis: item.aliquotaPis,
-              valorPis: item.valorPis,
-              aliquotaCofins: item.aliquotaCofins,
-              valorCofins: item.valorCofins,
-              aliquotaIpi: item.aliquotaIpi,
-              valorIpi: item.valorIpi,
-              valorTributos: item.valorTributos,
-              valorTotal: item.valorTotal,
-              movimentaEstoque: item.movimentaEstoque,
-            })),
-          },
-        },
-        include: { itens: true },
-      });
-
-      for (const item of itens) {
-        if (!item.produtoId || !item.movimentaEstoque) continue;
-        await tx.produto.update({
-          where: { id: item.produtoId },
-          data: {
-            estoque: {
-              [parsed.tipo === "ENTRADA" ? "increment" : "decrement"]: Math.trunc(item.quantidade),
+  private periodoWhere(filtros: { inicio?: string; fim?: string; empresaId?: string }, campo: string) {
+    return {
+      ...(filtros.empresaId ? { empresaId: filtros.empresaId } : {}),
+      ...((filtros.inicio || filtros.fim)
+        ? {
+            [campo]: {
+              ...(filtros.inicio ? { gte: new Date(filtros.inicio) } : {}),
+              ...(filtros.fim ? { lte: new Date(filtros.fim) } : {}),
             },
-          },
-        });
-      }
-
-      return nota;
-    });
+          }
+        : {}),
+    };
   }
 
-  async atualizarTributacaoProduto(id: string, data: Record<string, unknown>) {
-    const schema = z.object({
-      ncm: z.string().optional(),
-      cest: z.string().optional(),
-      cfop: z.string().optional(),
-      origem: z.string().optional(),
-      cstIcms: z.string().optional(),
-      csosn: z.string().optional(),
-      aliquotaIcms: z.number().optional(),
-      aliquotaPis: z.number().optional(),
-      aliquotaCofins: z.number().optional(),
-      aliquotaIpi: z.number().optional(),
-    });
+  private somar(lancamentos: Array<{ tipo: string; valorLiquido: number }>, tipos: string[]) {
+    return lancamentos
+      .filter((lancamento) => tipos.includes(lancamento.tipo))
+      .reduce((total, lancamento) => total + Number(lancamento.valorLiquido || 0), 0);
+  }
 
-    return prisma.produto.update({
-      where: { id },
-      data: schema.parse(data),
+  private async auditar(
+    tx: any,
+    entidade: string,
+    entidadeId: string,
+    acao: string,
+    usuarioId: string | undefined,
+    antes: unknown,
+    depois: unknown,
+    lancamentoId?: string,
+  ) {
+    await tx.financeiroAuditoria.create({
+      data: {
+        entidade,
+        entidadeId,
+        acao,
+        usuarioId,
+        antes: antes || undefined,
+        depois: depois || undefined,
+        lancamentoId,
+      },
     });
   }
 }
+
+export default new FinanceiroService();

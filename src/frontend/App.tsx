@@ -1,129 +1,148 @@
-import { useEffect, useState } from "react";
-import { type Page } from "./types/Page";
+import { useEffect, useState } from 'react';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import Layout from './components/Layout';
+import CadastroProdutos from './pages/CadastroProdutos';
+import Cadastros from './pages/Cadastros';
+import Dashboard from './pages/Dashboard';
+import Estoque from './pages/Estoque';
+import Financeiro from './pages/Financeiro';
+import FinanceiroCategorias from './pages/FinanceiroCategorias';
+import FinanceiroConciliacaoCartoes from './pages/FinanceiroConciliacaoCartoes';
+import FinanceiroContasCartoes from './pages/FinanceiroContasCartoes';
+import FinanceiroContasPagar from './pages/FinanceiroContasPagar';
+import FinanceiroDemonstrativo from './pages/FinanceiroDemonstrativo';
+import FinanceiroFluxoCaixa from './pages/FinanceiroFluxoCaixa';
+import FinanceiroFormasPagamento from './pages/FinanceiroFormasPagamento';
+import FinanceiroLancamentos from './pages/FinanceiroLancamentos';
+import Fornecedores from './pages/Fornecedores';
+import KmPorLitro from './pages/KmPorLitro';
+import Login from './pages/Login';
+import ManutencaoVeiculo from './pages/ManutencaoVeiculo';
+import Marcas from './pages/Marcas';
+import PesoCarga from './pages/PesoCarga';
+import Placeholder from './pages/Placeholder';
+import Vendas from './pages/Vendas';
 
-// Componentes de Layout e Login
-import Layout from "./components/Layout";
-import Login from "./pages/Login";
-
-// Páginas
-import CadastroProdutos from "./pages/CadastroProdutos";
-import Cadastros from "./pages/Cadastros";
-import Clientes from "./pages/Clientes";
-import Dashboard from "./pages/Dashboard";
-import EstoqueCompras from "./pages/EstoqueCompras";
-import Financeiro from "./pages/Financeiro";
-import Fornecedores from "./pages/Fornecedores";
-import KmPorLitro from "./pages/KmPorLitro";
-import ManutencaoVeiculo from "./pages/ManutencaoVeiculo";
-import Marcas from "./pages/Marcas";
-import PesoCarga from "./pages/PesoCarga";
-import Placeholder from "./pages/Placeholder";
-import Vendas from "./pages/Vendas";
+const placeholderPageTitles: Record<string, string> = {
+    atendimento: 'Atendimento clinico',
+    clientes: 'Clientes',
+    agenda: 'Agenda',
+    comissionamento: 'Comissionamento',
+    'km-por-litro': 'Km por Litro',
+    'manutencao-veiculo': 'Manutencao Veiculo',
+    'peso-carga': 'Peso da Carga',
+    log: 'Log de inteligencia',
+    internacao: 'Internacao',
+    'vendas-consulta': 'Consulta de Vendas',
+    'vendas-devolucoes': 'Devolucoes e Estornos',
+    'integracoes-hub': 'Integracoes - HUB',
+    'integracoes-marketplaces': 'Integracoes - Marketplaces',
+    'integracoes-gateways': 'Integracoes - Gateways de Pagamento',
+    'integracoes-bancos': 'Integracoes - Bancos e Open Finance',
+    'integracoes-webhooks': 'Integracoes - Webhooks e Eventos',
+};
 
 function App() {
-    const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
-    const [currentPage, setCurrentPage] = useState<Page>("dashboard");
-    const [userRole, setUserRole] = useState<string>("");
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [currentPage, setCurrentPage] = useState<string>('dashboard');
+    const [userRole, setUserRole] = useState<string>('');
 
     useEffect(() => {
-        const token = localStorage.getItem("token");
-        const role = localStorage.getItem("userRole");
-
+        const token = localStorage.getItem('token');
+        const role = localStorage.getItem('userRole');
         if (token) {
-        setIsLoggedIn(true);
-        setUserRole(role || "");
-        } else {
-        setIsLoggedIn(false);
+            setIsLoggedIn(true);
+            setUserRole(role || '');
         }
     }, []);
 
     const handleLogin = (role?: string) => {
         setIsLoggedIn(true);
-        setUserRole(role || "");
+        setUserRole(role || '');
     };
 
     const handleLogout = () => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("userRole");
+        localStorage.removeItem('token');
+        localStorage.removeItem('userRole');
         setIsLoggedIn(false);
-        setCurrentPage("dashboard");
-        setUserRole("");
-    };
-
-    const handleNavigate = (page: string) => {
-        setCurrentPage(page as Page);
+        setCurrentPage('dashboard');
+        setUserRole('');
     };
 
     const renderPage = () => {
         switch (currentPage) {
-        case "vendas":
-            return <Vendas />;
-        case "fornecedores":
-            return <Fornecedores onNavigate={handleNavigate} />;
-        case "marcas":
-            return <Marcas onNavigate={handleNavigate} />;
-        case "cadastro-produtos":
-            return <CadastroProdutos onNavigate={handleNavigate} />;
-        case "cadastros":
-            return <Cadastros onNavigate={handleNavigate} />;
-        case "estoque":
-            return <EstoqueCompras onNavigate={handleNavigate} />;
-        case "estoque-produtos":
-            return <CadastroProdutos onNavigate={handleNavigate} initialTab="produtos" />;
-        case "estoque-movimentacao":
-            return <CadastroProdutos onNavigate={handleNavigate} initialTab="movimentacao" />;
-        case "estoque-compras":
-            return <CadastroProdutos onNavigate={handleNavigate} initialTab="compras" />;
-        case "clientes":
-            return <Clientes />;
-        case "km-por-litro":
-            return <KmPorLitro />;
-        case "manutencao-veiculo":
-            return <ManutencaoVeiculo />;
-        case "peso-carga":
-            return <PesoCarga />;
-        case "atendimento":
-            return <Placeholder title="Atendimento clinico" description="Fluxo de atendimento ativo para evoluir consultas, historico e servicos clinicos." />;
-        case "agenda":
-            return <Placeholder title="Agenda" description="Area ativa para organizar compromissos, retornos, banho e tosa, consultas e lembretes." />;
-        case "comissionamento":
-            return <Placeholder title="Comissionamento" description="Area ativa para acompanhar comissoes por vendedor, periodo e venda." />;
-        case "internacao":
-            return <Placeholder title="Internacao" description="Area ativa para controle de internacoes, leitos, status e responsaveis." />;
-        case "financeiro":
-            return <Financeiro />;
-        case "log":
-            return <Placeholder title="Log" description="Area ativa para auditoria e acompanhamento de eventos importantes do sistema." />;
-        default:
-            return (
-            <Dashboard
-                onLogout={handleLogout}
-                onNavigate={handleNavigate}
-            />
-            );
+            case 'dashboard':
+                return <Dashboard onLogout={handleLogout} onNavigate={setCurrentPage} />;
+            case 'diagnostico':
+                return <Diagnostico />;
+            case 'vendas':
+                return <Vendas />;
+            case 'nfce-emitir':
+            case 'nfce-consultar':
+            case 'nfce-cancelar':
+            case 'nfce-historico':
+            case 'nfce-danfe':
+            case 'nfce-inutilizar':
+            case 'nfce-configuracoes':
+            case 'nfce-status':
+                return <NFCe />;
+            case 'fornecedores':
+                return <Fornecedores onNavigate={setCurrentPage} />;
+            case 'marcas':
+                return <Marcas onNavigate={setCurrentPage} />;
+            case 'cadastro-produtos':
+                return <CadastroProdutos onNavigate={setCurrentPage} />;
+            case 'cadastros':
+                return <Cadastros />;
+            case 'estoque':
+                return <Estoque />;
+            case 'financeiro':
+                return <Financeiro />;
+            case 'financeiro-lancamentos':
+                return <FinanceiroLancamentos />;
+            case 'financeiro-conciliacao-cartoes':
+                return <FinanceiroConciliacaoCartoes />;
+            case 'financeiro-contas-pagar':
+                return <FinanceiroContasPagar />;
+            case 'financeiro-demonstrativo':
+                return <FinanceiroDemonstrativo />;
+            case 'financeiro-fluxo-caixa':
+                return <FinanceiroFluxoCaixa />;
+            case 'financeiro-contas-cartoes':
+                return <FinanceiroContasCartoes />;
+            case 'financeiro-categorias':
+                return <FinanceiroCategorias />;
+            case 'financeiro-formas-pagamento':
+                return <FinanceiroFormasPagamento />;
+            case 'km-por-litro':
+                return <KmPorLitro />;
+            case 'manutencao-veiculo':
+                return <ManutencaoVeiculo />;
+            case 'peso-carga':
+                return <PesoCarga />;
+            default:
+                if (placeholderPageTitles[currentPage]) {
+                    return <Placeholder title={placeholderPageTitles[currentPage]} />;
+                }
+                return <Placeholder title="Pagina nao encontrada" />;
         }
     };
 
-    // 1. Enquanto verifica o token, exibe carregando
-    if (isLoggedIn === null) {
-        return <div>Carregando...</div>;
-    }
-
-    // 2. Se não estiver logado, exibe a página de Login
     if (!isLoggedIn) {
         return <Login onLogin={handleLogin} />;
     }
 
-    // 3. Se logado, utiliza a prototipagem com o componente Layout
     return (
-        <Layout
-        onNavigate={setCurrentPage}
-        currentPage={currentPage}
-        onLogout={handleLogout}
-        userRole={userRole}
-        >
-        {renderPage()}
-        </Layout>
+        <ErrorBoundary>
+            <Layout
+                onNavigate={setCurrentPage}
+                currentPage={currentPage}
+                onLogout={handleLogout}
+                userRole={userRole}
+            >
+                {renderPage()}
+            </Layout>
+        </ErrorBoundary>
     );
 }
 

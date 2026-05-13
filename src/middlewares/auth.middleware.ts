@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 
-const SECRET = "access_secret";
+const SECRET = process.env.JWT_ACCESS_SECRET;
 
 export interface AuthRequest extends Request {
     userId?: string;
@@ -17,6 +17,10 @@ export function authMiddleware(
     res: Response,
     next: NextFunction
 ) {
+    if (!SECRET) {
+        return res.status(500).json({ error: "JWT_ACCESS_SECRET não configurado" });
+    }
+
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {

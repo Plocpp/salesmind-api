@@ -50,7 +50,7 @@ class ProdutoController {
     // =========================
     // 📦 CRIAR
     // =========================
-    async criar(req: AuthRequest, res: Response) {
+    criar = async (req: AuthRequest, res: Response) => {
         const resultado = produtoSchema.safeParse(req.body);
         if (!resultado.success) {
             return res.status(400).json(resultado.error.format());
@@ -65,7 +65,7 @@ class ProdutoController {
     // =========================
     // 📋 LISTAR
     // =========================
-    async listar(req: AuthRequest, res: Response) {
+    listar = async (req: AuthRequest, res: Response) => {
         const { userId, role } = this.getUserContext(req);
         const page = this.normalizeNumber(req.query.page, 1);
         const limit = this.normalizeNumber(req.query.limit, 10);
@@ -78,7 +78,7 @@ class ProdutoController {
     // =========================
     // 🔍 BUSCAR
     // =========================
-    async buscarPorId(req: AuthRequest, res: Response) {
+    buscarPorId = async (req: AuthRequest, res: Response) => {
         const { userId, role } = this.getUserContext(req);
         const id = this.normalizeId(req.params.id);
 
@@ -97,7 +97,7 @@ class ProdutoController {
     // =========================
     // ✏️ ATUALIZAR
     // =========================
-    async atualizar(req: AuthRequest, res: Response) {
+    atualizar = async (req: AuthRequest, res: Response) => {
         const { userId, role } = this.getUserContext(req);
         const id = this.normalizeId(req.params.id);
 
@@ -116,7 +116,7 @@ class ProdutoController {
     // =========================
     // 🗑️ DELETAR
     // =========================
-    async deletar(req: AuthRequest, res: Response) {
+    deletar = async (req: AuthRequest, res: Response) => {
         const { userId, role } = this.getUserContext(req);
         const id = this.normalizeId(req.params.id);
 
@@ -135,7 +135,7 @@ class ProdutoController {
     // =========================
     // 📊 DASHBOARD
     // =========================
-    async dashboard(req: AuthRequest, res: Response) {
+    dashboard = async (req: AuthRequest, res: Response) => {
         const { role } = this.getUserContext(req);
 
         if (role !== "ADMIN") {

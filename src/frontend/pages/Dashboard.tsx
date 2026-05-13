@@ -68,8 +68,15 @@ export default function Dashboard({ onLogout, onNavigate }: DashboardProps) {
                     const vend = await api.get("/vendas/dashboard", token);
                     setVendData(vend);
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error("Erro ao carregar dashboard:", err);
+                const errorMessage = err.message || String(err);
+                if (errorMessage.includes("401") || err.response?.status === 401) {
+                    localStorage.removeItem("token");
+                    localStorage.removeItem("userRole");
+                    window.location.href = "/login";
+                    return;
+                }
             } finally {
                 setLoading(false);
             }
@@ -169,7 +176,7 @@ export default function Dashboard({ onLogout, onNavigate }: DashboardProps) {
                     >
                         <h3 style={{ marginTop: 0 }}>{chartTitle}</h3>
 
-                        <div style={{ height: "300px" }}>
+                        <div style={{ height: "300px", minHeight: "300px", minWidth: 0 }}>
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={chartData}>
                                     <XAxis dataKey="name" />

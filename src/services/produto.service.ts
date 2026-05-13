@@ -57,21 +57,65 @@ class ProdutoService {
     ) {
         const skip = (page - 1) * limit;
 
-        return await prisma.produto.findMany({
-            where: {
-                ...(role !== "ADMIN" && { usuarioId: userId }),
-                ...(marca && { marcaId: marca })
-            },
-            include: {
-                marca: {
-                    include: {
-                        fornecedor: true,
+        try {
+            return await prisma.produto.findMany({
+                where: {
+                    ...(role !== "ADMIN" && { usuarioId: userId }),
+                    ...(marca && { marcaId: marca })
+                },
+                select: {
+                    id: true,
+                    nome: true,
+                    peso: true,
+                    porte: true,
+                    preco: true,
+                    estoque: true,
+                    tipo: true,
+                    codigo: true,
+                    codigoBarras: true,
+                    cor: true,
+                    tamanho: true,
+                    validade: true,
+                    custoMedio: true,
+                    marcaId: true,
+                    marca: {
+                        include: {
+                            fornecedor: true,
+                        },
                     },
                 },
-            },
-            skip,
-            take: limit
-        });
+                skip,
+                take: limit
+            });
+        } catch {
+            const produtosLegado = await prisma.$queryRaw<Array<{
+                id: string;
+                nome: string;
+                preco: number;
+                estoque: number;
+                codigo: string | null;
+                codigoBarras: string | null;
+            }>>`
+                SELECT id, nome, preco, estoque, codigo, codigoBarras
+                FROM Produto
+                ORDER BY nome ASC
+                LIMIT ${limit} OFFSET ${skip}
+            `;
+
+            return produtosLegado.map((produto) => ({
+                ...produto,
+                estoqueDisponivel: Number(produto.estoque || 0),
+                tipo: 'FISICO',
+                peso: 0,
+                porte: 'UNICO',
+                cor: null,
+                tamanho: null,
+                validade: null,
+                custoMedio: 0,
+                marcaId: '',
+                marca: null,
+            }));
+        }
     }
 
     // =========================
@@ -115,12 +159,19 @@ class ProdutoService {
             }
         });
 
-        const produtosPorMarca = await prisma.produto.groupBy({
-            by: ["marcaId"],
+        const produtosPorMarcaRaw = await prisma.$queryRaw<Array<{ marcaId: string; total: bigint | number }>>`
+            SELECT marcaId, COUNT(*) AS total
+            FROM Produto
+            WHERE marcaId IS NOT NULL
+            GROUP BY marcaId
+        `;
+
+        const produtosPorMarca = produtosPorMarcaRaw.map((item) => ({
+            marcaId: item.marcaId,
             _count: {
-                _all: true
-            }
-        });
+                _all: Number(item.total),
+            },
+        }));
 
         return {
             totalUsuarios,

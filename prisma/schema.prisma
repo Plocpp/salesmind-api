@@ -1,289 +1,1205 @@
+generator client {
+  provider = "prisma-client-js"
+}
 
-  generator client {
-    provider = "prisma-client-js"
-  }
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
 
-  datasource db {
-    provider = "mysql"
-    url      = env("DATABASE_URL")
-  }
+model Produto {
+  id             String      @id @default(uuid())
+  nome           String
+  peso           Float
+  porte          String
+  preco          Float
+  estoque        Int
+  tipo           TipoProduto @default(FISICO)
+  sku            String?     @unique
+  gtin           String?
+  referencia     String?
+  descricaoCurta String?
+  descricaoLonga String?     @db.Text
 
-  model Produto {
-    id           String   @id @default(uuid())
-    nome         String
-    peso         Float
-    porte        String
-    preco        Float
-    precoCusto   Float?
-    estoque      Int
+  codigo       String?   @unique
+  codigoBarras String?   @unique
+  cor          String?
+  tamanho      String?
+  validade     DateTime?
 
-    codigo       String?  @unique
-    codigoBarras String?  @unique
-    cor          String?
-    tamanho      String?
-    validade     DateTime?
-    ncm          String?
-    cest         String?
-    cfop         String?
-    origem       String?
-    cstIcms      String?
-    csosn        String?
-    aliquotaIcms Float?
-    aliquotaPis  Float?
-    aliquotaCofins Float?
-    aliquotaIpi  Float?
+  ncm          String?
+  cest         String?
+  cfop         String?
+  cst          String?
+  origemFiscal String?
+  aliquota     Float?
 
-    // 🔐 RELAÇÕES OBRIGATÓRIAS
-    usuarioId    String
-    marcaId      String
+  estoqueReservado  Float   @default(0)
+  estoqueDisponivel Float   @default(0)
+  estoqueMinimo     Float   @default(0)
+  estoqueMaximo     Float?
+  localizacao       String?
 
-    usuario      Usuario @relation(fields: [usuarioId], references: [id])
-    marca        Marca   @relation(fields: [marcaId], references: [id])
+  custoMedio Float?
+  margem     Float?
+  markup     Float?
 
-    itensVenda   ItemVenda[]
-    itensNotaFiscal NotaFiscalItem[]
+  mercadoLivreId      String?
+  shopeeId            String?
+  amazonId            String?
+  magazineLuizaId     String?
+  blingId             String?
+  sincronizacaoStatus StatusSincronizacaoProduto @default(PENDENTE)
+  sincronizadoEm      DateTime?
 
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
-  }
+  altura      Float?
+  largura     Float?
+  comprimento Float?
 
-  model Usuario {
-    id           String   @id @default(uuid())
-    nome         String
-    email        String   @unique
-    senha        String
-    role         Role     @default(USER)
+  unidadeMedida String  @default("UN")
+  controlaLote  Boolean @default(false)
+  controlaSerie Boolean @default(false)
+  ativo         Boolean @default(true)
 
-    refreshToken String?  @db.Text
+  // 🔐 RELAÇÕES OBRIGATÓRIAS
+  usuarioId      String
+  marcaId        String
+  grupoProdutoId String?
 
-    produtos     Produto[]
-    vendas       Venda[]
+  usuario      Usuario       @relation(fields: [usuarioId], references: [id])
+  marca        Marca         @relation(fields: [marcaId], references: [id])
+  grupoProduto GrupoProduto? @relation(fields: [grupoProdutoId], references: [id])
 
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
-  }
+  itensVenda           ItemVenda[]
+  estoques             ProdutoEstoque[]
+  movimentacoesEstoque MovimentacaoEstoque[]
+  midias               ProdutoMidia[]
+  componentesKit       ProdutoKitItem[]        @relation("KitProduto")
+  usadoEmKits          ProdutoKitItem[]        @relation("ComponenteProduto")
+  itensCompra          PedidoCompraItem[]
+  itensInventario      InventarioEstoqueItem[]
+  listasPreco          ListaPrecoItem[]
+  recomendados         ProdutoRecomendado[]    @relation("ProdutoOrigemRecomendacao")
+  recomendadoPor       ProdutoRecomendado[]    @relation("ProdutoDestinoRecomendacao")
 
-  model Cliente {
-    id             String   @id @default(uuid())
-    nome           String
-    telefone       String?
-    cpf            String?  @unique
-    email          String?  @unique
-    dataNascimento DateTime?
-    cep            String?
-    endereco       String?
-    numero         String?
-    complemento    String?
-    bairro         String?
-    cidade         String?
-    estado         String?
-    observacoes    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    vendas         Venda[]
+  @@index([tipo, ativo])
+  @@index([grupoProdutoId])
+  @@index([sku])
+}
 
-    createdAt      DateTime @default(now())
-    updatedAt      DateTime @updatedAt
-  }
+model Usuario {
+  id    String @id @default(uuid())
+  nome  String
+  email String @unique
+  senha String
+  role  Role   @default(USER)
 
-  model Fornecedor {
-    id        String   @id @default(uuid())
-    nome      String
-    cnpj      String?  @unique
-    telefone  String?
-    email     String?
-    endereco  String?
+  refreshToken String? @db.Text
 
-    marcas    Marca[]
+  produtos               Produto[]
+  vendas                 Venda[]
+  lancamentosFinanceiros LancamentoFinanceiro[]
+  auditoriasFinanceiras  FinanceiroAuditoria[]
+  movimentacoesEstoque   MovimentacaoEstoque[]
+  inventariosEstoque     InventarioEstoque[]
+  auditoriasEstoque      EstoqueAuditoria[]
+  caixasOperacionais     CaixaOperacional[]
+  movimentosCaixa        MovimentoCaixa[]
+  orcamentosVenda        OrcamentoVenda[]
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-  }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
-  model Marca {
-    id           String   @id @default(uuid())
-    nome         String   @unique
-    fornecedorId String
+model Cliente {
+  id       String  @id @default(uuid())
+  nome     String
+  telefone String?
+  email    String? @unique
 
-    fornecedor   Fornecedor @relation(fields: [fornecedorId], references: [id])
-    produtos     Produto[]
+  vendas                 Venda[]
+  lancamentosFinanceiros LancamentoFinanceiro[]
+  pacotesVendidos        PacoteVendido[]
+  saldoCliente           ClienteSaldo?
+  orcamentosVenda        OrcamentoVenda[]
 
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
-  }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
-  model Venda {
-    id        String   @id @default(uuid())
-    data      DateTime @default(now())
-    total     Float
+model Fornecedor {
+  id       String  @id @default(uuid())
+  nome     String
+  cnpj     String? @unique
+  telefone String?
+  email    String?
+  endereco String?
 
-    usuarioId String
-    clienteId String?
+  marcas                 Marca[]
+  lancamentosFinanceiros LancamentoFinanceiro[]
+  pedidosCompra          PedidoCompra[]
 
-    usuario   Usuario @relation(fields: [usuarioId], references: [id])
-    cliente   Cliente? @relation(fields: [clienteId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
-    itens     ItemVenda[]
+model Marca {
+  id           String @id @default(uuid())
+  nome         String @unique
+  fornecedorId String
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-  }
+  logoUrl            String?
+  site               String?
+  comissaoPercentual Float?
 
-  model ItemVenda {
-    id             String  @id @default(uuid())
-    quantidade     Float
-    precoUnitario  Float
-    desconto       Float   @default(0)
+  fornecedor Fornecedor @relation(fields: [fornecedorId], references: [id])
+  produtos   Produto[]
 
-    vendaId        String
-    produtoId      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
-    venda          Venda   @relation(fields: [vendaId], references: [id])
-    produto        Produto @relation(fields: [produtoId], references: [id])
-  }
+model Venda {
+  id                  String      @id @default(uuid())
+  numero              String?     @unique
+  tipo                TipoVenda   @default(PDV)
+  status              StatusVenda @default(AGUARDANDO_PAGAMENTO)
+  origem              OrigemVenda @default(PDV)
+  data                DateTime    @default(now())
+  dataPagamento       DateTime?
+  dataFaturamento     DateTime?
+  dataEnvio           DateTime?
+  dataEntrega         DateTime?
+  subtotal            Float       @default(0)
+  descontoTotal       Float       @default(0)
+  frete               Float       @default(0)
+  comissao            Float       @default(0)
+  custoTotal          Float       @default(0)
+  lucro               Float       @default(0)
+  margem              Float       @default(0)
+  total               Float
+  observacoes         String?     @db.Text
+  marketplacePedidoId String?
+  marketplaceConta    String?
+  canal               String?
+  terminal            String?
+  offline             Boolean     @default(false)
+  sincronizadoEm      DateTime?
+  metadata            Json?
 
-  model Vendedor {
-    id        String   @id @default(uuid())
-    nome      String
-    email     String?  @unique
-    telefone  String?
-    cpf       String?  @unique
-    endereco  String?
-    ativo     Boolean  @default(true)
+  usuarioId    String
+  clienteId    String?
+  empresaId    String?
+  listaPrecoId String?
+  caixaId      String?
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-  }
+  usuario    Usuario           @relation(fields: [usuarioId], references: [id])
+  cliente    Cliente?          @relation(fields: [clienteId], references: [id])
+  empresa    Empresa?          @relation(fields: [empresaId], references: [id])
+  listaPreco ListaPreco?       @relation(fields: [listaPrecoId], references: [id])
+  caixa      CaixaOperacional? @relation(fields: [caixaId], references: [id])
 
-  model VeiculoEntrega {
-    id          String       @id @default(uuid())
-    placa       String       @unique
-    modelo      String
-    ano         Int?
-    marca       String?
-    cor         String?
-    capacidade  Float?
-    ativo       Boolean      @default(true)
+  itens                  ItemVenda[]
+  pagamentos             PagamentoVenda[]
+  timeline               VendaTimeline[]
+  anexos                 VendaAnexo[]
+  pacoteVendido          PacoteVendido?
+  lancamentosFinanceiros LancamentoFinanceiro[]
 
-    entregadores Entregador[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
-  }
+  @@index([status, data])
+  @@index([origem, marketplacePedidoId])
+  @@index([clienteId, data])
+}
 
-  model Entregador {
-    id        String   @id @default(uuid())
-    nome      String
-    email     String?  @unique
-    telefone  String?
-    cpf       String?  @unique
-    endereco  String?
-    ativo     Boolean  @default(true)
-    veiculoId String?
+model ItemVenda {
+  id            String @id @default(uuid())
+  quantidade    Float
+  precoUnitario Float
+  desconto      Float  @default(0)
+  custoUnitario Float?
+  subtotal      Float  @default(0)
+  total         Float  @default(0)
+  comissao      Float  @default(0)
 
-    veiculo   VeiculoEntrega? @relation(fields: [veiculoId], references: [id])
+  vendaId   String
+  produtoId String
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-  }
+  venda   Venda   @relation(fields: [vendaId], references: [id])
+  produto Produto @relation(fields: [produtoId], references: [id])
+}
 
-  model FiscalIntegration {
-    id           String   @id @default(uuid())
-    provider     String
-    status       String   @default("NAO_CONFIGURADO")
-    ambiente     String   @default("HOMOLOGACAO")
-    baseUrl      String?
-    clientId     String?
-    clientSecret String?  @db.Text
-    accessToken  String?  @db.Text
-    refreshToken String?  @db.Text
-    observacoes  String?  @db.Text
+model PagamentoVenda {
+  id             String                @id @default(uuid())
+  vendaId        String
+  forma          FormaRecebimentoVenda
+  status         StatusPagamentoVenda  @default(PENDENTE)
+  valor          Float
+  parcelas       Int                   @default(1)
+  taxaPercentual Float                 @default(0)
+  taxaFixa       Float                 @default(0)
+  vencimento     DateTime?
+  recebidoEm     DateTime?
+  autorizacao    String?
+  nsu            String?
+  gateway        String?
+  metadata       Json?
 
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
-  }
+  venda Venda @relation(fields: [vendaId], references: [id])
 
-  model FiscalCompanyConfig {
-    id                String   @id @default(uuid())
-    razaoSocial       String?
-    nomeFantasia      String?
-    cnpj              String?
-    inscricaoEstadual String?
-    inscricaoMunicipal String?
-    crt               String?
-    regimeTributario  String?
-    uf                String?
-    municipio         String?
-    ambiente          String   @default("HOMOLOGACAO")
-    certificadoStatus String   @default("NAO_CONFIGURADO")
-    serieNfe          String?
-    serieNfce         String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    createdAt         DateTime @default(now())
-    updatedAt         DateTime @updatedAt
-  }
+  @@index([status, vencimento])
+}
 
-  model NotaFiscal {
-    id                  String   @id @default(uuid())
-    tipo                String
-    modelo              String   @default("NFE")
-    finalidade          String   @default("NORMAL")
-    status              String   @default("RASCUNHO")
-    numero              String?
-    serie               String?
-    chaveAcesso         String?
-    protocolo           String?
-    emissorNome         String?
-    emissorDocumento    String?
-    destinatarioNome    String?
-    destinatarioDocumento String?
-    dataEmissao         DateTime @default(now())
-    dataEntradaSaida    DateTime?
-    valorProdutos       Float    @default(0)
-    valorTributos       Float    @default(0)
-    valorTotal          Float    @default(0)
-    integrationProvider String?
-    externalId          String?
-    observacoes         String?  @db.Text
+model CaixaOperacional {
+  id           String      @id @default(uuid())
+  status       StatusCaixa @default(ABERTO)
+  terminal     String?
+  loja         String?
+  turno        String?
+  saldoInicial Float       @default(0)
+  saldoFinal   Float?
+  diferenca    Float?
+  abertoEm     DateTime    @default(now())
+  fechadoEm    DateTime?
 
-    itens               NotaFiscalItem[]
+  usuarioId String
+  usuario   Usuario @relation(fields: [usuarioId], references: [id])
 
-    createdAt           DateTime @default(now())
-    updatedAt           DateTime @updatedAt
-  }
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
 
-  model NotaFiscalItem {
-    id              String   @id @default(uuid())
-    notaFiscalId    String
-    produtoId       String?
-    codigo          String?
-    descricao       String
-    ncm             String?
-    cest            String?
-    cfop            String?
-    origem          String?
-    cstIcms         String?
-    csosn           String?
-    quantidade      Float
-    valorUnitario   Float
-    valorProduto    Float
-    aliquotaIcms    Float    @default(0)
-    valorIcms       Float    @default(0)
-    aliquotaPis     Float    @default(0)
-    valorPis        Float    @default(0)
-    aliquotaCofins  Float    @default(0)
-    valorCofins     Float    @default(0)
-    aliquotaIpi     Float    @default(0)
-    valorIpi        Float    @default(0)
-    valorTributos   Float    @default(0)
-    valorTotal      Float
-    movimentaEstoque Boolean @default(true)
+  vendas     Venda[]
+  movimentos MovimentoCaixa[]
 
-    notaFiscal      NotaFiscal @relation(fields: [notaFiscalId], references: [id], onDelete: Cascade)
-    produto         Produto?   @relation(fields: [produtoId], references: [id])
-  }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
-  enum Role {
-    USER
-    ADMIN
-    VENDEDOR
-  }
+model MovimentoCaixa {
+  id        String             @id @default(uuid())
+  tipo      TipoMovimentoCaixa
+  valor     Float
+  descricao String?
+  terminal  String?
+  metadata  Json?
+
+  caixaId String
+  caixa   CaixaOperacional @relation(fields: [caixaId], references: [id])
+
+  usuarioId String?
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([caixaId, createdAt])
+}
+
+model ListaPreco {
+  id             String         @id @default(uuid())
+  nome           String
+  tipo           TipoListaPreco @default(VAREJO)
+  vigenciaInicio DateTime?
+  vigenciaFim    DateTime?
+  margemMinima   Float?
+  markupPadrao   Float?
+  ativo          Boolean        @default(true)
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+
+  itens  ListaPrecoItem[]
+  vendas Venda[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ListaPrecoItem {
+  id           String    @id @default(uuid())
+  listaPrecoId String
+  produtoId    String
+  preco        Float
+  promocional  Float?
+  inicio       DateTime?
+  fim          DateTime?
+
+  listaPreco ListaPreco @relation(fields: [listaPrecoId], references: [id])
+  produto    Produto    @relation(fields: [produtoId], references: [id])
+
+  @@unique([listaPrecoId, produtoId])
+}
+
+model PacoteVendido {
+  id                  String       @id @default(uuid())
+  nome                String
+  status              StatusPacote @default(ATIVO)
+  quantidadeTotal     Float
+  quantidadeUtilizada Float        @default(0)
+  validade            DateTime?
+  renovacaoAutomatica Boolean      @default(false)
+
+  vendaId String @unique
+  venda   Venda  @relation(fields: [vendaId], references: [id])
+
+  clienteId String?
+  cliente   Cliente? @relation(fields: [clienteId], references: [id])
+
+  usos PacoteUso[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PacoteUso {
+  id              String   @id @default(uuid())
+  pacoteVendidoId String
+  quantidade      Float
+  descricao       String?
+  usadoEm         DateTime @default(now())
+
+  pacoteVendido PacoteVendido @relation(fields: [pacoteVendidoId], references: [id])
+}
+
+model VendaTimeline {
+  id       String       @id @default(uuid())
+  vendaId  String
+  status   StatusVenda?
+  titulo   String
+  detalhe  String?
+  metadata Json?
+
+  venda Venda @relation(fields: [vendaId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model VendaAnexo {
+  id        String         @id @default(uuid())
+  vendaId   String
+  tipo      TipoAnexoVenda
+  url       String
+  descricao String?
+
+  venda Venda @relation(fields: [vendaId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model ClienteSaldo {
+  id            String  @id @default(uuid())
+  clienteId     String  @unique
+  credito       Float   @default(0)
+  debito        Float   @default(0)
+  cashback      Float   @default(0)
+  limiteCredito Float   @default(0)
+  bloqueado     Boolean @default(false)
+
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrcamentoVenda {
+  id                String          @id @default(uuid())
+  numero            String?         @unique
+  status            StatusOrcamento @default(RASCUNHO)
+  titulo            String
+  validade          DateTime?
+  total             Float           @default(0)
+  convertidoVendaId String?
+  linkPublico       String?
+  metadata          Json?
+
+  clienteId String?
+  cliente   Cliente? @relation(fields: [clienteId], references: [id])
+
+  usuarioId String?
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ConfiguracaoVendas {
+  id                          String   @id @default(uuid())
+  escopo                      String   @default("GLOBAL")
+  descontoMaximo              Float    @default(10)
+  comissaoPadrao              Float    @default(5)
+  validadeOrcamentoDias       Int      @default(7)
+  permitirVendaOffline        Boolean  @default(true)
+  exigirAprovacaoDesconto     Boolean  @default(false)
+  nfeAutomatica               Boolean  @default(false)
+  sincronizarMarketplace      Boolean  @default(true)
+  atualizarEstoqueMarketplace Boolean  @default(true)
+  atualizarPrecoMarketplace   Boolean  @default(false)
+  jurosMensal                 Float    @default(0)
+  multaAtraso                 Float    @default(0)
+  prazoRecebimentoPadrao      Int      @default(30)
+
+  updatedByUserId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([escopo])
+}
+
+model Empresa {
+  id    String  @id @default(uuid())
+  nome  String
+  cnpj  String? @unique
+  ativo Boolean @default(true)
+
+  contasFinanceiras      ContaFinanceira[]
+  categoriasFinanceiras  CategoriaFinanceira[]
+  formasPagamento        FormaPagamentoFinanceira[]
+  lancamentosFinanceiros LancamentoFinanceiro[]
+  conciliacoesCartao     ConciliacaoCartao[]
+  depositosEstoque       DepositoEstoque[]
+  gruposProduto          GrupoProduto[]
+  pedidosCompra          PedidoCompra[]
+  inventariosEstoque     InventarioEstoque[]
+  vendas                 Venda[]
+  caixasOperacionais     CaixaOperacional[]
+  listasPreco            ListaPreco[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GrupoProduto {
+  id         String  @id @default(uuid())
+  nome       String
+  descricao  String?
+  cor        String?
+  icone      String?
+  ncmPadrao  String?
+  cestPadrao String?
+  cfopPadrao String?
+  ativo      Boolean @default(true)
+
+  parentId String?
+  parent   GrupoProduto?  @relation("GrupoProdutoHierarquia", fields: [parentId], references: [id])
+  children GrupoProduto[] @relation("GrupoProdutoHierarquia")
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+
+  produtos Produto[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, parentId])
+}
+
+model DepositoEstoque {
+  id       String              @id @default(uuid())
+  nome     String
+  tipo     TipoDepositoEstoque @default(PROPRIO)
+  codigo   String?
+  endereco String?
+  ativo    Boolean             @default(true)
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+
+  produtosEstoque      ProdutoEstoque[]
+  movimentacoesOrigem  MovimentacaoEstoque[] @relation("DepositoOrigemMovimentacao")
+  movimentacoesDestino MovimentacaoEstoque[] @relation("DepositoDestinoMovimentacao")
+  inventarios          InventarioEstoque[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, ativo])
+}
+
+model ProdutoEstoque {
+  id                String  @id @default(uuid())
+  produtoId         String
+  depositoId        String
+  estoqueFisico     Float   @default(0)
+  estoqueReservado  Float   @default(0)
+  estoqueDisponivel Float   @default(0)
+  estoqueTransito   Float   @default(0)
+  estoqueMinimo     Float   @default(0)
+  estoqueMaximo     Float?
+  localizacao       String?
+
+  produto  Produto         @relation(fields: [produtoId], references: [id])
+  deposito DepositoEstoque @relation(fields: [depositoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([produtoId, depositoId])
+  @@index([depositoId])
+}
+
+model MovimentacaoEstoque {
+  id               String                    @id @default(uuid())
+  tipo             TipoMovimentacaoEstoque
+  status           StatusMovimentacaoEstoque @default(CONCLUIDA)
+  origem           OrigemMovimentacaoEstoque @default(MANUAL)
+  quantidade       Float
+  custoUnitario    Float?
+  valorTotal       Float?
+  motivo           String?
+  observacoes      String?                   @db.Text
+  lote             String?
+  numeroSerie      String?
+  validade         DateTime?
+  origemReferencia String?
+  metadata         Json?
+
+  produtoId String
+  produto   Produto @relation(fields: [produtoId], references: [id])
+
+  depositoOrigemId String?
+  depositoOrigem   DepositoEstoque? @relation("DepositoOrigemMovimentacao", fields: [depositoOrigemId], references: [id])
+
+  depositoDestinoId String?
+  depositoDestino   DepositoEstoque? @relation("DepositoDestinoMovimentacao", fields: [depositoDestinoId], references: [id])
+
+  usuarioId String?
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([produtoId, createdAt])
+  @@index([origem, origemReferencia])
+}
+
+model PedidoCompra {
+  id              String             @id @default(uuid())
+  numero          String?
+  status          StatusPedidoCompra @default(SOLICITADO)
+  previsao        DateTime?
+  dataCompra      DateTime?
+  dataRecebimento DateTime?
+  valorProdutos   Float              @default(0)
+  valorFrete      Float              @default(0)
+  valorImpostos   Float              @default(0)
+  valorTotal      Float              @default(0)
+  observacoes     String?            @db.Text
+  metadata        Json?
+
+  fornecedorId String
+  fornecedor   Fornecedor @relation(fields: [fornecedorId], references: [id])
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+
+  itens PedidoCompraItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fornecedorId, status])
+  @@index([empresaId, status])
+}
+
+model PedidoCompraItem {
+  id                 String    @id @default(uuid())
+  pedidoCompraId     String
+  produtoId          String
+  quantidade         Float
+  quantidadeRecebida Float     @default(0)
+  custoUnitario      Float
+  valorTotal         Float
+  ncm                String?
+  cfop               String?
+  lote               String?
+  validade           DateTime?
+
+  pedidoCompra PedidoCompra @relation(fields: [pedidoCompraId], references: [id])
+  produto      Produto      @relation(fields: [produtoId], references: [id])
+}
+
+model InventarioEstoque {
+  id           String                  @id @default(uuid())
+  tipo         TipoInventarioEstoque   @default(GERAL)
+  status       StatusInventarioEstoque @default(ABERTO)
+  descricao    String?
+  iniciadoEm   DateTime                @default(now())
+  finalizadoEm DateTime?
+  dispositivo  String?
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+
+  depositoId String?
+  deposito   DepositoEstoque? @relation(fields: [depositoId], references: [id])
+
+  usuarioId String?
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  itens InventarioEstoqueItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InventarioEstoqueItem {
+  id                String  @id @default(uuid())
+  inventarioId      String
+  produtoId         String
+  quantidadeSistema Float
+  quantidadeContada Float
+  divergencia       Float
+  observacoes       String?
+
+  inventario InventarioEstoque @relation(fields: [inventarioId], references: [id])
+  produto    Produto           @relation(fields: [produtoId], references: [id])
+}
+
+model ProdutoMidia {
+  id        String           @id @default(uuid())
+  produtoId String
+  tipo      TipoProdutoMidia @default(IMAGEM)
+  url       String
+  descricao String?
+  ordem     Int              @default(0)
+
+  produto Produto @relation(fields: [produtoId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model ProdutoKitItem {
+  id                  String @id @default(uuid())
+  kitProdutoId        String
+  componenteProdutoId String
+  quantidade          Float
+
+  kitProduto        Produto @relation("KitProduto", fields: [kitProdutoId], references: [id])
+  componenteProduto Produto @relation("ComponenteProduto", fields: [componenteProdutoId], references: [id])
+
+  @@unique([kitProdutoId, componenteProdutoId])
+}
+
+model ProdutoRecomendado {
+  id                   String                  @id @default(uuid())
+  produtoOrigemId      String
+  produtoRecomendadoId String
+  tipo                 TipoRecomendacaoProduto
+  prioridade           Int                     @default(0)
+  ativo                Boolean                 @default(true)
+  regra                Json?
+
+  produtoOrigem      Produto @relation("ProdutoOrigemRecomendacao", fields: [produtoOrigemId], references: [id])
+  produtoRecomendado Produto @relation("ProdutoDestinoRecomendacao", fields: [produtoRecomendadoId], references: [id])
+
+  @@unique([produtoOrigemId, produtoRecomendadoId, tipo])
+}
+
+model EstoqueAuditoria {
+  id         String               @id @default(uuid())
+  entidade   String
+  entidadeId String
+  acao       AcaoAuditoriaEstoque
+  antes      Json?
+  depois     Json?
+
+  usuarioId String?
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+}
+
+model ContaFinanceira {
+  id              String              @id @default(uuid())
+  nome            String
+  tipo            TipoContaFinanceira
+  banco           String?
+  agencia         String?
+  conta           String?
+  saldo           Float               @default(0)
+  saldoBloqueado  Float               @default(0)
+  saldoDisponivel Float               @default(0)
+  ativo           Boolean             @default(true)
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+
+  lancamentosFinanceiros LancamentoFinanceiro[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CategoriaFinanceira {
+  id    String                    @id @default(uuid())
+  nome  String
+  tipo  TipoLancamentoFinanceiro?
+  cor   String?
+  icone String?
+  ativo Boolean                   @default(true)
+
+  parentId String?
+  parent   CategoriaFinanceira?  @relation("CategoriaFinanceiraHierarquia", fields: [parentId], references: [id])
+  children CategoriaFinanceira[] @relation("CategoriaFinanceiraHierarquia")
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+
+  lancamentosFinanceiros LancamentoFinanceiro[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FormaPagamentoFinanceira {
+  id                   String                       @id @default(uuid())
+  nome                 String
+  tipo                 TipoFormaPagamentoFinanceira
+  taxaPercentual       Float                        @default(0)
+  taxaFixa             Float                        @default(0)
+  prazoRecebimentoDias Int                          @default(0)
+  permiteParcelamento  Boolean                      @default(false)
+  permiteAntecipacao   Boolean                      @default(false)
+  ativo                Boolean                      @default(true)
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+
+  lancamentosFinanceiros LancamentoFinanceiro[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LancamentoFinanceiro {
+  id               String                     @id @default(uuid())
+  descricao        String
+  tipo             TipoLancamentoFinanceiro
+  status           StatusLancamentoFinanceiro @default(PENDENTE)
+  valorBruto       Float
+  valorLiquido     Float
+  valorPago        Float                      @default(0)
+  competencia      DateTime
+  vencimento       DateTime
+  pagamento        DateTime?
+  origem           OrigemLancamentoFinanceiro @default(MANUAL)
+  origemReferencia String?
+  centroCusto      String?
+  observacoes      String?                    @db.Text
+  metadata         Json?
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+
+  categoriaId String?
+  categoria   CategoriaFinanceira? @relation(fields: [categoriaId], references: [id])
+
+  contaFinanceiraId String?
+  contaFinanceira   ContaFinanceira? @relation(fields: [contaFinanceiraId], references: [id])
+
+  formaPagamentoId String?
+  formaPagamento   FormaPagamentoFinanceira? @relation(fields: [formaPagamentoId], references: [id])
+
+  vendaId String?
+  venda   Venda?  @relation(fields: [vendaId], references: [id])
+
+  clienteId String?
+  cliente   Cliente? @relation(fields: [clienteId], references: [id])
+
+  fornecedorId String?
+  fornecedor   Fornecedor? @relation(fields: [fornecedorId], references: [id])
+
+  usuarioId String?
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  parentId String?
+  parent   LancamentoFinanceiro?  @relation("LancamentoFinanceiroParcelas", fields: [parentId], references: [id])
+  parcelas LancamentoFinanceiro[] @relation("LancamentoFinanceiroParcelas")
+
+  recorrenciaId      String?
+  conciliacoesCartao ConciliacaoCartao[]
+  auditorias         FinanceiroAuditoria[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status, vencimento])
+  @@index([origem, origemReferencia])
+  @@index([vendaId])
+}
+
+model ConciliacaoCartao {
+  id                String                      @id @default(uuid())
+  status            StatusConciliacaoCartao     @default(PENDENTE)
+  adquirente        String?
+  bandeira          String?
+  nsu               String?
+  authorizationCode String?
+  parcelas          Int                         @default(1)
+  valorVenda        Float
+  valorRecebido     Float
+  taxaAplicada      Float                       @default(0)
+  valorDiferenca    Float                       @default(0)
+  dataVenda         DateTime?
+  dataRecebimento   DateTime?
+  origemImportacao  OrigemImportacaoConciliacao @default(API)
+  alerta            String?
+  metadata          Json?
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+
+  lancamentoId String?
+  lancamento   LancamentoFinanceiro? @relation(fields: [lancamentoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status, dataRecebimento])
+  @@index([nsu, authorizationCode])
+}
+
+model FinanceiroAuditoria {
+  id         String                  @id @default(uuid())
+  entidade   String
+  entidadeId String
+  acao       AcaoAuditoriaFinanceira
+  antes      Json?
+  depois     Json?
+
+  usuarioId String?
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  lancamentoId String?
+  lancamento   LancamentoFinanceiro? @relation(fields: [lancamentoId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+}
+
+enum Role {
+  USER
+  VENDEDOR
+  CAIXA
+  ESTOQUISTA
+  GERENTE
+  ADMIN
+}
+
+enum TipoVenda {
+  PDV
+  PEDIDO
+  ORCAMENTO_CONVERTIDO
+  MARKETPLACE
+  ASSINATURA
+  SERVICO
+}
+
+enum StatusVenda {
+  AGUARDANDO_PAGAMENTO
+  PAGO
+  SEPARADO
+  FATURADO
+  ENVIADO
+  ENTREGUE
+  CANCELADO
+  ESTORNADO
+}
+
+enum OrigemVenda {
+  PDV
+  BALCAO
+  MERCADO_LIVRE
+  SHOPEE
+  AMAZON
+  MAGAZINE_LUIZA
+  BLING
+  API
+  MANUAL
+  OFFLINE
+}
+
+enum FormaRecebimentoVenda {
+  DINHEIRO
+  PIX
+  CREDITO
+  DEBITO
+  BOLETO
+  CREDIARIO
+  LINK_PAGAMENTO
+  CARTEIRA_DIGITAL
+  TRANSFERENCIA
+}
+
+enum StatusPagamentoVenda {
+  PENDENTE
+  AUTORIZADO
+  RECEBIDO
+  CONCILIADO
+  CANCELADO
+  ESTORNADO
+  INADIMPLENTE
+}
+
+enum StatusCaixa {
+  ABERTO
+  FECHADO
+  CONFERENCIA
+  CANCELADO
+}
+
+enum TipoMovimentoCaixa {
+  VENDA
+  SANGRIA
+  SUPRIMENTO
+  ESTORNO
+  RETIRADA
+  QUEBRA
+  SOBRA
+  DESPESA
+  TRANSFERENCIA
+}
+
+enum TipoListaPreco {
+  VAREJO
+  ATACADO
+  MARKETPLACE
+  DISTRIBUIDOR
+  PROMOCIONAL
+  CLIENTE
+}
+
+enum StatusPacote {
+  ATIVO
+  CONSUMIDO
+  VENCIDO
+  CANCELADO
+  RENOVADO
+}
+
+enum TipoAnexoVenda {
+  NOTA
+  ETIQUETA
+  COMPROVANTE
+  CUPOM
+  CONTRATO
+  OUTRO
+}
+
+enum StatusOrcamento {
+  RASCUNHO
+  ENVIADO
+  APROVADO
+  RECUSADO
+  CONVERTIDO
+  VENCIDO
+  CANCELADO
+}
+
+enum TipoProduto {
+  FISICO
+  SERVICO
+  DIGITAL
+  KIT
+}
+
+enum StatusSincronizacaoProduto {
+  PENDENTE
+  SINCRONIZADO
+  DIVERGENTE
+  ERRO
+  PAUSADO
+}
+
+enum TipoDepositoEstoque {
+  PROPRIO
+  FILIAL
+  TERCEIRIZADO
+  TRANSITO
+  MARKETPLACE
+}
+
+enum TipoMovimentacaoEstoque {
+  ENTRADA_COMPRA
+  ENTRADA_DEVOLUCAO
+  ENTRADA_PRODUCAO
+  SAIDA_VENDA
+  SAIDA_PERDA
+  SAIDA_CONSUMO_INTERNO
+  SAIDA_AVARIA
+  SAIDA_DEVOLUCAO_FORNECEDOR
+  RESERVA
+  LIBERACAO_RESERVA
+  TRANSFERENCIA
+  AJUSTE
+  INVENTARIO
+}
+
+enum StatusMovimentacaoEstoque {
+  PENDENTE
+  CONCLUIDA
+  CANCELADA
+  AGUARDANDO_APROVACAO
+}
+
+enum OrigemMovimentacaoEstoque {
+  MERCADO_LIVRE
+  SHOPEE
+  AMAZON
+  MAGAZINE_LUIZA
+  BLING
+  PDV
+  ERP
+  MANUAL
+  API
+  COMPRA
+  VENDA
+  INVENTARIO
+  WEBHOOK
+}
+
+enum StatusPedidoCompra {
+  SOLICITADO
+  APROVADO
+  COMPRADO
+  RECEBIDO_PARCIAL
+  RECEBIDO
+  CANCELADO
+}
+
+enum TipoInventarioEstoque {
+  GERAL
+  ROTATIVO
+  CICLICO
+}
+
+enum StatusInventarioEstoque {
+  ABERTO
+  EM_CONTAGEM
+  CONFERENCIA
+  FINALIZADO
+  CANCELADO
+}
+
+enum TipoProdutoMidia {
+  IMAGEM
+  VIDEO
+  DOCUMENTO
+}
+
+enum TipoRecomendacaoProduto {
+  CROSS_SELL
+  UP_SELL
+  REPOSICAO
+  SIMILAR
+}
+
+enum AcaoAuditoriaEstoque {
+  CRIACAO
+  EDICAO
+  EXCLUSAO
+  MOVIMENTACAO
+  RESERVA
+  LIBERACAO_RESERVA
+  INVENTARIO
+  COMPRA
+  SINCRONIZACAO
+}
+
+enum TipoLancamentoFinanceiro {
+  RECEITA
+  DESPESA
+  TRANSFERENCIA
+  AJUSTE
+  ESTORNO
+  TAXA
+  COMISSAO
+  IMPOSTO
+  JUROS
+  MULTA
+}
+
+enum StatusLancamentoFinanceiro {
+  PENDENTE
+  PAGO
+  PARCIAL
+  CANCELADO
+  VENCIDO
+  ESTORNADO
+  CONCILIADO
+}
+
+enum OrigemLancamentoFinanceiro {
+  MERCADO_LIVRE
+  SHOPEE
+  AMAZON
+  MAGAZINE_LUIZA
+  BLING
+  PDV
+  ERP
+  MANUAL
+  API
+  VENDA
+  GATEWAY
+  BANCO
+}
+
+enum TipoContaFinanceira {
+  BANCO
+  CAIXA
+  CARTEIRA
+  CARTAO
+  GATEWAY
+}
+
+enum TipoFormaPagamentoFinanceira {
+  DINHEIRO
+  PIX
+  BOLETO
+  CREDITO
+  DEBITO
+  CARTEIRA_DIGITAL
+  GATEWAY
+  CREDIARIO
+  VOUCHER
+}
+
+enum StatusConciliacaoCartao {
+  PENDENTE
+  CONCILIADO
+  DIVERGENTE
+  VENDA_NAO_RECEBIDA
+  RECEBIMENTO_SEM_VENDA
+  CHARGEBACK
+  CANCELADO
+}
+
+enum OrigemImportacaoConciliacao {
+  API
+  CNAB
+  OFX
+  CSV
+  WEBHOOK
+}
+
+enum AcaoAuditoriaFinanceira {
+  CRIACAO
+  EDICAO
+  EXCLUSAO
+  BAIXA
+  CONCILIACAO
+  CANCELAMENTO
+  ESTORNO
+}
