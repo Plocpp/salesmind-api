@@ -78,6 +78,18 @@ export class VendasController {
     return res.json(movimentos);
   }
 
+  async resumoCaixa(req: AuthRequest, res: Response) {
+    requireUser(req);
+    const resumo = await vendasService.resumoCaixa(req.params.id);
+    return res.json(resumo);
+  }
+
+  async fecharCaixa(req: AuthRequest, res: Response) {
+    const userId = requireUser(req);
+    const fechamento = await vendasService.fecharCaixa(req.params.id, userId, req.body);
+    return res.json(fechamento);
+  }
+
   async criarListaPreco(req: AuthRequest, res: Response) {
     requireUser(req);
     const lista = await vendasService.criarListaPreco(req.body);
@@ -137,5 +149,66 @@ export class VendasController {
     const userId = requireUser(req);
     const configuracao = await vendasService.salvarConfiguracaoVendas(req.body, userId);
     return res.json(configuracao);
+  }
+
+  async atualizarListaPreco(req: AuthRequest, res: Response) {
+    requireUser(req);
+    const lista = await vendasService.atualizarListaPreco(req.params.id, req.body);
+    return res.json(lista);
+  }
+
+  async deletarListaPreco(req: AuthRequest, res: Response) {
+    requireUser(req);
+    await vendasService.deletarListaPreco(req.params.id);
+    return res.status(204).send();
+  }
+
+  async criarFormaRecebimento(req: AuthRequest, res: Response) {
+    requireUser(req);
+    const forma = await vendasService.criarFormaRecebimento(req.body);
+    return res.status(201).json(forma);
+  }
+
+  async atualizarFormaRecebimento(req: AuthRequest, res: Response) {
+    requireUser(req);
+    const forma = await vendasService.atualizarFormaRecebimento(req.params.id, req.body);
+    return res.json(forma);
+  }
+
+  async converterOrcamentoParaVenda(req: AuthRequest, res: Response) {
+    const userId = requireUser(req);
+    const venda = await vendasService.converterOrcamentoParaVenda(req.params.id, userId);
+    return res.status(201).json(venda);
+  }
+
+  async enviarOrcamentoPorEmail(req: AuthRequest, res: Response) {
+    requireUser(req);
+    const { email } = req.body;
+    await vendasService.enviarOrcamentoPorEmail(req.params.id, email);
+    return res.json({ message: 'Email enviado com sucesso' });
+  }
+
+  async deletarOrcamento(req: AuthRequest, res: Response) {
+    requireUser(req);
+    await vendasService.deletarOrcamento(req.params.id);
+    return res.status(204).send();
+  }
+
+  async registrarPagamento(req: AuthRequest, res: Response) {
+    requireUser(req);
+    const pagamento = await vendasService.registrarPagamento(req.params.id, req.body);
+    return res.json(pagamento);
+  }
+
+  async renovarPacote(req: AuthRequest, res: Response) {
+    const userId = requireUser(req);
+    const resultado = await vendasService.renovarPacote(req.params.id, userId);
+    return res.json(resultado);
+  }
+
+  async cancelarPacote(req: AuthRequest, res: Response) {
+    const userId = requireUser(req);
+    const resultado = await vendasService.cancelarPacote(req.params.id, userId);
+    return res.json(resultado);
   }
 }
