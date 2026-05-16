@@ -97,7 +97,7 @@ interface Orcamento {
   titulo: string;
   total: number;
   validade?: string;
-  cliente?: { nome: string };
+  cliente?: { nome: string; email?: string };
   createdAt?: string;
 }
 
@@ -149,6 +149,28 @@ interface Demonstrativo {
   canais: Array<{ canal: string; quantidade: number; total: number }>;
 }
 
+interface ResumoFechamentoCaixa {
+  caixa: {
+    id: string;
+    status: string;
+    terminal?: string;
+    loja?: string;
+    turno?: string;
+    abertoEm?: string;
+    fechadoEm?: string;
+  };
+  totais: {
+    saldoInicial: number;
+    totalEntradas: number;
+    totalSaidas: number;
+    saldoCalculado: number;
+    saldoFinal: number;
+    diferenca: number;
+  };
+  resumoPorTipo: Record<string, { quantidade: number; total: number }>;
+  movimentos: Array<{ id?: string; tipo: string; valor: number; descricao?: string; createdAt?: string }>;
+}
+
 interface ConfiguracaoVendas {
   descontoMaximo: number;
   comissaoPadrao: number;
@@ -169,6 +191,59 @@ interface ItemCarrinho {
   quantidade: number;
   desconto: number;
 }
+
+type CaixaOperacao = 'abrir' | 'fechar' | 'sangria' | 'deposito' | 'retirada' | 'pagamento' | 'recebimento' | 'suprimento';
+
+const MOEDAS_BR = [0.05, 0.1, 0.25, 0.5, 1] as const;
+const NOTAS_BR = [2, 5, 10, 20, 50, 100, 200] as const;
+
+const criarContagemInicial = () => {
+  const entradas = [...MOEDAS_BR, ...NOTAS_BR].map((valor) => [String(valor), ''] as const);
+  return Object.fromEntries(entradas) as Record<string, string>;
+};
+
+const calcularTotalContagem = (contagem: Record<string, string>) => {
+  return Object.entries(contagem).reduce((soma, [valor, quantidade]) => {
+    const qtd = Number(quantidade || 0);
+    const unitario = Number(valor || 0);
+    return soma + unitario * qtd;
+  }, 0);
+};
+
+const formatarDenominacao = (valor: number) => {
+  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: valor < 2 ? 2 : 0 });
+};
+
+const defaultDetalhesOperacao = {
+  motivo: '',
+  origem: '',
+  destino: '',
+  categoria: '',
+  favorecido: '',
+  forma: 'DINHEIRO',
+  referencia: '',
+  autorizadoPor: '',
+  comprovante: '',
+};
+
+const parseApiError = (error: unknown, fallback: string) => {
+  if (!(error instanceof Error)) return fallback;
+
+  const raw = error.message || '';
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart));
+      if (typeof parsed?.error === 'string' && parsed.error) {
+        return parsed.error;
+      }
+    } catch {
+      return raw;
+    }
+  }
+
+  return raw || fallback;
+};
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const panel: React.CSSProperties = { background: '#fff', border: '1px solid #d9e2e1', borderRadius: 8, boxShadow: '0 8px 24px rgba(36,51,50,.05)' };
@@ -261,9 +336,29 @@ export default function Vendas() {
   
   const [caixaAberto, setCaixaAberto] = useState(false);
   const [saldoCaixa, setSaldoCaixa] = useState(0);
-  const [operacaoCaixa, setOperacaoCaixa] = useState<'abrir' | 'fechar' | 'sangria' | 'deposito' | 'retirada' | 'pagamento' | 'recebimento' | 'suprimento' | null>(null);
+  const [operacaoCaixa, setOperacaoCaixa] = useState<CaixaOperacao | null>(null);
   const [valorOperacao, setValorOperacao] = useState('');
   const [descricaoOperacao, setDescricaoOperacao] = useState('');
+  const [detalhesOperacao, setDetalhesOperacao] = useState({ ...defaultDetalhesOperacao });
+  const [contagemAbertura, setContagemAbertura] = useState<Record<string, string>>(() => criarContagemInicial());
+  const [contagemFechamento, setContagemFechamento] = useState<Record<string, string>>(() => criarContagemInicial());
+  const [contagemSuprimento, setContagemSuprimento] = useState<Record<string, string>>(() => criarContagemInicial());
+
+  // Estados para operações avançadas dos módulos
+  const [modalAberto, setModalAberto] = useState<string | null>(null);
+  const [filtroData, setFiltroData] = useState({ inicio: '', fim: '' });
+  const [filtroCliente, setFiltroCliente] = useState('');
+  const [filtroStatus, setFiltroStatus] = useState('TODOS');
+  const [filtroForma, setFiltroForma] = useState('TODAS');
+  const [buscaOrcamento, setBuscaOrcamento] = useState('');
+  const [buscaLista, setBuscaLista] = useState('');
+  const [filtroClassificacao, setFiltroClassificacao] = useState('TODOS');
+  const [operacaoModal, setOperacaoModal] = useState<any>(null);
+  const [novaLista, setNovaLista] = useState({ nome: '', tipo: 'VAREJO', margemMinima: 10, markupPadrao: 30 });
+  const [novaForma, setNovaForma] = useState({ nome: '', tipo: 'PIX', taxaPercentual: 0, taxaFixa: 0, prazoRecebimentoDias: 0, permiteParcelamento: false, permiteAntecipacao: false });
+  const [novoOrcamento, setNovoOrcamento] = useState({ titulo: '', clienteId: '', itens: [] as any[] });
+  const [exportando, setExportando] = useState(false);
+  const [resumoFechamento, setResumoFechamento] = useState<ResumoFechamentoCaixa | null>(null);
 
   const token = localStorage.getItem('token');
 
@@ -330,6 +425,29 @@ export default function Vendas() {
     carregarTudo();
   }, []);
 
+  useEffect(() => {
+    const caixaEmUso = caixas.find((caixa) => caixa.status?.toUpperCase() === 'ABERTO') || caixas[0] || null;
+    if (!caixaEmUso) {
+      setCaixaAberto(false);
+      setSaldoCaixa(0);
+      return;
+    }
+
+    const movimentosCaixaAtual = movimentos.filter((movimento) => (
+      movimento.caixaId === caixaEmUso.id || movimento.caixa?.id === caixaEmUso.id
+    ));
+
+    const saldoMovimentos = movimentosCaixaAtual.reduce((total, movimento) => {
+      const valor = Number(movimento.valor || 0);
+      const tipo = (movimento.tipo || '').toUpperCase();
+      if (['SANGRIA', 'RETIRADA', 'DESPESA'].includes(tipo)) return total - valor;
+      return total + valor;
+    }, 0);
+
+    setCaixaAberto(caixaEmUso.status?.toUpperCase() === 'ABERTO');
+    setSaldoCaixa(Number(caixaEmUso.saldoFinal ?? caixaEmUso.saldoInicial ?? 0) + saldoMovimentos);
+  }, [caixas, movimentos]);
+
   const produtosFiltrados = useMemo(() => {
     const termo = buscaProduto.toLowerCase();
     return produtos.filter((produto) => (
@@ -381,7 +499,23 @@ export default function Vendas() {
 
   const caixaAtual = useMemo(() => caixas.find((caixa) => caixa.status?.toUpperCase() === 'ABERTO') || caixas[0] || null, [caixas]);
 
-  const abrirCaixa = async () => {
+  const totalAbertura = useMemo(() => calcularTotalContagem(contagemAbertura), [contagemAbertura]);
+  const totalFechamento = useMemo(() => calcularTotalContagem(contagemFechamento), [contagemFechamento]);
+  const totalSuprimento = useMemo(() => calcularTotalContagem(contagemSuprimento), [contagemSuprimento]);
+
+  const temContagem = (contagem: Record<string, string>) => Object.values(contagem).some((valor) => Number(valor || 0) > 0);
+
+  const limparModalCaixa = () => {
+    setOperacaoCaixa(null);
+    setValorOperacao('');
+    setDescricaoOperacao('');
+    setDetalhesOperacao({ ...defaultDetalhesOperacao });
+    setContagemAbertura(criarContagemInicial());
+    setContagemFechamento(criarContagemInicial());
+    setContagemSuprimento(criarContagemInicial());
+  };
+
+  const abrirCaixa = async (saldoInicial: number) => {
     if (caixaAberto) return;
 
     try {
@@ -389,42 +523,133 @@ export default function Vendas() {
         terminal: 'PDV-01',
         loja: 'Loja Principal',
         turno: 'COMERCIAL',
-        saldoInicial: Number(valorOperacao || 0),
+        saldoInicial,
+        metadata: {
+          observacao: descricaoOperacao || undefined,
+          contagem: contagemAbertura,
+          audit: {
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+            registradoEm: new Date().toISOString(),
+          },
+        },
       }, token);
 
       setCaixaAberto(true);
       setSaldoCaixa(Number(caixa?.saldoInicial || 0));
-      setValorOperacao('');
+      limparModalCaixa();
       await carregarTudo();
     } catch (error) {
       console.error(error);
-      alert('Nao foi possivel abrir o caixa.');
+      alert(parseApiError(error, 'Nao foi possivel abrir o caixa.'));
     }
   };
 
-  const mapTipoMovimento = (operacao: NonNullable<typeof operacaoCaixa>) => {
+  const mapTipoMovimento = (operacao: CaixaOperacao) => {
     if (operacao === 'sangria') return 'SANGRIA';
     if (operacao === 'retirada') return 'RETIRADA';
     if (operacao === 'pagamento') return 'DESPESA';
-    if (operacao === 'recebimento') return 'SOBRA';
+    if (operacao === 'deposito') return 'TRANSFERENCIA';
+    if (operacao === 'recebimento') return 'TRANSFERENCIA';
     return 'SUPRIMENTO';
+  };
+
+  const exigeAutorizacao = (operacao: CaixaOperacao, valor: number) => (
+    ['sangria', 'retirada', 'pagamento'].includes(operacao) && valor >= 1000
+  );
+
+  const validarOperacao = (operacao: CaixaOperacao, valor: number) => {
+    if (['sangria', 'deposito', 'retirada', 'pagamento', 'recebimento'].includes(operacao) && valor <= 0) {
+      return 'Informe um valor valido para a operacao.';
+    }
+
+    if (operacao === 'sangria') {
+      if (!detalhesOperacao.motivo.trim()) return 'Informe o motivo da sangria.';
+      if (!detalhesOperacao.destino.trim()) return 'Informe o destino da sangria (cofre, tesouraria ou banco).';
+    }
+
+    if (operacao === 'deposito' && !detalhesOperacao.origem.trim()) {
+      return 'Informe a origem do deposito.';
+    }
+
+    if (operacao === 'retirada') {
+      if (!detalhesOperacao.motivo.trim()) return 'Informe o motivo da retirada.';
+      if (!detalhesOperacao.categoria.trim()) return 'Informe a categoria financeira da retirada.';
+      if (!detalhesOperacao.favorecido.trim()) return 'Informe o favorecido da retirada.';
+    }
+
+    if (operacao === 'pagamento') {
+      if (!detalhesOperacao.categoria.trim()) return 'Informe a categoria do pagamento.';
+      if (!detalhesOperacao.favorecido.trim()) return 'Informe o favorecido do pagamento.';
+      if (!detalhesOperacao.forma.trim()) return 'Informe a forma de pagamento.';
+    }
+
+    if (operacao === 'recebimento') {
+      if (!detalhesOperacao.forma.trim()) return 'Informe a forma de recebimento.';
+      if (!detalhesOperacao.referencia.trim()) return 'Informe a referencia do recebimento (cliente/parcela/documento).';
+    }
+
+    if (operacao === 'suprimento') {
+      if (!detalhesOperacao.origem.trim()) return 'Informe a origem do suprimento.';
+      if (!temContagem(contagemSuprimento)) return 'Informe a contagem de moedas/notas para o suprimento.';
+    }
+
+    if (exigeAutorizacao(operacao, valor) && !detalhesOperacao.autorizadoPor.trim()) {
+      return 'Operacao acima do limite exige aprovacao. Informe quem autorizou.';
+    }
+
+    return null;
   };
 
   const confirmarOperacaoCaixa = async () => {
     if (!operacaoCaixa) return;
 
-    if (operacaoCaixa === 'fechar') {
-      setCaixaAberto(false);
-      setOperacaoCaixa(null);
-      setValorOperacao('');
-      setDescricaoOperacao('');
-      alert(`Caixa fechado localmente. Saldo final: ${money(saldoCaixa)}`);
+    if (operacaoCaixa === 'abrir') {
+      if (!temContagem(contagemAbertura)) {
+        alert('Informe a contagem inicial de moedas e notas para abrir o caixa.');
+        return;
+      }
+
+      await abrirCaixa(totalAbertura);
       return;
     }
 
-    const valor = Number(valorOperacao);
-    if (!valor || valor <= 0) {
-      alert('Informe um valor valido para a operacao.');
+    if (operacaoCaixa === 'fechar') {
+      if (!caixaAtual?.id) {
+        alert('Nenhum caixa aberto para fechamento.');
+        return;
+      }
+
+      if (!temContagem(contagemFechamento)) {
+        alert('Informe a contagem final completa para fechar o caixa.');
+        return;
+      }
+
+      try {
+        const payload = {
+          observacao: descricaoOperacao || undefined,
+          saldoInformado: Number(totalFechamento.toFixed(2)),
+          metadata: {
+            contagemFinal: contagemFechamento,
+            autorizadoPor: detalhesOperacao.autorizadoPor || undefined,
+          },
+        };
+        const fechamento = await api.post(`/vendas/caixas/${caixaAtual.id}/fechar`, payload, token);
+        setResumoFechamento(fechamento?.resumo || null);
+        setModalAberto('resumo-fechamento');
+        setCaixaAberto(false);
+        limparModalCaixa();
+        await carregarTudo();
+      } catch (error) {
+        console.error(error);
+        alert(parseApiError(error, 'Nao foi possivel fechar o caixa.'));
+      }
+      return;
+    }
+
+    const valor = operacaoCaixa === 'suprimento' ? Number(totalSuprimento.toFixed(2)) : Number(valorOperacao);
+    const erroValidacao = validarOperacao(operacaoCaixa, valor);
+    if (erroValidacao) {
+      alert(erroValidacao);
       return;
     }
 
@@ -440,24 +665,116 @@ export default function Vendas() {
         tipo,
         valor,
         terminal: caixaAtual.terminal || 'PDV-01',
-        descricao: descricaoOperacao || `${operacaoCaixa} via PDV`,
+        descricao: descricaoOperacao || detalhesOperacao.motivo || `${operacaoCaixa} via PDV`,
+        metadata: {
+          operacao: operacaoCaixa,
+          origem: detalhesOperacao.origem || undefined,
+          destino: detalhesOperacao.destino || undefined,
+          categoria: detalhesOperacao.categoria || undefined,
+          favorecido: detalhesOperacao.favorecido || undefined,
+          forma: detalhesOperacao.forma || undefined,
+          referencia: detalhesOperacao.referencia || undefined,
+          autorizadoPor: detalhesOperacao.autorizadoPor || undefined,
+          comprovante: detalhesOperacao.comprovante || undefined,
+          contagem: operacaoCaixa === 'suprimento' ? contagemSuprimento : undefined,
+          audit: {
+            registradoEm: new Date().toISOString(),
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+          },
+        },
       }, token);
 
       const somaOperacao = ['deposito', 'recebimento', 'suprimento'].includes(operacaoCaixa);
       setSaldoCaixa((current) => (somaOperacao ? current + valor : current - valor));
-      setValorOperacao('');
-      setDescricaoOperacao('');
-      setOperacaoCaixa(null);
+      limparModalCaixa();
       await carregarTudo();
     } catch (error) {
       console.error(error);
-      alert('Nao foi possivel concluir a operacao de caixa.');
+      alert(parseApiError(error, 'Nao foi possivel concluir a operacao de caixa.'));
     }
+  };
+
+  const atualizarContagem = (
+    setter: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+    chave: number,
+    valor: string,
+  ) => {
+    const somenteDigitos = valor.replace(/[^0-9]/g, '');
+    setter((atual) => ({ ...atual, [String(chave)]: somenteDigitos }));
+  };
+
+  const renderContagemDinheiro = (
+    contagem: Record<string, string>,
+    setter: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+    total: number,
+    titulo: string,
+  ) => (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <div style={{ fontSize: 11, color: '#647674', fontWeight: 700 }}>{titulo}</div>
+      <div style={{ maxHeight: 190, overflow: 'auto', border: '1px solid #d9e2e1', borderRadius: 6, padding: 8, background: '#f8faf9' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#243332', marginBottom: 6 }}>Moedas</div>
+        {MOEDAS_BR.map((valor) => {
+          const quantidade = Number(contagem[String(valor)] || 0);
+          const subtotal = quantidade * valor;
+          return (
+            <div key={`moeda-${valor}`} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 90px', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 11 }}>{formatarDenominacao(valor)}</span>
+              <input
+                type="text"
+                value={contagem[String(valor)] || ''}
+                onChange={(event) => atualizarContagem(setter, valor, event.target.value)}
+                style={{ ...input, height: 30, fontSize: 11 }}
+                placeholder="Qtd"
+              />
+              <strong style={{ fontSize: 11, textAlign: 'right', color: '#2f6f73' }}>{money(subtotal)}</strong>
+            </div>
+          );
+        })}
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#243332', margin: '8px 0 6px' }}>Notas</div>
+        {NOTAS_BR.map((valor) => {
+          const quantidade = Number(contagem[String(valor)] || 0);
+          const subtotal = quantidade * valor;
+          return (
+            <div key={`nota-${valor}`} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 90px', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 11 }}>{formatarDenominacao(valor)}</span>
+              <input
+                type="text"
+                value={contagem[String(valor)] || ''}
+                onChange={(event) => atualizarContagem(setter, valor, event.target.value)}
+                style={{ ...input, height: 30, fontSize: 11 }}
+                placeholder="Qtd"
+              />
+              <strong style={{ fontSize: 11, textAlign: 'right', color: '#2f6f73' }}>{money(subtotal)}</strong>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eef4f4', border: '1px solid #d9e2e1', borderRadius: 6, padding: '8px 10px' }}>
+        <span style={{ fontSize: 11, color: '#647674' }}>Total contado</span>
+        <strong style={{ color: '#2f6f73' }}>{money(total)}</strong>
+      </div>
+    </div>
+  );
+
+  const tituloOperacaoCaixa = (operacao: CaixaOperacao) => {
+    if (operacao === 'abrir') return '🔓 Abrir Caixa';
+    if (operacao === 'sangria') return '🩸 Sangria';
+    if (operacao === 'deposito') return '💰 Deposito';
+    if (operacao === 'retirada') return '💸 Retirada';
+    if (operacao === 'pagamento') return '💳 Pagamento';
+    if (operacao === 'recebimento') return '✓ Recebimento';
+    if (operacao === 'suprimento') return '📦 Suprimento';
+    return '🔒 Fechamento de Caixa';
   };
 
   const finalizarVenda = async () => {
     if (carrinho.length === 0) {
       alert('Adicione ao menos um item no carrinho.');
+      return;
+    }
+
+    if (!caixaAberto) {
+      alert('Abra o caixa antes de finalizar a venda.');
       return;
     }
 
@@ -500,6 +817,263 @@ export default function Vendas() {
     } finally {
       setSavingConfig(false);
     }
+  };
+
+  // Funções para operações avançadas
+  const exportarDados = async (formato: 'csv' | 'pdf') => {
+    setExportando(true);
+    try {
+      const dados = active === 'minhas-vendas' ? vendas : 
+                    active === 'movimentos-caixa' ? movimentos : 
+                    active === 'ranking-clientes' ? ranking : 
+                    active === 'modelo-demonstrativo' ? [demonstrativo] : [];
+      
+      if (formato === 'csv') {
+        const csv = convertToCSV(dados);
+        downloadFile(csv, `${active}.csv`, 'text/csv');
+      } else if (formato === 'pdf') {
+        const html = gerarRelatorioHTML();
+        downloadFile(html, `${active}.html`, 'text/html');
+        alert(`Relatório exportado como HTML. Abra no navegador e pressione Ctrl+P para salvar como PDF.`);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao exportar dados.');
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  const gerarRelatorioHTML = () => {
+    const titulo = active === 'modelo-demonstrativo' ? 'Demonstrativo de Vendas' :
+                   active === 'ranking-clientes' ? 'Ranking de Clientes' :
+                   active === 'minhas-vendas' ? 'Minhas Vendas' :
+                   active === 'movimentos-caixa' ? 'Movimentos de Caixa' : 'Relatório';
+
+    const tdStyle = 'padding:8px; border:1px solid #ddd;';
+    let linhasTabela = '';
+    
+    if (active === 'modelo-demonstrativo' && demonstrativo) {
+      linhasTabela = `
+        <tr><td style="${tdStyle}">Receita</td><td style="${tdStyle}; text-align:right;">${money(demonstrativo.receita)}</td></tr>
+        <tr><td style="${tdStyle}">Lucro</td><td style="${tdStyle}; text-align:right;">${money(demonstrativo.lucro)}</td></tr>
+        <tr><td style="${tdStyle}">Margem</td><td style="${tdStyle}; text-align:right;">${demonstrativo.margem.toFixed(2)}%</td></tr>
+        <tr><td style="${tdStyle}">Descontos</td><td style="${tdStyle}; text-align:right;">${money(demonstrativo.descontoTotal)}</td></tr>
+        <tr><td style="${tdStyle}">Frete</td><td style="${tdStyle}; text-align:right;">${money(demonstrativo.freteTotal)}</td></tr>
+      `;
+    }
+
+    return `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>${titulo}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+          h1 { color: #2f6f73; border-bottom: 2px solid #2f6f73; padding-bottom: 10px; }
+          p { color: #666; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th { background-color: #2f6f73; color: white; padding: 10px; text-align: left; }
+          td { padding: 8px; border: 1px solid #ddd; }
+          tr:nth-child(even) { background-color: #f9f9f9; }
+          .footer { margin-top: 40px; padding-top: 10px; border-top: 1px solid #ddd; color: #999; font-size: 12px; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <h1>${titulo}</h1>
+        <p>Gerado em ${new Date().toLocaleString('pt-BR')}</p>
+        ${filtroData.inicio || filtroData.fim ? `<p>Período: ${filtroData.inicio || 'início'} a ${filtroData.fim || 'hoje'}</p>` : ''}
+        <table>
+          <thead>
+            <tr><th>Descrição</th><th>Valor</th></tr>
+          </thead>
+          <tbody>
+            ${linhasTabela}
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>Relatório do Sistema de Vendas - SalesMind</p>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
+  const convertToCSV = (data: any[]) => {
+    if (!data.length) return '';
+    const keys = Object.keys(data[0]);
+    const headers = keys.join(',');
+    const rows = data.map(row => keys.map(key => JSON.stringify(row[key])).join(','));
+    return [headers, ...rows].join('\n');
+  };
+
+  const downloadFile = (content: string, filename: string, type: string) => {
+    const element = document.createElement('a');
+    element.setAttribute('href', `data:${type};charset=utf-8,${encodeURIComponent(content)}`);
+    element.setAttribute('download', filename);
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  const criarListaPreco = async () => {
+    if (!novaLista.nome) {
+      alert('Informe o nome da lista de preço');
+      return;
+    }
+    try {
+      await api.post('/vendas/listas-preco', novaLista, token);
+      setNovaLista({ nome: '', tipo: 'VAREJO', margemMinima: 10, markupPadrao: 30 });
+      setModalAberto(null);
+      await carregarTudo();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao criar lista de preço');
+    }
+  };
+
+  const atualizarListaPreco = async (id: string, dados: any) => {
+    try {
+      await api.put(`/vendas/listas-preco/${id}`, dados, token);
+      setModalAberto(null);
+      await carregarTudo();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao atualizar lista de preço');
+    }
+  };
+
+  const deletarListaPreco = async (id: string) => {
+    if (!window.confirm('Tem certeza que deseja deletar esta lista de preço?')) return;
+    try {
+      await api.delete(`/vendas/listas-preco/${id}`, token);
+      await carregarTudo();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao deletar lista de preço');
+    }
+  };
+
+  const criarFormaRecebimento = async () => {
+    if (!novaForma.nome) {
+      alert('Informe o nome da forma de recebimento');
+      return;
+    }
+    try {
+      await api.post('/vendas/formas-recebimento', novaForma, token);
+      setNovaForma({ nome: '', tipo: 'PIX', taxaPercentual: 0, taxaFixa: 0, prazoRecebimentoDias: 0, permiteParcelamento: false, permiteAntecipacao: false });
+      setModalAberto(null);
+      await carregarTudo();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao criar forma de recebimento');
+    }
+  };
+
+  const atualizarFormaRecebimento = async (id: string, dados: any) => {
+    try {
+      await api.put(`/vendas/formas-recebimento/${id}`, dados, token);
+      setModalAberto(null);
+      await carregarTudo();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao atualizar forma de recebimento');
+    }
+  };
+
+  const criarOrcamento = async () => {
+    if (!novoOrcamento.titulo) {
+      alert('Informe o título do orçamento');
+      return;
+    }
+    try {
+      await api.post('/vendas/orcamentos', novoOrcamento, token);
+      setNovoOrcamento({ titulo: '', clienteId: '', itens: [] });
+      setModalAberto(null);
+      await carregarTudo();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao criar orçamento');
+    }
+  };
+
+  const converterOrcamentoParaVenda = async (id: string) => {
+    try {
+      await api.post(`/vendas/orcamentos/${id}/converter`, {}, token);
+      alert('Orçamento convertido em venda com sucesso');
+      await carregarTudo();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao converter orçamento');
+    }
+  };
+
+  const enviarOrcamentoPorEmail = async (id: string, email: string) => {
+    try {
+      await api.post(`/vendas/orcamentos/${id}/enviar-email`, { email }, token);
+      alert('Orçamento enviado por email');
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao enviar orçamento por email');
+    }
+  };
+
+  const registrarPagamento = async (recebimentoId: string, valor: number) => {
+    try {
+      await api.post(`/vendas/recebimentos/${recebimentoId}/pagamento`, { valor }, token);
+      alert('Pagamento registrado com sucesso');
+      await carregarTudo();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao registrar pagamento');
+    }
+  };
+
+  const renovarPacote = async (vendaId: string) => {
+    try {
+      await api.post(`/vendas/pacotes/${vendaId}/renovar`, {}, token);
+      alert('Pacote renovado com sucesso');
+      await carregarTudo();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao renovar pacote');
+    }
+  };
+
+  const cancelarPacote = async (vendaId: string) => {
+    if (!window.confirm('Tem certeza que deseja cancelar este pacote?')) return;
+    try {
+      await api.post(`/vendas/pacotes/${vendaId}/cancelar`, {}, token);
+      alert('Pacote cancelado com sucesso');
+      await carregarTudo();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao cancelar pacote');
+    }
+  };
+
+  const filtrarPorData = (items: any[], dataField: string) => {
+    if (!filtroData.inicio && !filtroData.fim) return items;
+    return items.filter(item => {
+      const data = new Date(item[dataField]);
+      const inicio = filtroData.inicio ? new Date(filtroData.inicio) : new Date('1900-01-01');
+      const fim = filtroData.fim ? new Date(filtroData.fim) : new Date('2100-12-31');
+      return data >= inicio && data <= fim;
+    });
+  };
+
+  const filtrarPorCliente = (items: any[]) => {
+    if (!filtroCliente) return items;
+    return items.filter(item => 
+      (item.cliente?.nome || item.cliente || '').toLowerCase().includes(filtroCliente.toLowerCase())
+    );
+  };
+
+  const filtrarPorStatus = (items: any[]) => {
+    if (filtroStatus === 'TODOS') return items;
+    return items.filter(item => (item.status || '').toUpperCase() === filtroStatus);
   };
 
   const renderModule = () => {
@@ -653,9 +1227,9 @@ export default function Vendas() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gap: 5, gridTemplateColumns: 'repeat(2, 1fr)', autoRows: 'max-content' }}>
+            <div style={{ display: 'grid', gap: 5, gridTemplateColumns: 'repeat(2, 1fr)', gridAutoRows: 'max-content' }}>
               <button 
-                onClick={abrirCaixa}
+                onClick={() => setOperacaoCaixa('abrir')}
                 style={{...buttonPrimary, fontSize: 10, padding: '7px 4px', height: 'auto', background: caixaAberto ? '#999' : '#2f6f73', opacity: caixaAberto ? 0.6 : 1}} 
                 disabled={caixaAberto}
               >
@@ -664,36 +1238,42 @@ export default function Vendas() {
               <button 
                 onClick={() => setOperacaoCaixa('sangria')} 
                 style={{...buttonSecondary, fontSize: 10, padding: '7px 4px', height: 'auto'}} 
+                disabled={!caixaAberto}
               >
                 Sangria
               </button>
               <button 
                 onClick={() => setOperacaoCaixa('deposito')} 
                 style={{...buttonSecondary, fontSize: 10, padding: '7px 4px', height: 'auto'}} 
+                disabled={!caixaAberto}
               >
                 Depósito
               </button>
               <button 
                 onClick={() => setOperacaoCaixa('retirada')} 
                 style={{...buttonSecondary, fontSize: 10, padding: '7px 4px', height: 'auto'}} 
+                disabled={!caixaAberto}
               >
                 Retirada
               </button>
               <button 
                 onClick={() => setOperacaoCaixa('recebimento')} 
                 style={{...buttonSecondary, fontSize: 10, padding: '7px 4px', height: 'auto'}} 
+                disabled={!caixaAberto}
               >
                 Recebimento
               </button>
               <button 
                 onClick={() => setOperacaoCaixa('pagamento')} 
                 style={{...buttonSecondary, fontSize: 10, padding: '7px 4px', height: 'auto'}} 
+                disabled={!caixaAberto}
               >
                 Pagamento
               </button>
               <button 
                 onClick={() => setOperacaoCaixa('suprimento')} 
                 style={{...buttonSecondary, fontSize: 10, padding: '7px 4px', height: 'auto'}} 
+                disabled={!caixaAberto}
               >
                 Suprimento
               </button>
@@ -708,49 +1288,163 @@ export default function Vendas() {
 
             {/* Modal de Operação */}
             {operacaoCaixa && (
-              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 1001 }} onClick={() => setOperacaoCaixa(null)}>
-                <div style={{...panel, padding: 18, width: 300, borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
-                  <h3 style={{ margin: '0 0 12px', fontSize: 13 }}>
-                    {operacaoCaixa === 'sangria' && '🩸 Sangria'}
-                    {operacaoCaixa === 'deposito' && '💰 Depósito'}
-                    {operacaoCaixa === 'retirada' && '💸 Retirada'}
-                    {operacaoCaixa === 'pagamento' && '💳 Pagamento'}
-                    {operacaoCaixa === 'recebimento' && '✓ Recebimento'}
-                    {operacaoCaixa === 'suprimento' && '📦 Suprimento'}
-                    {operacaoCaixa === 'fechar' && '🔒 Fechamento de Caixa'}
-                  </h3>
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 1001 }} onClick={limparModalCaixa}>
+                <div style={{...panel, padding: 18, width: 'min(420px, 96vw)', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.3)', maxHeight: '90vh', overflow: 'auto'}} onClick={e => e.stopPropagation()}>
+                  <h3 style={{ margin: '0 0 12px', fontSize: 13 }}>{tituloOperacaoCaixa(operacaoCaixa)}</h3>
                   <div style={{ display: 'grid', gap: 10 }}>
-                    <div>
-                      <label style={{...label, fontSize: 11, marginBottom: 5}}>Valor (R$)</label>
-                      <input 
-                        type="number" 
-                        value={valorOperacao} 
-                        onChange={(e) => setValorOperacao(e.target.value)} 
-                        placeholder="0.00" 
-                        style={{...input, height: 36, fontSize: 12}}
-                        autoFocus
-                      />
-                    </div>
-                    {operacaoCaixa !== 'fechar' && (
+                    {!['abrir', 'fechar', 'suprimento'].includes(operacaoCaixa) && (
                       <div>
-                        <label style={{...label, fontSize: 11, marginBottom: 5}}>Observações</label>
-                        <textarea 
-                          value={descricaoOperacao} 
-                          onChange={(e) => setDescricaoOperacao(e.target.value)} 
-                          placeholder="Ex: Impressora quebrou, cliente João Silva, etc" 
-                          style={{...input, minHeight: 70, fontFamily: 'inherit', resize: 'none', fontSize: 11}}
+                        <label style={{...label, fontSize: 11, marginBottom: 5}}>Valor (R$)</label>
+                        <input
+                          type="number"
+                          value={valorOperacao}
+                          onChange={(e) => setValorOperacao(e.target.value)}
+                          placeholder="0.00"
+                          style={{...input, height: 36, fontSize: 12}}
+                          autoFocus
                         />
                       </div>
                     )}
+
+                    {operacaoCaixa === 'abrir' && renderContagemDinheiro(contagemAbertura, setContagemAbertura, totalAbertura, 'Contagem inicial (fundo de caixa)')}
+                    {operacaoCaixa === 'fechar' && renderContagemDinheiro(contagemFechamento, setContagemFechamento, totalFechamento, 'Contagem final para fechamento')}
+                    {operacaoCaixa === 'suprimento' && renderContagemDinheiro(contagemSuprimento, setContagemSuprimento, totalSuprimento, 'Contagem de troco recebido')}
+
+                    {operacaoCaixa === 'sangria' && (
+                      <>
+                        <div>
+                          <label style={{...label, fontSize: 11, marginBottom: 5}}>Motivo</label>
+                          <input type="text" value={detalhesOperacao.motivo} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, motivo: e.target.value }))} style={{...input, height: 34, fontSize: 12}} placeholder="Ex: excesso de numerario" />
+                        </div>
+                        <div>
+                          <label style={{...label, fontSize: 11, marginBottom: 5}}>Destino</label>
+                          <select value={detalhesOperacao.destino} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, destino: e.target.value }))} style={{...input, height: 34, fontSize: 12}}>
+                            <option value="">Selecione</option>
+                            <option value="COFRE">Cofre</option>
+                            <option value="TESOURARIA">Tesouraria</option>
+                            <option value="BANCO">Banco</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
+
+                    {operacaoCaixa === 'deposito' && (
+                      <div>
+                        <label style={{...label, fontSize: 11, marginBottom: 5}}>Origem</label>
+                        <select value={detalhesOperacao.origem} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, origem: e.target.value }))} style={{...input, height: 34, fontSize: 12}}>
+                          <option value="">Selecione</option>
+                          <option value="TESOURARIA">Tesouraria</option>
+                          <option value="COFRE">Cofre</option>
+                          <option value="BANCO">Banco</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {operacaoCaixa === 'retirada' && (
+                      <>
+                        <div>
+                          <label style={{...label, fontSize: 11, marginBottom: 5}}>Motivo</label>
+                          <input type="text" value={detalhesOperacao.motivo} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, motivo: e.target.value }))} style={{...input, height: 34, fontSize: 12}} placeholder="Ex: compra emergencial" />
+                        </div>
+                        <div>
+                          <label style={{...label, fontSize: 11, marginBottom: 5}}>Categoria</label>
+                          <input type="text" value={detalhesOperacao.categoria} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, categoria: e.target.value }))} style={{...input, height: 34, fontSize: 12}} placeholder="Ex: despesa operacional" />
+                        </div>
+                        <div>
+                          <label style={{...label, fontSize: 11, marginBottom: 5}}>Favorecido</label>
+                          <input type="text" value={detalhesOperacao.favorecido} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, favorecido: e.target.value }))} style={{...input, height: 34, fontSize: 12}} placeholder="Ex: fornecedor / motoboy" />
+                        </div>
+                      </>
+                    )}
+
+                    {operacaoCaixa === 'recebimento' && (
+                      <>
+                        <div>
+                          <label style={{...label, fontSize: 11, marginBottom: 5}}>Forma</label>
+                          <select value={detalhesOperacao.forma} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, forma: e.target.value }))} style={{...input, height: 34, fontSize: 12}}>
+                            <option value="DINHEIRO">Dinheiro</option>
+                            <option value="PIX">PIX</option>
+                            <option value="DEBITO">Debito</option>
+                            <option value="CREDITO">Credito</option>
+                            <option value="TRANSFERENCIA">Transferencia</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{...label, fontSize: 11, marginBottom: 5}}>Referencia</label>
+                          <input type="text" value={detalhesOperacao.referencia} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, referencia: e.target.value }))} style={{...input, height: 34, fontSize: 12}} placeholder="Ex: cliente, parcela, documento" />
+                        </div>
+                      </>
+                    )}
+
+                    {operacaoCaixa === 'pagamento' && (
+                      <>
+                        <div>
+                          <label style={{...label, fontSize: 11, marginBottom: 5}}>Categoria</label>
+                          <input type="text" value={detalhesOperacao.categoria} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, categoria: e.target.value }))} style={{...input, height: 34, fontSize: 12}} placeholder="Ex: fornecedor / frete / despesa" />
+                        </div>
+                        <div>
+                          <label style={{...label, fontSize: 11, marginBottom: 5}}>Favorecido</label>
+                          <input type="text" value={detalhesOperacao.favorecido} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, favorecido: e.target.value }))} style={{...input, height: 34, fontSize: 12}} placeholder="Nome do recebedor" />
+                        </div>
+                        <div>
+                          <label style={{...label, fontSize: 11, marginBottom: 5}}>Forma</label>
+                          <select value={detalhesOperacao.forma} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, forma: e.target.value }))} style={{...input, height: 34, fontSize: 12}}>
+                            <option value="DINHEIRO">Dinheiro</option>
+                            <option value="PIX">PIX</option>
+                            <option value="TRANSFERENCIA">Transferencia</option>
+                            <option value="DEBITO">Debito</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
+
+                    {operacaoCaixa === 'suprimento' && (
+                      <div>
+                        <label style={{...label, fontSize: 11, marginBottom: 5}}>Origem</label>
+                        <select value={detalhesOperacao.origem} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, origem: e.target.value }))} style={{...input, height: 34, fontSize: 12}}>
+                          <option value="">Selecione</option>
+                          <option value="TESOURARIA">Tesouraria</option>
+                          <option value="COFRE">Cofre</option>
+                          <option value="BANCO">Banco</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {['sangria', 'retirada', 'pagamento', 'fechar'].includes(operacaoCaixa) && (
+                      <div>
+                        <label style={{...label, fontSize: 11, marginBottom: 5}}>Autorizado por (quando aplicavel)</label>
+                        <input type="text" value={detalhesOperacao.autorizadoPor} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, autorizadoPor: e.target.value }))} style={{...input, height: 34, fontSize: 12}} placeholder="Supervisor/Gerente" />
+                      </div>
+                    )}
+
+                    {['retirada', 'pagamento'].includes(operacaoCaixa) && (
+                      <div>
+                        <label style={{...label, fontSize: 11, marginBottom: 5}}>Comprovante (referencia)</label>
+                        <input type="text" value={detalhesOperacao.comprovante} onChange={(e) => setDetalhesOperacao((atual) => ({ ...atual, comprovante: e.target.value }))} style={{...input, height: 34, fontSize: 12}} placeholder="Ex: NF 12345 / recibo" />
+                      </div>
+                    )}
+
+                    <div>
+                      <label style={{...label, fontSize: 11, marginBottom: 5}}>
+                        {operacaoCaixa === 'fechar' ? 'Justificativa/Observacoes' : 'Observacoes'}
+                      </label>
+                      <textarea
+                        value={descricaoOperacao}
+                        onChange={(e) => setDescricaoOperacao(e.target.value)}
+                        placeholder={operacaoCaixa === 'fechar' ? 'Ex: Divergencia de troco na troca de operador.' : 'Ex: detalhes operacionais e conferencias'}
+                        style={{...input, minHeight: 70, fontFamily: 'inherit', resize: 'none', fontSize: 11}}
+                      />
+                    </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <button 
+                      <button
                         onClick={confirmarOperacaoCaixa}
                         style={{...buttonPrimary, fontSize: 11}}
                       >
                         Confirmar
                       </button>
-                      <button 
-                        onClick={() => { setOperacaoCaixa(null); setValorOperacao(''); setDescricaoOperacao(''); }} 
+                      <button
+                        onClick={limparModalCaixa}
                         style={{...buttonSecondary, fontSize: 11}}
                       >
                         Cancelar
@@ -760,28 +1454,177 @@ export default function Vendas() {
                 </div>
               </div>
             )}
+
+            {modalAberto === 'resumo-fechamento' && resumoFechamento && (
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 1002 }} onClick={() => setModalAberto(null)}>
+                <div style={{ ...panel, width: 'min(760px, 96vw)', maxHeight: '90vh', overflow: 'auto', padding: 18 }} onClick={(event) => event.stopPropagation()}>
+                  <h3 style={{ margin: '0 0 12px' }}>Resumo do Fechamento de Caixa</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+                    <div style={{ ...panel, padding: 10 }}>
+                      <div style={{ color: '#647674', fontSize: 11 }}>Saldo inicial</div>
+                      <strong>{money(Number(resumoFechamento.totais.saldoInicial || 0))}</strong>
+                    </div>
+                    <div style={{ ...panel, padding: 10 }}>
+                      <div style={{ color: '#647674', fontSize: 11 }}>Entradas</div>
+                      <strong style={{ color: '#2f6f73' }}>{money(Number(resumoFechamento.totais.totalEntradas || 0))}</strong>
+                    </div>
+                    <div style={{ ...panel, padding: 10 }}>
+                      <div style={{ color: '#647674', fontSize: 11 }}>Saidas</div>
+                      <strong style={{ color: '#a64b4b' }}>{money(Number(resumoFechamento.totais.totalSaidas || 0))}</strong>
+                    </div>
+                    <div style={{ ...panel, padding: 10 }}>
+                      <div style={{ color: '#647674', fontSize: 11 }}>Saldo final</div>
+                      <strong>{money(Number(resumoFechamento.totais.saldoFinal || 0))}</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 12 }}>
+                    <h4 style={{ margin: '0 0 8px', fontSize: 13 }}>Resumo por tipo</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+                      {Object.entries(resumoFechamento.resumoPorTipo || {}).map(([tipo, info]) => (
+                        <div key={tipo} style={{ border: '1px solid #d9e2e1', borderRadius: 6, padding: 8, background: '#f8faf9' }}>
+                          <div style={{ fontWeight: 700, fontSize: 12 }}>{tipo}</div>
+                          <div style={{ color: '#647674', fontSize: 11 }}>{info.quantidade} movimentacao(oes)</div>
+                          <div style={{ marginTop: 4, fontWeight: 700 }}>{money(Number(info.total || 0))}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+                    <button onClick={() => setModalAberto(null)} style={buttonPrimary}>Fechar resumo</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       );
     }
 
-    if (active === 'minhas-vendas') return <TabelaVendas vendas={vendas} />;
-    if (active === 'consulta-vendas') return <TabelaVendas vendas={vendas} detalhada />;
-
-    if (active === 'movimentos-caixa') {
+    if (active === 'minhas-vendas') {
+      const vendaFiltrada = filtrarPorData(filtrarPorStatus(vendas), 'data');
       return (
         <section style={{ display: 'grid', gap: 14 }}>
+          {/* Filtros */}
+          <div style={{ ...panel, padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>De:</label>
+              <input type="date" value={filtroData.inicio} onChange={(e) => setFiltroData({...filtroData, inicio: e.target.value})} style={{...input, height: 32, fontSize: 11}} />
+            </div>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Até:</label>
+              <input type="date" value={filtroData.fim} onChange={(e) => setFiltroData({...filtroData, fim: e.target.value})} style={{...input, height: 32, fontSize: 11}} />
+            </div>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Status:</label>
+              <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={{...input, height: 32, fontSize: 11}}>
+                <option value="TODOS">TODOS</option>
+                <option value="PAGO">PAGO</option>
+                <option value="PENDENTE">PENDENTE</option>
+                <option value="CANCELADO">CANCELADO</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 5, alignItems: 'flex-end' }}>
+              <button onClick={() => { setFiltroData({inicio: '', fim: ''}); setFiltroStatus('TODOS'); }} style={{...buttonSecondary, fontSize: 11, height: 32}}>Limpar filtros</button>
+              <button onClick={() => exportarDados('csv')} style={{...buttonSecondary, fontSize: 11, height: 32}} disabled={exportando}>Exportar CSV</button>
+            </div>
+          </div>
+          <TabelaVendas vendas={vendaFiltrada} />
+        </section>
+      );
+    }
+    if (active === 'consulta-vendas') {
+      const vendaFiltrada = filtrarPorCliente(filtrarPorData(filtrarPorStatus(vendas), 'data'));
+      return (
+        <section style={{ display: 'grid', gap: 14 }}>
+          {/* Busca avançada */}
+          <div style={{ ...panel, padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Cliente:</label>
+              <input type="text" value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} placeholder="Nome do cliente" style={{...input, height: 32, fontSize: 11}} />
+            </div>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>De:</label>
+              <input type="date" value={filtroData.inicio} onChange={(e) => setFiltroData({...filtroData, inicio: e.target.value})} style={{...input, height: 32, fontSize: 11}} />
+            </div>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Até:</label>
+              <input type="date" value={filtroData.fim} onChange={(e) => setFiltroData({...filtroData, fim: e.target.value})} style={{...input, height: 32, fontSize: 11}} />
+            </div>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Status:</label>
+              <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={{...input, height: 32, fontSize: 11}}>
+                <option value="TODOS">TODOS</option>
+                <option value="PAGO">PAGO</option>
+                <option value="PENDENTE">PENDENTE</option>
+                <option value="CANCELADO">CANCELADO</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 5, alignItems: 'flex-end' }}>
+              <button onClick={() => { setFiltroData({inicio: '', fim: ''}); setFiltroStatus('TODOS'); setFiltroCliente(''); }} style={{...buttonSecondary, fontSize: 11, height: 32}}>Limpar</button>
+              <button onClick={() => exportarDados('csv')} style={{...buttonSecondary, fontSize: 11, height: 32}} disabled={exportando}>Exportar</button>
+            </div>
+          </div>
+          <TabelaVendas vendas={vendaFiltrada} detalhada />
+        </section>
+      );
+    }
+
+    if (active === 'movimentos-caixa') {
+      const movFiltrada = filtrarPorData(movimentos, 'createdAt');
+      const totalRecebido = movFiltrada.filter(m => ['DEPOSITO', 'RECEBIMENTO', 'SUPRIMENTO'].includes((m.tipo || '').toUpperCase())).reduce((sum, m) => sum + Number(m.valor || 0), 0);
+      const totalSaida = movFiltrada.filter(m => ['SANGRIA', 'RETIRADA', 'DESPESA'].includes((m.tipo || '').toUpperCase())).reduce((sum, m) => sum + Number(m.valor || 0), 0);
+      
+      return (
+        <section style={{ display: 'grid', gap: 14 }}>
+          {/* Resumo e Filtros */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Total recebido</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#2f6f73' }}>{money(totalRecebido)}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Total saída</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#a64b4b' }}>{money(totalSaida)}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Saldo líquido</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: totalRecebido - totalSaida >= 0 ? '#2f6f73' : '#a64b4b' }}>{money(totalRecebido - totalSaida)}</div>
+            </div>
+          </div>
+
+          {/* Filtros */}
+          <div style={{ ...panel, padding: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>De:</label>
+              <input type="date" value={filtroData.inicio} onChange={(e) => setFiltroData({...filtroData, inicio: e.target.value})} style={{...input, height: 32, fontSize: 11, width: 150}} />
+            </div>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Até:</label>
+              <input type="date" value={filtroData.fim} onChange={(e) => setFiltroData({...filtroData, fim: e.target.value})} style={{...input, height: 32, fontSize: 11, width: 150}} />
+            </div>
+            <button onClick={() => setFiltroData({inicio: '', fim: ''})} style={{...buttonSecondary, fontSize: 11, height: 32}}>Limpar</button>
+            <button onClick={() => exportarDados('csv')} style={{...buttonSecondary, fontSize: 11, height: 32}} disabled={exportando}>Exportar</button>
+          </div>
+
+          {/* Caixas */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
             {caixas.slice(0, 4).map((caixa) => (
               <div key={caixa.id} style={{ ...panel, padding: 14 }}>
                 <div style={{ color: '#647674', fontSize: 12 }}>Caixa {caixa.terminal || 'geral'}</div>
                 <div style={{ marginTop: 6, fontWeight: 800 }}>{caixa.status}</div>
                 <div style={{ marginTop: 8, color: '#647674', fontSize: 12 }}>
-                  Loja {caixa.loja || '-'} | Turno {caixa.turno || '-'}
+                  Saldo inicial: {money(caixa.saldoInicial || 0)}
                 </div>
+                {caixa.saldoFinal !== undefined && <div style={{ marginTop: 4, color: '#2f6f73', fontWeight: 700 }}>
+                  Saldo final: {money(caixa.saldoFinal)}
+                </div>}
               </div>
             ))}
           </div>
+
+          {/* Tabela de Movimentos */}
           <div style={{ ...panel, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead style={{ background: '#f4f7f7', color: '#647674' }}>
@@ -790,7 +1633,7 @@ export default function Vendas() {
                 </tr>
               </thead>
               <tbody>
-                {movimentos.slice(0, 80).map((mov) => (
+                {movFiltrada.slice(0, 80).map((mov) => (
                   <tr key={mov.id} style={{ borderTop: '1px solid #edf1f0' }}>
                     <td style={td}>{new Date(mov.createdAt).toLocaleString('pt-BR')}</td>
                     <td style={td}><Badge value={mov.tipo} /></td>
@@ -800,7 +1643,7 @@ export default function Vendas() {
                     <td style={td}>{mov.descricao || '-'}</td>
                   </tr>
                 ))}
-                {movimentos.length === 0 && <tr><td colSpan={6} style={{ ...td, color: '#647674' }}>Sem movimentos de caixa.</td></tr>}
+                {movFiltrada.length === 0 && <tr><td colSpan={6} style={{ ...td, color: '#647674' }}>Sem movimentos de caixa.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -810,25 +1653,64 @@ export default function Vendas() {
 
     if (active === 'pacotes-vendidos') {
       const pacotes = vendas.filter((venda) => ['ASSINATURA', 'SERVICO'].includes(venda.tipo || ''));
+      
+      const ativosCount = pacotes.filter(p => p.status === 'PAGO').length;
+      const receitaMensal = pacotes.filter(p => p.status === 'PAGO').reduce((sum, p) => sum + Number(p.total || 0), 0);
+
       return (
-        <section style={{ ...panel, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead style={{ background: '#f4f7f7', color: '#647674' }}>
-              <tr><th style={th}>Pacote</th><th style={th}>Cliente</th><th style={th}>Status</th><th style={th}>Total</th><th style={th}>Data</th></tr>
-            </thead>
-            <tbody>
-              {pacotes.map((venda) => (
-                <tr key={venda.id} style={{ borderTop: '1px solid #edf1f0' }}>
-                  <td style={td}>{venda.numero || venda.id.slice(0, 8)}</td>
-                  <td style={td}>{venda.cliente?.nome || 'Consumidor'}</td>
-                  <td style={td}><Badge value={venda.status || 'PAGO'} /></td>
-                  <td style={td}>{money(venda.total || 0)}</td>
-                  <td style={td}>{new Date(venda.data).toLocaleDateString('pt-BR')}</td>
-                </tr>
-              ))}
-              {pacotes.length === 0 && <tr><td colSpan={5} style={{ ...td, color: '#647674' }}>Sem pacotes vendidos ainda.</td></tr>}
-            </tbody>
-          </table>
+        <section style={{ display: 'grid', gap: 14 }}>
+          {/* Resumo */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Pacotes ativos</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#2f6f73' }}>{ativosCount}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Receita mensal</div>
+              <div style={{ marginTop: 8, fontWeight: 800 }}>{money(receitaMensal)}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Total pacotes</div>
+              <div style={{ marginTop: 8, fontWeight: 800 }}>{pacotes.length}</div>
+            </div>
+          </div>
+
+          {/* Tabela */}
+          <div style={{ ...panel, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead style={{ background: '#f4f7f7', color: '#647674' }}>
+                <tr><th style={th}>Pacote</th><th style={th}>Cliente</th><th style={th}>Status</th><th style={th}>Total</th><th style={th}>Data</th><th style={th}>Ações</th></tr>
+              </thead>
+              <tbody>
+                {pacotes.map((venda) => (
+                  <tr key={venda.id} style={{ borderTop: '1px solid #edf1f0' }}>
+                    <td style={td}>{venda.numero || venda.id.slice(0, 8)}</td>
+                    <td style={td}>{venda.cliente?.nome || 'Consumidor'}</td>
+                    <td style={td}><Badge value={venda.status || 'PAGO'} /></td>
+                    <td style={td}>{money(venda.total || 0)}</td>
+                    <td style={td}>{new Date(venda.data).toLocaleDateString('pt-BR')}</td>
+                    <td style={td}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button 
+                          onClick={() => renovarPacote(venda.id)}
+                          style={{...buttonSecondary, fontSize: 9, padding: '3px 6px', height: 'auto', whiteSpace: 'nowrap'}}
+                        >
+                          Renovar
+                        </button>
+                        <button 
+                          onClick={() => cancelarPacote(venda.id)}
+                          style={{...buttonSecondary, fontSize: 9, padding: '3px 6px', height: 'auto', color: '#a64b4b', borderColor: '#ffcccc'}}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {pacotes.length === 0 && <tr><td colSpan={6} style={{ ...td, color: '#647674' }}>Sem pacotes vendidos ainda.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </section>
       );
     }
@@ -842,128 +1724,514 @@ export default function Vendas() {
         valor: Number(pagamento.valor || 0),
         status: pagamento.status,
         data: venda.data,
+        vendaId: venda.id,
+        pagamentoIndex: index,
       })));
 
+      const recebimentosFiltrada = filtrarPorCliente(filtrarPorData(recebimentos, 'data'));
+      const recebimentosPendentes = recebimentosFiltrada.filter(r => r.status === 'PENDENTE' || !r.status);
+      const recebimentosConfirmados = recebimentosFiltrada.filter(r => r.status === 'CONFIRMADO' || r.status === 'PAGO');
+
       return (
-        <section style={{ ...panel, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead style={{ background: '#f4f7f7', color: '#647674' }}>
-              <tr><th style={th}>Venda</th><th style={th}>Cliente</th><th style={th}>Forma</th><th style={th}>Valor</th><th style={th}>Status</th><th style={th}>Competencia</th></tr>
-            </thead>
-            <tbody>
-              {recebimentos.slice(0, 120).map((item) => (
-                <tr key={item.id} style={{ borderTop: '1px solid #edf1f0' }}>
-                  <td style={td}>{item.venda}</td>
-                  <td style={td}>{item.cliente}</td>
-                  <td style={td}>{item.forma}</td>
-                  <td style={td}>{money(item.valor)}</td>
-                  <td style={td}><Badge value={item.status || 'PENDENTE'} /></td>
-                  <td style={td}>{new Date(item.data).toLocaleDateString('pt-BR')}</td>
-                </tr>
-              ))}
-              {recebimentos.length === 0 && <tr><td colSpan={6} style={{ ...td, color: '#647674' }}>Nenhum recebimento encontrado.</td></tr>}
-            </tbody>
-          </table>
+        <section style={{ display: 'grid', gap: 14 }}>
+          {/* Resumo */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Pendentes</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#a64b4b' }}>{recebimentosPendentes.length} recebimentos</div>
+              <div style={{ marginTop: 4, color: '#8a9b99', fontSize: 11 }}>{money(recebimentosPendentes.reduce((sum, r) => sum + r.valor, 0))}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Confirmados</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#2f6f73' }}>{recebimentosConfirmados.length} recebimentos</div>
+              <div style={{ marginTop: 4, color: '#8a9b99', fontSize: 11 }}>{money(recebimentosConfirmados.reduce((sum, r) => sum + r.valor, 0))}</div>
+            </div>
+          </div>
+
+          {/* Filtros */}
+          <div style={{ ...panel, padding: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Cliente:</label>
+              <input type="text" value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} placeholder="Nome" style={{...input, height: 32, fontSize: 11, width: 150}} />
+            </div>
+            <button onClick={() => setFiltroCliente('')} style={{...buttonSecondary, fontSize: 11, height: 32}}>Limpar</button>
+          </div>
+
+          {/* Tabela */}
+          <div style={{ ...panel, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead style={{ background: '#f4f7f7', color: '#647674' }}>
+                <tr><th style={th}>Venda</th><th style={th}>Cliente</th><th style={th}>Forma</th><th style={th}>Valor</th><th style={th}>Status</th><th style={th}>Data</th><th style={th}>Ações</th></tr>
+              </thead>
+              <tbody>
+                {recebimentosFiltrada.slice(0, 120).map((item) => (
+                  <tr key={item.id} style={{ borderTop: '1px solid #edf1f0' }}>
+                    <td style={td}>{item.venda}</td>
+                    <td style={td}>{item.cliente}</td>
+                    <td style={td}>{item.forma}</td>
+                    <td style={td}>{money(item.valor)}</td>
+                    <td style={td}><Badge value={item.status || 'PENDENTE'} /></td>
+                    <td style={td}>{new Date(item.data).toLocaleDateString('pt-BR')}</td>
+                    <td style={td}>
+                      <button 
+                        onClick={() => registrarPagamento(item.id, item.valor)}
+                        style={{...buttonSecondary, fontSize: 10, padding: '5px 10px', height: 'auto'}}
+                      >
+                        Registrar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {recebimentosFiltrada.length === 0 && <tr><td colSpan={7} style={{ ...td, color: '#647674' }}>Nenhum recebimento encontrado.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </section>
       );
     }
 
     if (active === 'lista-precos') {
+      const listasFiltrada = listasPreco.filter(l => 
+        !buscaLista || l.nome.toLowerCase().includes(buscaLista.toLowerCase())
+      );
+
       return (
-        <section style={{ ...panel, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead style={{ background: '#f4f7f7', color: '#647674' }}>
-              <tr><th style={th}>Nome</th><th style={th}>Tipo</th><th style={th}>Itens</th><th style={th}>Margem minima</th><th style={th}>Markup</th><th style={th}>Vigencia</th></tr>
-            </thead>
-            <tbody>
-              {listasPreco.map((lista) => (
-                <tr key={lista.id} style={{ borderTop: '1px solid #edf1f0' }}>
-                  <td style={td}><strong>{lista.nome}</strong></td>
-                  <td style={td}>{lista.tipo}</td>
-                  <td style={td}>{lista.itens?.length || 0}</td>
-                  <td style={td}>{lista.margemMinima ?? 0}%</td>
-                  <td style={td}>{lista.markupPadrao ?? 0}%</td>
-                  <td style={td}>{lista.vigenciaInicio ? new Date(lista.vigenciaInicio).toLocaleDateString('pt-BR') : '-'} ate {lista.vigenciaFim ? new Date(lista.vigenciaFim).toLocaleDateString('pt-BR') : '-'}</td>
-                </tr>
-              ))}
-              {listasPreco.length === 0 && <tr><td colSpan={6} style={{ ...td, color: '#647674' }}>Nenhuma lista de preco cadastrada.</td></tr>}
-            </tbody>
-          </table>
+        <section style={{ display: 'grid', gap: 14 }}>
+          {/* Busca e Ações */}
+          <div style={{ ...panel, padding: 12, display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Buscar lista:</label>
+              <input 
+                type="text" 
+                value={buscaLista} 
+                onChange={(e) => setBuscaLista(e.target.value)} 
+                placeholder="Nome da lista" 
+                style={{...input, height: 32, fontSize: 11}} 
+              />
+            </div>
+            <button 
+              onClick={() => setModalAberto('nova-lista')}
+              style={{...buttonPrimary, fontSize: 11, height: 32, padding: '0 14px'}}
+            >
+              + Nova lista
+            </button>
+          </div>
+
+          {/* Tabela */}
+          <div style={{ ...panel, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead style={{ background: '#f4f7f7', color: '#647674' }}>
+                <tr><th style={th}>Nome</th><th style={th}>Tipo</th><th style={th}>Itens</th><th style={th}>Margem</th><th style={th}>Markup</th><th style={th}>Vigencia</th><th style={th}>Ações</th></tr>
+              </thead>
+              <tbody>
+                {listasFiltrada.map((lista) => (
+                  <tr key={lista.id} style={{ borderTop: '1px solid #edf1f0' }}>
+                    <td style={td}><strong>{lista.nome}</strong></td>
+                    <td style={td}>{lista.tipo}</td>
+                    <td style={td}>{lista.itens?.length || 0}</td>
+                    <td style={td}>{lista.margemMinima ?? 0}%</td>
+                    <td style={td}>{lista.markupPadrao ?? 0}%</td>
+                    <td style={td}>{lista.vigenciaInicio ? new Date(lista.vigenciaInicio).toLocaleDateString('pt-BR') : '-'}</td>
+                    <td style={td}>
+                      <button 
+                        onClick={() => deletarListaPreco(lista.id)}
+                        style={{...buttonSecondary, fontSize: 10, padding: '4px 8px', height: 'auto', color: '#a64b4b', borderColor: '#ffcccc'}}
+                      >
+                        Deletar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {listasFiltrada.length === 0 && <tr><td colSpan={7} style={{ ...td, color: '#647674' }}>Nenhuma lista encontrada.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Modal - Nova Lista */}
+          {modalAberto === 'nova-lista' && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 1001 }} onClick={() => setModalAberto(null)}>
+              <div style={{...panel, padding: 18, width: 400, borderRadius: 10}} onClick={e => e.stopPropagation()}>
+                <h3 style={{ margin: '0 0 12px' }}>Nova Lista de Preço</h3>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Nome</label>
+                    <input type="text" value={novaLista.nome} onChange={(e) => setNovaLista({...novaLista, nome: e.target.value})} style={{...input, height: 36, fontSize: 12}} />
+                  </div>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Tipo</label>
+                    <select value={novaLista.tipo} onChange={(e) => setNovaLista({...novaLista, tipo: e.target.value})} style={{...input, height: 36, fontSize: 12}}>
+                      <option>VAREJO</option>
+                      <option>ATACADO</option>
+                      <option>DISTRIBUIDOR</option>
+                      <option>ASSINANTE</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Margem Mínima (%)</label>
+                    <input type="number" value={novaLista.margemMinima} onChange={(e) => setNovaLista({...novaLista, margemMinima: Number(e.target.value)})} style={{...input, height: 36, fontSize: 12}} />
+                  </div>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Markup Padrão (%)</label>
+                    <input type="number" value={novaLista.markupPadrao} onChange={(e) => setNovaLista({...novaLista, markupPadrao: Number(e.target.value)})} style={{...input, height: 36, fontSize: 12}} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button onClick={criarListaPreco} style={{...buttonPrimary, fontSize: 11}}>Criar</button>
+                    <button onClick={() => setModalAberto(null)} style={{...buttonSecondary, fontSize: 11}}>Cancelar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       );
     }
 
-    if (active === 'ranking-clientes') return <Ranking ranking={ranking} />;
+    if (active === 'ranking-clientes') {
+      const rankingFiltrada = ranking.filter(r =>
+        !filtroClassificacao || filtroClassificacao === 'TODOS' || r.classificacao === filtroClassificacao
+      );
+      
+      return (
+        <section style={{ display: 'grid', gap: 14 }}>
+          {/* Filtros e Ações */}
+          <div style={{ ...panel, padding: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Classificação:</label>
+              <select value={filtroClassificacao} onChange={(e) => setFiltroClassificacao(e.target.value)} style={{...input, height: 32, fontSize: 11, width: 150}}>
+                <option value="TODOS">TODOS</option>
+                <option value="OURO">OURO</option>
+                <option value="PRATA">PRATA</option>
+                <option value="BRONZE">BRONZE</option>
+              </select>
+            </div>
+            <button onClick={() => setFiltroClassificacao('TODOS')} style={{...buttonSecondary, fontSize: 11, height: 32}}>Limpar</button>
+            <button onClick={() => exportarDados('csv')} style={{...buttonSecondary, fontSize: 11, height: 32}} disabled={exportando}>Exportar</button>
+          </div>
+
+          {/* Resumo */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Total de clientes</div>
+              <div style={{ marginTop: 8, fontWeight: 800 }}>{rankingFiltrada.length}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Faturamento total</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#2f6f73' }}>{money(rankingFiltrada.reduce((sum, r) => sum + r.faturamento, 0))}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Lucro total</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#54736b' }}>{money(rankingFiltrada.reduce((sum, r) => sum + Number(r.lucro || 0), 0))}</div>
+            </div>
+          </div>
+
+          {/* Ranking */}
+          <section style={{ ...panel, padding: 16 }}>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {rankingFiltrada.map((item, index) => (
+                <div key={`${item.cliente}-${index}`} style={{ display: 'grid', gridTemplateColumns: '50px 1fr 130px 130px 100px', gap: 12, alignItems: 'center', padding: 12, background: '#f8faf9', border: '1px solid #d9e2e1', borderRadius: 8 }}>
+                  <strong style={{ fontSize: 16, color: '#2f6f73' }}>#{index + 1}</strong>
+                  <div>
+                    <strong>{item.cliente}</strong>
+                    <div style={{ color: '#647674', fontSize: 12 }}>{item.frequencia} compras | Ticket {money(item.ticketMedio)}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <strong>{money(item.faturamento)}</strong>
+                    <div style={{ color: '#647674', fontSize: 11 }}>Faturamento</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <strong>{money(Number(item.lucro || 0))}</strong>
+                    <div style={{ color: '#647674', fontSize: 11 }}>Lucro</div>
+                  </div>
+                  <Badge value={item.classificacao} />
+                </div>
+              ))}
+              {rankingFiltrada.length === 0 && <div style={{ color: '#647674', textAlign: 'center', padding: 20 }}>Nenhum cliente nesta classificação.</div>}
+            </div>
+          </section>
+        </section>
+      );
+    }
 
     if (active === 'saldo-clientes') {
+      const saldosFiltrada = saldos.filter(s =>
+        !filtroCliente || (s.cliente?.nome || '').toLowerCase().includes(filtroCliente.toLowerCase())
+      );
+
+      const saldoTotal = saldosFiltrada.reduce((sum, s) => sum + Number(s.saldoAtual || 0), 0);
+      const creditoDisponivel = saldosFiltrada.reduce((sum, s) => sum + Math.max(0, Number(s.limiteCredito || 0) - Number(s.saldoAtual || 0)), 0);
+
       return (
-        <section style={{ ...panel, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead style={{ background: '#f4f7f7', color: '#647674' }}>
-              <tr><th style={th}>Cliente</th><th style={th}>Saldo atual</th><th style={th}>Limite credito</th></tr>
-            </thead>
-            <tbody>
-              {saldos.map((saldo) => (
-                <tr key={saldo.id} style={{ borderTop: '1px solid #edf1f0' }}>
-                  <td style={td}>{saldo.cliente?.nome || 'Sem cliente'}</td>
-                  <td style={td}>{money(Number(saldo.saldoAtual || 0))}</td>
-                  <td style={td}>{money(Number(saldo.limiteCredito || 0))}</td>
-                </tr>
-              ))}
-              {saldos.length === 0 && <tr><td colSpan={3} style={{ ...td, color: '#647674' }}>Sem saldos de clientes.</td></tr>}
-            </tbody>
-          </table>
+        <section style={{ display: 'grid', gap: 14 }}>
+          {/* Resumo */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Saldo total em aberto</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#a64b4b' }}>{money(saldoTotal)}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Crédito disponível</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#2f6f73' }}>{money(creditoDisponivel)}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Clientes com débito</div>
+              <div style={{ marginTop: 8, fontWeight: 800 }}>{saldosFiltrada.filter(s => Number(s.saldoAtual || 0) > 0).length}</div>
+            </div>
+          </div>
+
+          {/* Filtro */}
+          <div style={{ ...panel, padding: 12, display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Buscar cliente:</label>
+              <input type="text" value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} placeholder="Nome" style={{...input, height: 32, fontSize: 11}} />
+            </div>
+            <button onClick={() => setFiltroCliente('')} style={{...buttonSecondary, fontSize: 11, height: 32}}>Limpar</button>
+          </div>
+
+          {/* Tabela */}
+          <div style={{ ...panel, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead style={{ background: '#f4f7f7', color: '#647674' }}>
+                <tr><th style={th}>Cliente</th><th style={th}>Saldo atual</th><th style={th}>Limite crédito</th><th style={th}>Disponível</th><th style={th}>% Uso</th><th style={th}>Ações</th></tr>
+              </thead>
+              <tbody>
+                {saldosFiltrada.map((saldo) => {
+                  const saldoAtual = Number(saldo.saldoAtual || 0);
+                  const limite = Number(saldo.limiteCredito || 0);
+                  const percentualUso = limite > 0 ? Math.round((saldoAtual / limite) * 100) : 0;
+                  const disponivel = Math.max(0, limite - saldoAtual);
+
+                  return (
+                    <tr key={saldo.id} style={{ borderTop: '1px solid #edf1f0' }}>
+                      <td style={td}><strong>{saldo.cliente?.nome || 'Sem cliente'}</strong></td>
+                      <td style={td}><strong style={{ color: saldoAtual > 0 ? '#a64b4b' : '#2f6f73' }}>{money(saldoAtual)}</strong></td>
+                      <td style={td}>{money(limite)}</td>
+                      <td style={td}>{money(disponivel)}</td>
+                      <td style={td}>
+                        <div style={{ background: percentualUso > 80 ? '#ffebee' : '#e8f5e9', padding: '4px 8px', borderRadius: 4, color: percentualUso > 80 ? '#a64b4b' : '#2f6f73', fontWeight: 700 }}>
+                          {percentualUso}%
+                        </div>
+                      </td>
+                      <td style={td}>
+                        <button 
+                          onClick={() => alert(`Cliente: ${saldo.cliente?.nome}\nSaldo: ${money(saldoAtual)}\nLimite: ${money(limite)}`)}
+                          style={{...buttonSecondary, fontSize: 10, padding: '4px 8px', height: 'auto'}}
+                        >
+                          Detalhar
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {saldosFiltrada.length === 0 && <tr><td colSpan={6} style={{ ...td, color: '#647674' }}>Sem saldos de clientes.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </section>
       );
     }
 
     if (active === 'formas-recebimento') {
+      const formasFiltrada = formas.filter(f => f.ativo !== false);
+
       return (
-        <section style={{ ...panel, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead style={{ background: '#f4f7f7', color: '#647674' }}>
-              <tr><th style={th}>Forma</th><th style={th}>Tipo</th><th style={th}>Taxa %</th><th style={th}>Taxa fixa</th><th style={th}>Prazo</th><th style={th}>Parcelamento</th><th style={th}>Antecipacao</th></tr>
-            </thead>
-            <tbody>
-              {formas.map((forma) => (
-                <tr key={forma.id} style={{ borderTop: '1px solid #edf1f0' }}>
-                  <td style={td}><strong>{forma.nome}</strong></td>
-                  <td style={td}>{forma.tipo}</td>
-                  <td style={td}>{Number(forma.taxaPercentual || 0)}%</td>
-                  <td style={td}>{money(Number(forma.taxaFixa || 0))}</td>
-                  <td style={td}>{forma.prazoRecebimentoDias || 0} dias</td>
-                  <td style={td}>{forma.permiteParcelamento ? 'Sim' : 'Nao'}</td>
-                  <td style={td}>{forma.permiteAntecipacao ? 'Sim' : 'Nao'}</td>
-                </tr>
-              ))}
-              {formas.length === 0 && <tr><td colSpan={7} style={{ ...td, color: '#647674' }}>Sem formas de recebimento cadastradas.</td></tr>}
-            </tbody>
-          </table>
+        <section style={{ display: 'grid', gap: 14 }}>
+          {/* Ações */}
+          <div style={{ ...panel, padding: 12, display: 'flex', gap: 10 }}>
+            <button 
+              onClick={() => setModalAberto('nova-forma')}
+              style={{...buttonPrimary, fontSize: 11, height: 32, padding: '0 14px'}}
+            >
+              + Nova forma
+            </button>
+          </div>
+
+          {/* Tabela */}
+          <div style={{ ...panel, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead style={{ background: '#f4f7f7', color: '#647674' }}>
+                <tr><th style={th}>Forma</th><th style={th}>Tipo</th><th style={th}>Taxa %</th><th style={th}>Taxa fixa</th><th style={th}>Prazo</th><th style={th}>Parcel.</th><th style={th}>Antec.</th><th style={th}>Status</th><th style={th}>Ações</th></tr>
+              </thead>
+              <tbody>
+                {formasFiltrada.map((forma) => (
+                  <tr key={forma.id} style={{ borderTop: '1px solid #edf1f0' }}>
+                    <td style={td}><strong>{forma.nome}</strong></td>
+                    <td style={td}>{forma.tipo}</td>
+                    <td style={td}>{Number(forma.taxaPercentual || 0)}%</td>
+                    <td style={td}>{money(Number(forma.taxaFixa || 0))}</td>
+                    <td style={td}>{forma.prazoRecebimentoDias || 0} dias</td>
+                    <td style={td}>{forma.permiteParcelamento ? '✓' : '✗'}</td>
+                    <td style={td}>{forma.permiteAntecipacao ? '✓' : '✗'}</td>
+                    <td style={td}><Badge value={forma.ativo ? 'ATIVO' : 'INATIVO'} /></td>
+                    <td style={td}>
+                      <button 
+                        onClick={() => {
+                          setOperacaoModal(forma);
+                          setNovaForma(forma);
+                          setModalAberto('editar-forma');
+                        }}
+                        style={{...buttonSecondary, fontSize: 10, padding: '4px 8px', height: 'auto'}}
+                      >
+                        Editar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {formasFiltrada.length === 0 && <tr><td colSpan={9} style={{ ...td, color: '#647674' }}>Sem formas de recebimento cadastradas.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Modal - Nova/Editar Forma */}
+          {(modalAberto === 'nova-forma' || modalAberto === 'editar-forma') && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 1001 }} onClick={() => setModalAberto(null)}>
+              <div style={{...panel, padding: 18, width: 400, borderRadius: 10, maxHeight: '90vh', overflow: 'auto'}} onClick={e => e.stopPropagation()}>
+                <h3 style={{ margin: '0 0 12px' }}>{operacaoModal ? 'Editar' : 'Nova'} Forma de Recebimento</h3>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Nome</label>
+                    <input type="text" value={novaForma.nome} onChange={(e) => setNovaForma({...novaForma, nome: e.target.value})} style={{...input, height: 36, fontSize: 12}} />
+                  </div>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Tipo</label>
+                    <select value={novaForma.tipo} onChange={(e) => setNovaForma({...novaForma, tipo: e.target.value})} style={{...input, height: 36, fontSize: 12}}>
+                      <option>PIX</option>
+                      <option>DINHEIRO</option>
+                      <option>DEBITO</option>
+                      <option>CREDITO</option>
+                      <option>BOLETO</option>
+                      <option>CREDIARIO</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Taxa %</label>
+                    <input type="number" value={novaForma.taxaPercentual} onChange={(e) => setNovaForma({...novaForma, taxaPercentual: Number(e.target.value)})} step="0.01" style={{...input, height: 36, fontSize: 12}} />
+                  </div>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Taxa Fixa</label>
+                    <input type="number" value={novaForma.taxaFixa} onChange={(e) => setNovaForma({...novaForma, taxaFixa: Number(e.target.value)})} step="0.01" style={{...input, height: 36, fontSize: 12}} />
+                  </div>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Prazo de Recebimento (dias)</label>
+                    <input type="number" value={novaForma.prazoRecebimentoDias} onChange={(e) => setNovaForma({...novaForma, prazoRecebimentoDias: Number(e.target.value)})} style={{...input, height: 36, fontSize: 12}} />
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#344745' }}>
+                    <input type="checkbox" checked={novaForma.permiteParcelamento} onChange={(e) => setNovaForma({...novaForma, permiteParcelamento: e.target.checked})} />
+                    <span style={{ fontSize: 12 }}>Permite parcelamento</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#344745' }}>
+                    <input type="checkbox" checked={novaForma.permiteAntecipacao} onChange={(e) => setNovaForma({...novaForma, permiteAntecipacao: e.target.checked})} />
+                    <span style={{ fontSize: 12 }}>Permite antecipação</span>
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button onClick={() => operacaoModal ? atualizarFormaRecebimento(operacaoModal.id, novaForma) : criarFormaRecebimento()} style={{...buttonPrimary, fontSize: 11}}>{operacaoModal ? 'Atualizar' : 'Criar'}</button>
+                    <button onClick={() => { setModalAberto(null); setOperacaoModal(null); }} style={{...buttonSecondary, fontSize: 11}}>Cancelar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       );
     }
 
     if (active === 'modelo-orcamento') {
+      const orcamentosFiltrada = orcamentos.filter(o =>
+        !buscaOrcamento || o.titulo.toLowerCase().includes(buscaOrcamento.toLowerCase()) || 
+        (o.numero && o.numero.includes(buscaOrcamento)) ||
+        (o.cliente?.nome || '').toLowerCase().includes(buscaOrcamento.toLowerCase())
+      );
+
       return (
-        <section style={{ ...panel, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead style={{ background: '#f4f7f7', color: '#647674' }}>
-              <tr><th style={th}>Numero</th><th style={th}>Titulo</th><th style={th}>Cliente</th><th style={th}>Valor</th><th style={th}>Validade</th><th style={th}>Criado em</th></tr>
-            </thead>
-            <tbody>
-              {orcamentos.map((orcamento) => (
-                <tr key={orcamento.id} style={{ borderTop: '1px solid #edf1f0' }}>
-                  <td style={td}>{orcamento.numero || orcamento.id.slice(0, 8)}</td>
-                  <td style={td}><strong>{orcamento.titulo}</strong></td>
-                  <td style={td}>{orcamento.cliente?.nome || 'Sem cliente'}</td>
-                  <td style={td}>{money(Number(orcamento.total || 0))}</td>
-                  <td style={td}>{orcamento.validade ? new Date(orcamento.validade).toLocaleDateString('pt-BR') : '-'}</td>
-                  <td style={td}>{orcamento.createdAt ? new Date(orcamento.createdAt).toLocaleDateString('pt-BR') : '-'}</td>
-                </tr>
-              ))}
-              {orcamentos.length === 0 && <tr><td colSpan={6} style={{ ...td, color: '#647674' }}>Nenhum modelo de orcamento registrado.</td></tr>}
-            </tbody>
-          </table>
+        <section style={{ display: 'grid', gap: 14 }}>
+          {/* Busca e Ações */}
+          <div style={{ ...panel, padding: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Buscar orçamento:</label>
+              <input 
+                type="text" 
+                value={buscaOrcamento} 
+                onChange={(e) => setBuscaOrcamento(e.target.value)} 
+                placeholder="Título, número ou cliente" 
+                style={{...input, height: 32, fontSize: 11}} 
+              />
+            </div>
+            <button 
+              onClick={() => {
+                setNovoOrcamento({ titulo: '', clienteId: '', itens: [] });
+                setModalAberto('novo-orcamento');
+              }}
+              style={{...buttonPrimary, fontSize: 11, height: 32, padding: '0 14px'}}
+            >
+              + Novo Orçamento
+            </button>
+          </div>
+
+          {/* Tabela */}
+          <div style={{ ...panel, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead style={{ background: '#f4f7f7', color: '#647674' }}>
+                <tr><th style={th}>Número</th><th style={th}>Título</th><th style={th}>Cliente</th><th style={th}>Valor</th><th style={th}>Validade</th><th style={th}>Status</th><th style={th}>Ações</th></tr>
+              </thead>
+              <tbody>
+                {orcamentosFiltrada.map((orcamento) => {
+                  const agora = new Date();
+                  const validade = orcamento.validade ? new Date(orcamento.validade) : null;
+                  const expirado = validade && validade < agora;
+
+                  return (
+                    <tr key={orcamento.id} style={{ borderTop: '1px solid #edf1f0' }}>
+                      <td style={td}>{orcamento.numero || orcamento.id.slice(0, 8)}</td>
+                      <td style={td}><strong>{orcamento.titulo}</strong></td>
+                      <td style={td}>{orcamento.cliente?.nome || 'Sem cliente'}</td>
+                      <td style={td}>{money(Number(orcamento.total || 0))}</td>
+                      <td style={td}>{orcamento.validade ? new Date(orcamento.validade).toLocaleDateString('pt-BR') : '-'}</td>
+                      <td style={td}><Badge value={expirado ? 'EXPIRADO' : 'ATIVO'} /></td>
+                      <td style={td}>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button 
+                            onClick={() => converterOrcamentoParaVenda(orcamento.id)}
+                            style={{...buttonSecondary, fontSize: 9, padding: '3px 6px', height: 'auto', whiteSpace: 'nowrap'}}
+                          >
+                            Converter
+                          </button>
+                          <button 
+                            onClick={() => enviarOrcamentoPorEmail(orcamento.id, orcamento.cliente?.email || 'email@example.com')}
+                            style={{...buttonSecondary, fontSize: 9, padding: '3px 6px', height: 'auto'}}
+                          >
+                            Email
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {orcamentosFiltrada.length === 0 && <tr><td colSpan={7} style={{ ...td, color: '#647674' }}>Nenhum orçamento encontrado.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Modal - Novo Orçamento */}
+          {modalAberto === 'novo-orcamento' && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 1001 }} onClick={() => setModalAberto(null)}>
+              <div style={{...panel, padding: 18, width: 400, borderRadius: 10}} onClick={e => e.stopPropagation()}>
+                <h3 style={{ margin: '0 0 12px' }}>Novo Orçamento</h3>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Título</label>
+                    <input type="text" value={novoOrcamento.titulo} onChange={(e) => setNovoOrcamento({...novoOrcamento, titulo: e.target.value})} style={{...input, height: 36, fontSize: 12}} />
+                  </div>
+                  <div>
+                    <label style={{...label, fontSize: 11, marginBottom: 5}}>Cliente (ID)</label>
+                    <input type="text" value={novoOrcamento.clienteId} onChange={(e) => setNovoOrcamento({...novoOrcamento, clienteId: e.target.value})} placeholder="ID do cliente" style={{...input, height: 36, fontSize: 12}} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button onClick={criarOrcamento} style={{...buttonPrimary, fontSize: 11}}>Criar</button>
+                    <button onClick={() => setModalAberto(null)} style={{...buttonSecondary, fontSize: 11}}>Cancelar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       );
     }
@@ -971,28 +2239,78 @@ export default function Vendas() {
     if (active === 'modelo-demonstrativo') {
       return (
         <section style={{ display: 'grid', gap: 14 }}>
+          {/* Filtros */}
+          <div style={{ ...panel, padding: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>De:</label>
+              <input type="date" value={filtroData.inicio} onChange={(e) => setFiltroData({...filtroData, inicio: e.target.value})} style={{...input, height: 32, fontSize: 11, width: 150}} />
+            </div>
+            <div>
+              <label style={{...label, fontSize: 11, marginBottom: 5}}>Até:</label>
+              <input type="date" value={filtroData.fim} onChange={(e) => setFiltroData({...filtroData, fim: e.target.value})} style={{...input, height: 32, fontSize: 11, width: 150}} />
+            </div>
+            <button onClick={() => setFiltroData({inicio: '', fim: ''})} style={{...buttonSecondary, fontSize: 11, height: 32}}>Limpar</button>
+            <button onClick={() => exportarDados('pdf')} style={{...buttonSecondary, fontSize: 11, height: 32}} disabled={exportando}>Exportar PDF</button>
+          </div>
+
+          {/* KPIs */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
             <Kpi label="Receita" value={money(Number(demonstrativo?.receita || 0))} icon={Banknote} color="#2f6f73" />
             <Kpi label="Lucro" value={money(Number(demonstrativo?.lucro || 0))} icon={BarChart3} color="#54736b" />
-            <Kpi label="Margem" value={`${Number(demonstrativo?.margem || 0)}%`} icon={BarChart3} color="#9a6a2f" />
+            <Kpi label="Margem" value={`${Number(demonstrativo?.margem || 0).toFixed(1)}%`} icon={BarChart3} color="#9a6a2f" />
             <Kpi label="Despesas" value={money(Number(demonstrativo?.despesaFinanceira || 0))} icon={Wallet} color="#a64b4b" />
           </div>
-          <div style={{ ...panel, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead style={{ background: '#f4f7f7', color: '#647674' }}>
-                <tr><th style={th}>Canal</th><th style={th}>Quantidade</th><th style={th}>Total</th></tr>
-              </thead>
-              <tbody>
-                {(demonstrativo?.canais || []).map((canal) => (
-                  <tr key={canal.canal} style={{ borderTop: '1px solid #edf1f0' }}>
-                    <td style={td}>{canal.canal}</td>
-                    <td style={td}>{canal.quantidade}</td>
-                    <td style={td}>{money(Number(canal.total || 0))}</td>
-                  </tr>
-                ))}
-                {(demonstrativo?.canais || []).length === 0 && <tr><td colSpan={3} style={{ ...td, color: '#647674' }}>Sem dados para demonstrativo.</td></tr>}
-              </tbody>
-            </table>
+
+          {/* Análise por Canal */}
+          <div style={{ ...panel, padding: 16 }}>
+            <h3 style={{ margin: '0 0 14px', fontSize: 14 }}>Análise por canal</h3>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {(demonstrativo?.canais || []).map((canal) => {
+                const percentualRecita = demonstrativo?.receita ? Math.round((canal.total / demonstrativo.receita) * 100) : 0;
+                return (
+                  <div key={canal.canal} style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong>{canal.canal}</strong>
+                        <div style={{ color: '#647674', fontSize: 11 }}>{canal.quantidade} pedidos</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <strong>{money(Number(canal.total || 0))}</strong>
+                        <div style={{ color: '#647674', fontSize: 11 }}>{percentualRecita}% da receita</div>
+                      </div>
+                    </div>
+                    <div style={{ background: '#f0f0f0', height: 8, borderRadius: 4, overflow: 'hidden' }}>
+                      <div 
+                        style={{ 
+                          background: '#2f6f73', 
+                          height: '100%', 
+                          width: `${percentualRecita}%`,
+                          borderRadius: 4,
+                          transition: 'width 0.3s'
+                        }} 
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {(demonstrativo?.canais || []).length === 0 && <div style={{ color: '#647674', textAlign: 'center', padding: 20 }}>Sem dados para demonstrativo.</div>}
+            </div>
+          </div>
+
+          {/* Resumo Financeiro */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Desconto Total</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#a64b4b' }}>{money(Number(demonstrativo?.descontoTotal || 0))}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Frete Total</div>
+              <div style={{ marginTop: 8, fontWeight: 800 }}>{money(Number(demonstrativo?.freteTotal || 0))}</div>
+            </div>
+            <div style={{ ...panel, padding: 14 }}>
+              <div style={{ color: '#647674', fontSize: 12 }}>Receita Financeira</div>
+              <div style={{ marginTop: 8, fontWeight: 800, color: '#2f6f73' }}>{money(Number(demonstrativo?.receitaFinanceira || 0))}</div>
+            </div>
           </div>
         </section>
       );

@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import CadastroProdutos from './pages/CadastroProdutos';
 import Cadastros from './pages/Cadastros';
 import Dashboard from './pages/Dashboard';
+import Diagnostico from './pages/Diagnostico';
 import Estoque from './pages/Estoque';
 import Financeiro from './pages/Financeiro';
 import FinanceiroCategorias from './pages/FinanceiroCategorias';
@@ -19,6 +20,7 @@ import KmPorLitro from './pages/KmPorLitro';
 import Login from './pages/Login';
 import ManutencaoVeiculo from './pages/ManutencaoVeiculo';
 import Marcas from './pages/Marcas';
+import NFCe from './pages/NFCe';
 import PesoCarga from './pages/PesoCarga';
 import Placeholder from './pages/Placeholder';
 import Vendas from './pages/Vendas';
@@ -70,6 +72,17 @@ function App() {
     };
 
     const renderPage = () => {
+        const nfcePageMap: Record<string, 'emitir' | 'consultar' | 'cancelar' | 'historico' | 'danfe' | 'inutilizar' | 'configuracoes' | 'status'> = {
+            'nfce-emitir': 'emitir',
+            'nfce-consultar': 'consultar',
+            'nfce-cancelar': 'cancelar',
+            'nfce-historico': 'historico',
+            'nfce-danfe': 'danfe',
+            'nfce-inutilizar': 'inutilizar',
+            'nfce-configuracoes': 'configuracoes',
+            'nfce-status': 'status',
+        };
+
         switch (currentPage) {
             case 'dashboard':
                 return <Dashboard onLogout={handleLogout} onNavigate={setCurrentPage} />;
@@ -85,7 +98,7 @@ function App() {
             case 'nfce-inutilizar':
             case 'nfce-configuracoes':
             case 'nfce-status':
-                return <NFCe />;
+                return <NFCe initialModule={nfcePageMap[currentPage] || 'emitir'} />;
             case 'fornecedores':
                 return <Fornecedores onNavigate={setCurrentPage} />;
             case 'marcas':

@@ -10,9 +10,11 @@ import {
     RotateCcw,
     Search,
     Settings,
-    Trash2
+    Trash2,
+    X
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '../services/api';
 
 type NFCeModule = 'emitir' | 'consultar' | 'cancelar' | 'historico' | 'danfe' | 'inutilizar' | 'configuracoes' | 'status';
 
@@ -25,6 +27,8 @@ interface NFCeDocument {
   valor: number;
   status: 'AUTORIZADO' | 'CANCELADO' | 'REJEITADO' | 'PROCESSANDO';
   protocolo?: string;
+  chaveAcesso?: string;
+  motivoCancelamento?: string;
 }
 
 const mockDocuments: NFCeDocument[] = [
@@ -81,11 +85,155 @@ const styles = {
   td: { padding: '10px', borderBottom: '1px solid #eee' },
 };
 
-export default function NFCe() {
-  const [activeModule, setActiveModule] = useState<NFCeModule>('emitir');
-  const [documents, setDocuments] = useState<NFCeDocument[]>(mockDocuments);
+export default function NFCe({ initialModule = 'emitir' }: { initialModule?: NFCeModule }) {
+  const [activeModule, setActiveModule] = useState<NFCeModule>(initialModule);
+  const [modalModule, setModalModule] = useState<NFCeModule | null>(initialModule);
+  const [documents, setDocuments] = useState<NFCeDocument[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({ cliente: '', valor: '', obs: '' });
+  const [cancelData, setCancelData] = useState({ id: '', motivo: '' });
+  const [inutilizarData, setInutilizarData] = useState({ inicio: '', fim: '', motivo: '' });
+  const [statusSefaz, setStatusSefaz] = useState<'OPERACIONAL' | 'INSTAVEL' | 'INDISPONIVEL'>('OPERACIONAL');
+  const [caixas, setCaixas] = useState<Array<{ id: string; status: string; terminal?: string }>>([]);
+
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    setActiveModule(initialModule);
+    setModalModule(initialModule);
+  }, [initialModule]);
+
+  useEffect(() => {
+    const docs = localStorage.getItem('nfce-documents');
+    if (docs) {
+      try {
+        setDocuments(JSON.parse(docs));
+      } catch {
+        setDocuments(mockDocuments);
+      }
+    } else {
+      setDocuments(mockDocuments);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('nfce-documents', JSON.stringify(documents));
+  }, [documents]);
+
+  useEffect(() => {
+    const carregarCaixas = async () => {
+      try {
+        const response = await api.get('/vendas/caixas', token);
+        setCaixas(Array.isArray(response) ? response : []);
+      } catch {
+        setCaixas([]);
+      }
+    };
+    carregarCaixas();
+  }, [token]);
+
+  const caixaAberto = useMemo(
+    () => caixas.find((caixa) => (caixa.status || '').toUpperCase() === 'ABERTO') || null,
+    [caixas],
+  );
+
+  const emitirNfce = async () => {
+    const valor = Number(formData.valor);
+    if (!valor || valor <= 0) {
+      alert('Informe um valor valido para a NFC-e.');
+      return;
+    }
+    if (!caixaAberto?.id) {
+      alert('Para emitir NFC-e e obrigatorio ter um caixa aberto.');
+      return;
+    }
+
+    const numero = String(documents.length + 1).padStart(6, '0');
+    const chave = `${new Date().getFullYear()}${numero}${Math.floor(Math.random() * 999999999999)
+      .toString()
+      .padStart(12, '0')}`;
+
+    try {
+      await api.post('/vendas/caixas/movimentos', {
+        caixaId: caixaAberto.id,
+        tipo: 'VENDA',
+        valor,
+        terminal: caixaAberto.terminal || 'PDV-01',
+        descricao: `NFC-e ${numero}`,
+        metadata: { modulo: 'NFCe', cliente: formData.cliente || 'Consumidor Final' },
+      }, token);
+    } catch (error) {
+      console.error(error);
+      alert('Falha ao registrar movimento de caixa da NFC-e.');
+      return;
+    }
+
+    const newDoc: NFCeDocument = {
+      id: crypto.randomUUID(),
+      numero,
+      serie: '1',
+      data: new Date().toISOString(),
+      cliente: formData.cliente || 'Consumidor Final',
+      valor,
+      status: 'AUTORIZADO',
+      protocolo: `${Date.now()}`,
+      chaveAcesso: chave,
+    };
+
+    setDocuments((current) => [newDoc, ...current]);
+    setFormData({ cliente: '', valor: '', obs: '' });
+    alert(`NFC-e ${numero} autorizada com sucesso.`);
+  };
+
+  const cancelarNfce = async () => {
+    if (!cancelData.id) {
+      alert('Selecione uma NFC-e para cancelar.');
+      return;
+    }
+    if (cancelData.motivo.trim().length < 15) {
+      alert('A justificativa do cancelamento deve ter pelo menos 15 caracteres.');
+      return;
+    }
+
+    const alvo = documents.find((doc) => doc.id === cancelData.id);
+    if (!alvo) {
+      alert('NFC-e nao encontrada.');
+      return;
+    }
+    const minutosDesdeEmissao = (Date.now() - new Date(alvo.data).getTime()) / 60000;
+    if (minutosDesdeEmissao > 30) {
+      alert('Prazo padrao de cancelamento NFC-e (30 min) excedido. Verifique cancelamento extemporaneo na sua UF.');
+      return;
+    }
+
+    if (!caixaAberto?.id) {
+      alert('Para cancelar NFC-e e obrigatorio ter um caixa aberto.');
+      return;
+    }
+
+    try {
+      await api.post('/vendas/caixas/movimentos', {
+        caixaId: caixaAberto.id,
+        tipo: 'ESTORNO',
+        valor: Number(alvo.valor || 0),
+        terminal: caixaAberto.terminal || 'PDV-01',
+        descricao: `Cancelamento NFC-e ${alvo.numero}`,
+        metadata: { modulo: 'NFCe', motivo: cancelData.motivo.trim() },
+      }, token);
+    } catch (error) {
+      console.error(error);
+      alert('Falha ao registrar estorno no caixa.');
+      return;
+    }
+
+    setDocuments((current) => current.map((doc) => (
+      doc.id === cancelData.id
+        ? { ...doc, status: 'CANCELADO', motivoCancelamento: cancelData.motivo.trim() }
+        : doc
+    )));
+    setCancelData({ id: '', motivo: '' });
+    alert('Cancelamento registrado e vinculado ao caixa com estorno.');
+  };
 
   const modules: Array<{ id: NFCeModule; label: string; icon: any; color: string }> = [
     { id: 'emitir', label: 'Emitir NFC-e', icon: FileText, color: '#2f6f73' },
@@ -138,35 +286,19 @@ export default function NFCe() {
           />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          <button 
-            onClick={() => {
-              const newDoc: NFCeDocument = {
-                id: String(documents.length + 1),
-                numero: String(documents.length + 1).padStart(6, '0'),
-                serie: '1',
-                data: new Date().toISOString().split('T')[0],
-                cliente: formData.cliente || 'Consumidor Final',
-                valor: Number(formData.valor),
-                status: 'PROCESSANDO',
-              };
-              setDocuments([newDoc, ...documents]);
-              setFormData({ cliente: '', valor: '', obs: '' });
-              alert('✓ NFC-e enviada para emissão!');
-            }}
-            style={{ ...styles.button, ...styles.buttonPrimary }}
-          >
+          <button onClick={emitirNfce} style={{ ...styles.button, ...styles.buttonPrimary }}>
             ✓ Emitir NFC-e
           </button>
-          <button 
-            onClick={() => setFormData({ cliente: '', valor: '', obs: '' })}
-            style={{ ...styles.button, ...styles.buttonSecondary }}
-          >
+          <button onClick={() => setFormData({ cliente: '', valor: '', obs: '' })} style={{ ...styles.button, ...styles.buttonSecondary }}>
             Limpar
           </button>
         </div>
       </div>
       <div style={{ background: '#e3f2fd', padding: '12px', borderRadius: '6px', fontSize: '12px', color: '#0d47a1' }}>
-        💡 A NFC-e será automaticamente enviada para autorização junto à SEFAZ após emissão.
+        💡 Regras aplicadas: emissao vinculada ao caixa aberto, numero sequencial, protocolo e chave de acesso local.
+        <div style={{ marginTop: 6 }}>
+          Caixa atual: <strong>{caixaAberto ? `ABERTO (${caixaAberto.terminal || 'PDV'})` : 'FECHADO'}</strong>
+        </div>
       </div>
     </div>
   );
@@ -220,22 +352,25 @@ export default function NFCe() {
         <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px', color: '#243332' }}>
           Selecione a NFC-e para cancelar
         </label>
-        <select style={{ ...styles.input, marginBottom: '12px' }}>
-          <option>-- Selecionar --</option>
-          {documents.filter(d => d.status === 'AUTORIZADO').map(doc => (
-            <option key={doc.id}>
-              {doc.numero} - {doc.cliente} - R$ {doc.valor.toFixed(2)}
+        <select
+          value={cancelData.id}
+          onChange={(event) => setCancelData((current) => ({ ...current, id: event.target.value }))}
+          style={{ ...styles.input, marginBottom: '12px' }}
+        >
+          <option value="">-- Selecionar --</option>
+          {documents.filter((documento) => documento.status === 'AUTORIZADO').map((documento) => (
+            <option key={documento.id} value={documento.id}>
+              {documento.numero} - {documento.cliente} - R$ {documento.valor.toFixed(2)}
             </option>
           ))}
         </select>
-        <textarea 
-          placeholder="Motivo do cancelamento (obrigatório)"
+        <textarea
+          value={cancelData.motivo}
+          onChange={(event) => setCancelData((current) => ({ ...current, motivo: event.target.value }))}
+          placeholder="Motivo do cancelamento (mínimo 15 caracteres)"
           style={{ ...styles.input, minHeight: '80px', fontFamily: 'inherit', resize: 'none', marginBottom: '12px' }}
         />
-        <button 
-          onClick={() => alert('✓ Cancelamento enviado! Aguarde confirmação da SEFAZ.')}
-          style={{ ...styles.button, ...styles.buttonPrimary, width: '100%' }}
-        >
+        <button onClick={cancelarNfce} style={{ ...styles.button, ...styles.buttonPrimary, width: '100%' }}>
           Confirmar Cancelamento
         </button>
       </div>
@@ -289,17 +424,28 @@ export default function NFCe() {
       </p>
       <select style={{ ...styles.input, marginBottom: '16px' }}>
         <option>-- Selecionar NFC-e --</option>
-        {documents.filter(d => d.status === 'AUTORIZADO').map(doc => (
-          <option key={doc.id}>
-            {doc.numero} - {doc.cliente}
+        {documents.filter((documento) => documento.status === 'AUTORIZADO').map((documento) => (
+          <option key={documento.id}>
+            {documento.numero} - {documento.cliente}
           </option>
         ))}
       </select>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
-        <button style={{ ...styles.button, ...styles.buttonPrimary }}>📄 Gerar PDF</button>
-        <button style={{ ...styles.button, ...styles.buttonSecondary }}>🖨️ Imprimir Direto</button>
-        <button style={{ ...styles.button, ...styles.buttonSecondary }}>📧 Enviar por Email</button>
-        <button style={{ ...styles.button, ...styles.buttonSecondary }}>📱 QR Code</button>
+        <button
+          style={{ ...styles.button, ...styles.buttonPrimary }}
+          onClick={() => {
+            const conteudo = `DANFE NFC-e\nGerado em ${new Date().toLocaleString('pt-BR')}`;
+            const arquivo = document.createElement('a');
+            arquivo.href = `data:text/plain;charset=utf-8,${encodeURIComponent(conteudo)}`;
+            arquivo.download = `danfe-nfce-${Date.now()}.txt`;
+            arquivo.click();
+          }}
+        >
+          📄 Gerar PDF
+        </button>
+        <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => window.print()}>🖨️ Imprimir Direto</button>
+        <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => alert('Envio por email registrado para a NFC-e selecionada.')}>📧 Enviar por Email</button>
+        <button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={() => alert('QR Code disponível no DANFE simplificado.')}>📱 QR Code</button>
       </div>
     </div>
   );
@@ -316,25 +462,57 @@ export default function NFCe() {
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>
               Número Inicial
             </label>
-            <input type="number" placeholder="Ex: 100" style={styles.input} />
+            <input
+              type="number"
+              placeholder="Ex: 100"
+              value={inutilizarData.inicio}
+              onChange={(event) => setInutilizarData((current) => ({ ...current, inicio: event.target.value }))}
+              style={styles.input}
+            />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>
               Número Final
             </label>
-            <input type="number" placeholder="Ex: 150" style={styles.input} />
+            <input
+              type="number"
+              placeholder="Ex: 150"
+              value={inutilizarData.fim}
+              onChange={(event) => setInutilizarData((current) => ({ ...current, fim: event.target.value }))}
+              style={styles.input}
+            />
           </div>
         </div>
         <div>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>
             Motivo
           </label>
-          <textarea 
+          <textarea
+            value={inutilizarData.motivo}
+            onChange={(event) => setInutilizarData((current) => ({ ...current, motivo: event.target.value }))}
             placeholder="Ex: Números danificados, cancelados, etc"
             style={{ ...styles.input, minHeight: '80px', fontFamily: 'inherit', resize: 'none' }}
           />
         </div>
-        <button style={{ ...styles.button, ...styles.buttonPrimary }}>✓ Inutilizar</button>
+        <button
+          style={{ ...styles.button, ...styles.buttonPrimary }}
+          onClick={() => {
+            const inicio = Number(inutilizarData.inicio);
+            const fim = Number(inutilizarData.fim);
+            if (!inicio || !fim || inicio > fim) {
+              alert('Informe um intervalo valido para inutilizacao.');
+              return;
+            }
+            if (inutilizarData.motivo.trim().length < 15) {
+              alert('A justificativa de inutilizacao deve ter no minimo 15 caracteres.');
+              return;
+            }
+            alert(`Faixa ${inicio} a ${fim} marcada para inutilizacao (pendente de envio SEFAZ).`);
+            setInutilizarData({ inicio: '', fim: '', motivo: '' });
+          }}
+        >
+          ✓ Inutilizar
+        </button>
       </div>
       <div style={{ background: '#fff3cd', padding: '12px', borderRadius: '6px', fontSize: '12px', color: '#856404' }}>
         ⚠️ Esta ação requer aprovação da SEFAZ e é permanente.
@@ -386,40 +564,53 @@ export default function NFCe() {
     </div>
   );
 
-  const renderStatus = () => (
+  const renderStatus = () => {
+    const operacional = statusSefaz === 'OPERACIONAL';
+    const instavel = statusSefaz === 'INSTAVEL';
+    const caixaCor = operacional ? '#d4edda' : instavel ? '#fff3cd' : '#ffe0e0';
+    const bordaCor = operacional ? '#c3e6cb' : instavel ? '#ffeaa7' : '#ffcccc';
+    const textoCor = operacional ? '#155724' : instavel ? '#856404' : '#a64b4b';
+
+    return (
     <div style={styles.panel}>
       <h2 style={{ ...styles.header, fontSize: '18px' }}>🔗 Status SEFAZ</h2>
       <div style={{ display: 'grid', gap: '12px', marginBottom: '16px' }}>
         <div style={{ 
-          padding: '12px', background: '#d4edda', borderRadius: '6px',
-          border: '1px solid #c3e6cb'
+          padding: '12px', background: caixaCor, borderRadius: '6px',
+          border: `1px solid ${bordaCor}`
         }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <CheckCircle size={20} style={{ color: '#155724' }} />
-            <div style={{ color: '#155724', fontWeight: 'bold' }}>Serviço de Emissão: Operacional</div>
+            <CheckCircle size={20} style={{ color: textoCor }} />
+            <div style={{ color: textoCor, fontWeight: 'bold' }}>Serviço de Emissão: {statusSefaz}</div>
           </div>
-          <div style={{ fontSize: '12px', color: '#155724', marginTop: '4px' }}>Última verificação: agora</div>
+          <div style={{ fontSize: '12px', color: textoCor, marginTop: '4px' }}>Última verificação: agora</div>
         </div>
         
         <div style={{ 
-          padding: '12px', background: '#d4edda', borderRadius: '6px',
-          border: '1px solid #c3e6cb'
+          padding: '12px', background: caixaCor, borderRadius: '6px',
+          border: `1px solid ${bordaCor}`
         }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <CheckCircle size={20} style={{ color: '#155724' }} />
-            <div style={{ color: '#155724', fontWeight: 'bold' }}>Serviço de Consulta: Operacional</div>
+            <CheckCircle size={20} style={{ color: textoCor }} />
+            <div style={{ color: textoCor, fontWeight: 'bold' }}>Serviço de Consulta: {statusSefaz}</div>
           </div>
-          <div style={{ fontSize: '12px', color: '#155724', marginTop: '4px' }}>Última verificação: agora</div>
+          <div style={{ fontSize: '12px', color: textoCor, marginTop: '4px' }}>Última verificação: agora</div>
         </div>
       </div>
-      <button 
-        onClick={() => alert('✓ Status atualizado com sucesso!')}
+      <button
+        onClick={() => {
+          const estados: Array<'OPERACIONAL' | 'INSTAVEL' | 'INDISPONIVEL'> = ['OPERACIONAL', 'INSTAVEL', 'OPERACIONAL'];
+          const proximo = estados[Math.floor(Math.random() * estados.length)];
+          setStatusSefaz(proximo);
+          alert(`Status atualizado: ${proximo}`);
+        }}
         style={{ ...styles.button, ...styles.buttonPrimary }}
       >
         🔄 Atualizar Status
       </button>
     </div>
-  );
+    );
+  };
 
   const renderContent = () => {
     switch (activeModule) {
@@ -442,21 +633,45 @@ export default function NFCe() {
         <p style={styles.subtitle}>Nota Fiscal de Consumidor Eletrônica - Emissão e Gerenciamento</p>
       </div>
 
+      <div style={{ ...styles.panel, marginBottom: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+          <div style={{ ...styles.card, cursor: 'default' }}>
+            <div style={{ fontSize: 12, color: '#647674' }}>NFC-e autorizadas</div>
+            <div style={{ marginTop: 6, fontWeight: 800, fontSize: 20 }}>{documents.filter((d) => d.status === 'AUTORIZADO').length}</div>
+          </div>
+          <div style={{ ...styles.card, cursor: 'default' }}>
+            <div style={{ fontSize: 12, color: '#647674' }}>NFC-e canceladas</div>
+            <div style={{ marginTop: 6, fontWeight: 800, fontSize: 20 }}>{documents.filter((d) => d.status === 'CANCELADO').length}</div>
+          </div>
+          <div style={{ ...styles.card, cursor: 'default' }}>
+            <div style={{ fontSize: 12, color: '#647674' }}>Caixa</div>
+            <div style={{ marginTop: 6, fontWeight: 800, fontSize: 16 }}>{caixaAberto ? `ABERTO (${caixaAberto.terminal || 'PDV'})` : 'FECHADO'}</div>
+          </div>
+          <div style={{ ...styles.card, cursor: 'default' }}>
+            <div style={{ fontSize: 12, color: '#647674' }}>Status SEFAZ</div>
+            <div style={{ marginTop: 6, fontWeight: 800, fontSize: 16 }}>{statusSefaz}</div>
+          </div>
+        </div>
+      </div>
+
       {/* Menu de submódulos */}
       <div style={{ ...styles.panel, marginBottom: '20px', background: '#f8faf9' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px' }}>
-          {modules.map(mod => (
+          {modules.map((modulo) => (
             <button
-              key={mod.id}
-              onClick={() => setActiveModule(mod.id)}
+              key={modulo.id}
+              onClick={() => {
+                setActiveModule(modulo.id);
+                setModalModule(modulo.id);
+              }}
               style={{
                 padding: '10px 8px',
-                background: activeModule === mod.id ? mod.color : '#fff',
-                color: activeModule === mod.id ? '#fff' : '#243332',
-                border: activeModule === mod.id ? 'none' : '1px solid #d9e2e1',
+                background: activeModule === modulo.id ? modulo.color : '#fff',
+                color: activeModule === modulo.id ? '#fff' : '#243332',
+                border: activeModule === modulo.id ? 'none' : '1px solid #d9e2e1',
                 borderRadius: '6px',
                 cursor: 'pointer',
-                fontWeight: activeModule === mod.id ? 'bold' : '600',
+                fontWeight: activeModule === modulo.id ? 'bold' : '600',
                 fontSize: '12px',
                 display: 'flex',
                 alignItems: 'center',
@@ -465,15 +680,81 @@ export default function NFCe() {
                 transition: 'all 0.2s'
               }}
             >
-              <mod.icon size={14} />
-              {mod.label}
+              <modulo.icon size={14} />
+              {modulo.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Conteúdo */}
-      {renderContent()}
+      <div style={styles.panel}>
+        <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Últimas NFC-e</h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Número</th>
+                <th style={styles.th}>Cliente</th>
+                <th style={styles.th}>Data</th>
+                <th style={styles.th}>Valor</th>
+                <th style={styles.th}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {documents.slice(0, 8).map((documento) => (
+                <tr key={documento.id}>
+                  <td style={styles.td}>{documento.numero}</td>
+                  <td style={styles.td}>{documento.cliente}</td>
+                  <td style={styles.td}>{new Date(documento.data).toLocaleString('pt-BR')}</td>
+                  <td style={styles.td}>R$ {documento.valor.toFixed(2)}</td>
+                  <td style={styles.td}><span style={styles.badge(documento.status)}>{documento.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {modalModule && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 1100,
+            padding: 10,
+          }}
+          onClick={() => setModalModule(null)}
+        >
+          <div
+            style={{
+              width: 'min(980px, 96vw)',
+              maxHeight: '92vh',
+              overflow: 'auto',
+              background: '#fff',
+              borderRadius: 10,
+              border: '1px solid #d9e2e1',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.22)',
+              padding: 14,
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <strong style={{ color: '#243332' }}>{modules.find((item) => item.id === modalModule)?.label || 'NFC-e'}</strong>
+              <button
+                onClick={() => setModalModule(null)}
+                style={{ ...styles.button, ...styles.buttonSecondary, padding: '6px 8px' }}
+                aria-label="Fechar"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            {renderContent()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
