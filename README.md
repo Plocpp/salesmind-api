@@ -131,3 +131,10 @@ A página `src/frontend/pages/CadastroProdutos.tsx` foi construída para:
 - adicionar testes unitários e de integração
 - refatorar componentes React para usar `Context` ou `zustand`
 - criar documentação OpenAPI/Swagger para API
+
+## Documentação oficial do projeto
+
+- Documentação técnica sênior: `docs/documentacao-senior.md`
+- Programa LGPD: `docs/lgpd-programa-adequacao.md`
+- Registro de operações de tratamento (Art. 37): `docs/lgpd-registro-operacoes.md`
+- Playbook de incidentes de dados: `docs/lgpd-playbook-incidentes.md`
