@@ -42,12 +42,12 @@ function emptyToNull(value?: string | null) {
 
 export class CadastrosAuxiliaresService {
   async listarVendedores() {
-    return prisma.vendedor.findMany({ orderBy: { nome: "asc" } });
+    return (prisma as any).vendedor.findMany({ orderBy: { nome: "asc" } });
   }
 
   async criarVendedor(data: VendedorInput) {
     const parsed = vendedorSchema.parse(data);
-    return prisma.vendedor.create({
+    return (prisma as any).vendedor.create({
       data: {
         nome: parsed.nome.trim(),
         email: emptyToNull(parsed.email),
@@ -61,7 +61,7 @@ export class CadastrosAuxiliaresService {
 
   async atualizarVendedor(id: string, data: Partial<VendedorInput>) {
     const parsed = vendedorSchema.partial().parse(data);
-    return prisma.vendedor.update({
+    return (prisma as any).vendedor.update({
       where: { id },
       data: {
         ...parsed,
@@ -74,16 +74,16 @@ export class CadastrosAuxiliaresService {
   }
 
   async deletarVendedor(id: string) {
-    return prisma.vendedor.delete({ where: { id } });
+    return (prisma as any).vendedor.delete({ where: { id } });
   }
 
   async listarVeiculos() {
-    return prisma.veiculoEntrega.findMany({ orderBy: { placa: "asc" } });
+    return (prisma as any).veiculoEntrega.findMany({ orderBy: { placa: "asc" } });
   }
 
   async criarVeiculo(data: VeiculoInput) {
     const parsed = veiculoSchema.parse(data);
-    return prisma.veiculoEntrega.create({
+    return (prisma as any).veiculoEntrega.create({
       data: {
         placa: parsed.placa.trim().toUpperCase(),
         modelo: parsed.modelo.trim(),
@@ -98,7 +98,7 @@ export class CadastrosAuxiliaresService {
 
   async atualizarVeiculo(id: string, data: Partial<VeiculoInput>) {
     const parsed = veiculoSchema.partial().parse(data);
-    return prisma.veiculoEntrega.update({
+    return (prisma as any).veiculoEntrega.update({
       where: { id },
       data: {
         ...parsed,
@@ -111,11 +111,11 @@ export class CadastrosAuxiliaresService {
   }
 
   async deletarVeiculo(id: string) {
-    return prisma.veiculoEntrega.delete({ where: { id } });
+    return (prisma as any).veiculoEntrega.delete({ where: { id } });
   }
 
   async listarEntregadores() {
-    return prisma.entregador.findMany({
+    return (prisma as any).entregador.findMany({
       include: { veiculo: true },
       orderBy: { nome: "asc" },
     });
@@ -123,7 +123,7 @@ export class CadastrosAuxiliaresService {
 
   async criarEntregador(data: EntregadorInput) {
     const parsed = entregadorSchema.parse(data);
-    return prisma.entregador.create({
+    return (prisma as any).entregador.create({
       data: {
         nome: parsed.nome.trim(),
         email: emptyToNull(parsed.email),
@@ -139,7 +139,7 @@ export class CadastrosAuxiliaresService {
 
   async atualizarEntregador(id: string, data: Partial<EntregadorInput>) {
     const parsed = entregadorSchema.partial().parse(data);
-    return prisma.entregador.update({
+    return (prisma as any).entregador.update({
       where: { id },
       data: {
         ...parsed,
@@ -154,6 +154,6 @@ export class CadastrosAuxiliaresService {
   }
 
   async deletarEntregador(id: string) {
-    return prisma.entregador.delete({ where: { id } });
+    return (prisma as any).entregador.delete({ where: { id } });
   }
 }

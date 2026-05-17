@@ -1,31 +1,32 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import Layout from './components/Layout';
-import CadastroProdutos from './pages/CadastroProdutos';
-import Cadastros from './pages/Cadastros';
-import Clientes from './pages/Clientes';
-import Dashboard from './pages/Dashboard';
-import Diagnostico from './pages/Diagnostico';
-import Estoque from './pages/Estoque';
-import Financeiro from './pages/Financeiro';
-import FinanceiroCategorias from './pages/FinanceiroCategorias';
-import FinanceiroConciliacaoCartoes from './pages/FinanceiroConciliacaoCartoes';
-import FinanceiroContasCartoes from './pages/FinanceiroContasCartoes';
-import FinanceiroContasPagar from './pages/FinanceiroContasPagar';
-import FinanceiroDemonstrativo from './pages/FinanceiroDemonstrativo';
-import FinanceiroFluxoCaixa from './pages/FinanceiroFluxoCaixa';
-import FinanceiroFormasPagamento from './pages/FinanceiroFormasPagamento';
-import FinanceiroLancamentos from './pages/FinanceiroLancamentos';
-import Fornecedores from './pages/Fornecedores';
-import IntegracoesHub from './pages/IntegracoesHub';
-import KmPorLitro from './pages/KmPorLitro';
 import Login from './pages/Login';
-import ManutencaoVeiculo from './pages/ManutencaoVeiculo';
-import Marcas from './pages/Marcas';
-import NFCe from './pages/NFCe';
-import PesoCarga from './pages/PesoCarga';
-import Placeholder from './pages/Placeholder';
-import Vendas from './pages/Vendas';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Diagnostico = lazy(() => import('./pages/Diagnostico'));
+const Vendas = lazy(() => import('./pages/Vendas'));
+const NFCe = lazy(() => import('./pages/NFCe'));
+const Fornecedores = lazy(() => import('./pages/Fornecedores'));
+const Marcas = lazy(() => import('./pages/Marcas'));
+const CadastroProdutos = lazy(() => import('./pages/CadastroProdutos'));
+const Cadastros = lazy(() => import('./pages/Cadastros'));
+const Clientes = lazy(() => import('./pages/Clientes'));
+const Estoque = lazy(() => import('./pages/Estoque'));
+const Financeiro = lazy(() => import('./pages/Financeiro'));
+const FinanceiroLancamentos = lazy(() => import('./pages/FinanceiroLancamentos'));
+const FinanceiroConciliacaoCartoes = lazy(() => import('./pages/FinanceiroConciliacaoCartoes'));
+const FinanceiroContasPagar = lazy(() => import('./pages/FinanceiroContasPagar'));
+const FinanceiroDemonstrativo = lazy(() => import('./pages/FinanceiroDemonstrativo'));
+const FinanceiroFluxoCaixa = lazy(() => import('./pages/FinanceiroFluxoCaixa'));
+const FinanceiroContasCartoes = lazy(() => import('./pages/FinanceiroContasCartoes'));
+const FinanceiroCategorias = lazy(() => import('./pages/FinanceiroCategorias'));
+const FinanceiroFormasPagamento = lazy(() => import('./pages/FinanceiroFormasPagamento'));
+const KmPorLitro = lazy(() => import('./pages/KmPorLitro'));
+const ManutencaoVeiculo = lazy(() => import('./pages/ManutencaoVeiculo'));
+const PesoCarga = lazy(() => import('./pages/PesoCarga'));
+const IntegracoesHub = lazy(() => import('./pages/IntegracoesHub'));
+const Placeholder = lazy(() => import('./pages/Placeholder'));
 
 const placeholderPageTitles: Record<string, string> = {
     clientes: 'Clientes',
@@ -160,7 +161,15 @@ function App() {
                 onLogout={handleLogout}
                 userRole={userRole}
             >
-                {renderPage()}
+                <Suspense
+                    fallback={
+                        <div style={{ padding: 24, color: '#334155' }}>
+                            Carregando modulo...
+                        </div>
+                    }
+                >
+                    {renderPage()}
+                </Suspense>
             </Layout>
         </ErrorBoundary>
     );

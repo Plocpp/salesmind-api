@@ -63,7 +63,7 @@ class AuthController {
                     motivo: "credenciais_invalidas",
                 });
 
-                if (failure.blocked) {
+                if (failure?.blocked) {
                     return res.status(429).json({
                         error: "Muitas tentativas de login. Tente novamente em alguns minutos.",
                     });
@@ -84,7 +84,7 @@ class AuthController {
                     motivo: "credenciais_invalidas",
                 });
 
-                if (failure.blocked) {
+                if (failure?.blocked) {
                     return res.status(429).json({
                         error: "Muitas tentativas de login. Tente novamente em alguns minutos.",
                     });

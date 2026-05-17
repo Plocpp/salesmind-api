@@ -69,11 +69,80 @@ npm run seed
    - `GET https://<api-url>/diagnostico/saude`
 3. Smoke remoto (localmente, apontando para API publica):
 
+Linux/macOS:
+
 ```bash
 SMOKE_BASE_URL=https://<api-url> npm run test:smoke
+```
+
+Windows (cmd):
+
+```bat
+set SMOKE_BASE_URL=https://<api-url> && npm run test:smoke
 ```
 
 ## 7. Observacao sobre performance
 
 Para producao inicial, use plano `starter` para a API (evita cold-start severo).
 Se o trafego crescer, aumente plano da API e mantenha frontend static no plano free/starter.
+
+## 8. Checklist rapido de execucao (Render)
+
+Status validado nesta sessao (17/05/2026):
+
+- [x] `render.yaml` com 2 servicos (`salesmind-api` e `salesmind-app`)
+- [x] `healthCheckPath` da API em `/health`
+- [x] `npm run release:check` verde (smoke 44/44 + build frontend)
+- [x] `npm run build:api` verde
+- [x] `preDeployCommand` configurado com `npx prisma db push`
+- [ ] Secrets obrigatorios preenchidos no Render (`DATABASE_URL`, `JWT_*`, `ONBOARDING_WEBHOOK_TOKEN`, `INTEGRACOES_ENCRYPTION_KEY`, `EMAIL_FROM`, `SMTP_USER`, `SMTP_PASS`)
+- [ ] Revisar URLs finais dos servicos e atualizar: `FRONTEND_BASE_URL`, `CORS_ORIGIN_ALLOWLIST`, `PUBLIC_BASE_URL`, `VITE_API_BASE_URL`
+- [ ] Rodar smoke remoto contra URL publica da API
+
+Comandos finais de validacao externa:
+
+Validacao de primeiro acesso (onboarding + login + smoke):
+
+```bash
+npm run test:first-access-ready
+```
+
+Para incluir builds no mesmo comando:
+
+Linux/macOS:
+
+```bash
+FIRST_ACCESS_INCLUDE_BUILDS=1 npm run test:first-access-ready
+```
+
+Windows (cmd):
+
+```bat
+set FIRST_ACCESS_INCLUDE_BUILDS=1 && npm run test:first-access-ready
+```
+
+Para validar diretamente no ambiente publicado (sem subir servidor local):
+
+Linux/macOS:
+
+```bash
+FIRST_ACCESS_BASE_URL=https://<api-url> npm run test:first-access-ready
+```
+
+Windows (cmd):
+
+```bat
+set FIRST_ACCESS_BASE_URL=https://<api-url> && npm run test:first-access-ready
+```
+
+Linux/macOS:
+
+```bash
+SMOKE_BASE_URL=https://<api-url> npm run test:smoke
+```
+
+Windows (cmd):
+
+```bat
+set SMOKE_BASE_URL=https://<api-url> && npm run test:smoke
+```

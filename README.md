@@ -133,7 +133,7 @@ npm run start:runtime
 npm run build:all
 ```
 
-> Observacao: o build estrito de TypeScript da API pode falhar enquanto existirem pendencias legadas de tipagem em alguns módulos. O deploy containerizado atual usa `start:runtime` para manter a publicação online funcional.
+> Status atual: o build estrito de TypeScript da API esta passando (`npm run build:api`). O deploy continua usando `start:runtime` para priorizar robustez operacional em runtime no ambiente de producao.
 
 ## Estrutura principal
 

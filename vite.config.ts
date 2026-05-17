@@ -11,6 +11,17 @@ export default defineConfig({
   },
   build: {
     outDir: resolve(__dirname, 'dist'),
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('recharts')) return 'charts'
+          if (id.includes('lucide-react')) return 'icons'
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) return 'react-vendor'
+          return 'vendor'
+        }
+      }
+    }
   }
 })

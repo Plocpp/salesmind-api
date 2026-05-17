@@ -123,7 +123,8 @@ export function validateSchema(schema: any) {
       req.body = validated;
       next();
     } catch (error) {
-      const report = errorReporter.report(error, {
+      const normalizedError = error instanceof Error ? error : String(error);
+      const report = errorReporter.report(normalizedError, {
         endpoint: req.originalUrl,
         method: 'VALIDATION',
         body: req.body,

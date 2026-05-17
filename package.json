@@ -14,6 +14,7 @@
     "start:runtime": "node -r ts-node/register/transpile-only src/server.ts",
     "seed": "ts-node --transpile-only src/scripts/popularBanco.ts",
     "test:onboarding-acesso": "node scripts/test-onboarding-access.js",
+    "test:first-access-ready": "node scripts/first-access-ready-check.js",
     "test:smoke": "node scripts/test-smoke-system.js",
     "release:check": "node scripts/release-ready-check.js"
   },

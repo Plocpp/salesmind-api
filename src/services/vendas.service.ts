@@ -1127,8 +1127,17 @@ export class VendasService {
       tipo: 'ORCAMENTO_CONVERTIDO',
       status: 'PAGO',
       origem: 'MANUAL',
+      offline: false,
+      descontoTotal: 0,
+      frete: 0,
       itens: [],
-      pagamentos: [{ forma: 'PIX', valor: orcamento.total || 0 }],
+      pagamentos: [{
+        forma: 'PIX',
+        valor: orcamento.total || 0,
+        parcelas: 1,
+        taxaPercentual: 0,
+        taxaFixa: 0,
+      }],
       observacoes: `Convertido de orçamento ${orcamento.numero || id}`,
     }, usuarioId);
 

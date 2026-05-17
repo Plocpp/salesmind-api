@@ -45,7 +45,8 @@ router.get('/saude', async (req: Request, res: Response) => {
       diagnostico,
     });
   } catch (error) {
-    errorReporter.report(error, { endpoint: '/diagnostico/saude', method: 'GET' });
+    const normalizedError = error instanceof Error ? error : String(error);
+    errorReporter.report(normalizedError, { endpoint: '/diagnostico/saude', method: 'GET' });
     res.status(500).json({
       success: false,
       message: 'Erro ao verificar saúde do sistema',
@@ -80,7 +81,8 @@ router.get('/erros', (req: Request, res: Response) => {
  * Obtém detalhes de um erro específico
  */
 router.get('/erros/:id', (req: Request, res: Response) => {
-  const erro = errorReporter.getReport(req.params.id);
+  const errorId = String(req.params.id || '');
+  const erro = errorReporter.getReport(errorId);
 
   if (!erro) {
     return res.status(404).json({
@@ -100,7 +102,8 @@ router.get('/erros/:id', (req: Request, res: Response) => {
  * Marca um erro como resolvido
  */
 router.post('/erros/:id/resolver', (req: Request, res: Response) => {
-  errorReporter.markAsResolved(req.params.id);
+  const errorId = String(req.params.id || '');
+  errorReporter.markAsResolved(errorId);
 
   res.json({
     success: true,
@@ -186,7 +189,8 @@ router.post('/migracoes/status', async (req: Request, res: Response) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    const report = errorReporter.report(error, {
+    const normalizedError = error instanceof Error ? error : String(error);
+    const report = errorReporter.report(normalizedError, {
       endpoint: '/diagnostico/migracoes/status',
       method: 'POST',
     });
@@ -250,7 +254,8 @@ router.post('/banco/verificar', async (req: Request, res: Response) => {
           : undefined,
     });
   } catch (error) {
-    const report = errorReporter.report(error, {
+    const normalizedError = error instanceof Error ? error : String(error);
+    const report = errorReporter.report(normalizedError, {
       endpoint: '/diagnostico/banco/verificar',
       method: 'POST',
     });

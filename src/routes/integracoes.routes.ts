@@ -54,7 +54,12 @@ router.get('/providers', (req, res, next) => {
 router.get('/providers/:providerId/connect-url', (req: AuthRequest, res, next) => {
   try {
     const providerId = req.params.providerId;
-    const shopDomain = typeof req.query.shopDomain === 'string' ? req.query.shopDomain : undefined;
+    const shopDomainRaw = req.query.shopDomain;
+    const shopDomain = typeof shopDomainRaw === 'string'
+      ? shopDomainRaw
+      : Array.isArray(shopDomainRaw) && typeof shopDomainRaw[0] === 'string'
+        ? shopDomainRaw[0]
+        : undefined;
     const userId = req.userId || '';
 
     const result = integracoesService.gerarConnectUrl(providerId, { shopDomain, userId });
