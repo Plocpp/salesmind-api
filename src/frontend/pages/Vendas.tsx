@@ -332,6 +332,10 @@ export default function Vendas() {
   const [buscaCliente, setBuscaCliente] = useState('');
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
   const [formaSelecionada, setFormaSelecionada] = useState('PIX');
+  const [valorPago, setValorPago] = useState('0');
+  const [comprovantePagamento, setComprovantePagamento] = useState('');
+  const [pagamentoComprovado, setPagamentoComprovado] = useState(false);
+  const [finalizandoVenda, setFinalizandoVenda] = useState(false);
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   
   const [caixaAberto, setCaixaAberto] = useState(false);
@@ -461,6 +465,8 @@ export default function Vendas() {
     () => carrinho.reduce((total, item) => total + item.produto.preco * item.quantidade - item.desconto, 0),
     [carrinho],
   );
+
+  const formasPagamentoPDV = ['PIX', 'DINHEIRO', 'CREDITO', 'DEBITO', 'BOLETO', 'CREDIARIO', 'LINK_PAGAMENTO'];
 
   const kpis = useMemo(() => {
     const receita = vendas.reduce((total, venda) => total + Number(venda.total || 0), 0);
@@ -767,7 +773,14 @@ export default function Vendas() {
     return '🔒 Fechamento de Caixa';
   };
 
-  const finalizarVenda = async () => {
+  const limparPagamentoPDV = () => {
+    setFormaSelecionada('PIX');
+    setValorPago(totalCarrinho.toFixed(2));
+    setComprovantePagamento('');
+    setPagamentoComprovado(false);
+  };
+
+  const abrirPagamentoPDV = () => {
     if (carrinho.length === 0) {
       alert('Adicione ao menos um item no carrinho.');
       return;
@@ -778,7 +791,31 @@ export default function Vendas() {
       return;
     }
 
+    limparPagamentoPDV();
+    setModalAberto('confirmar-pagamento');
+  };
+
+  const finalizarVenda = async () => {
+    if (finalizandoVenda) return;
+
+    const valorInformado = Number(valorPago || 0);
+    if (Number.isNaN(valorInformado) || valorInformado < totalCarrinho) {
+      alert('O valor pago deve ser igual ou maior que o total da venda.');
+      return;
+    }
+
+    if (!pagamentoComprovado) {
+      alert('Comprove o pagamento antes de finalizar a venda.');
+      return;
+    }
+
+    if (formaSelecionada !== 'DINHEIRO' && !comprovantePagamento.trim()) {
+      alert('Informe o comprovante/protocolo para esta forma de pagamento.');
+      return;
+    }
+
     try {
+      setFinalizandoVenda(true);
       await api.post('/vendas/vendas', {
         clienteId: clienteSelecionado?.id,
         tipo: 'PDV',
@@ -792,16 +829,27 @@ export default function Vendas() {
           precoUnitario: Number(item.produto.preco),
           desconto: Number(item.desconto || 0),
         })),
-        pagamentos: [{ forma: formaSelecionada, valor: totalCarrinho, parcelas: 1 }],
+        pagamentos: [{
+          forma: formaSelecionada as any,
+          valor: totalCarrinho,
+          parcelas: 1,
+          autorizacao: comprovantePagamento.trim() || undefined,
+        }],
+        observacoes: comprovantePagamento.trim()
+          ? `Pagamento comprovado no PDV. Referencia: ${comprovantePagamento.trim()}`
+          : 'Pagamento comprovado no PDV.',
       }, token);
 
       setCarrinho([]);
       setBuscaCliente('');
       setClienteSelecionado(null);
+      setModalAberto(null);
       await carregarTudo();
     } catch (error) {
       console.error(error);
       alert('Falha ao finalizar venda.');
+    } finally {
+      setFinalizandoVenda(false);
     }
   };
 
@@ -1151,14 +1199,11 @@ export default function Vendas() {
               </div>
             </div>
 
-            {/* Forma de Pagamento */}
             <div style={{ ...panel, padding: 11 }}>
-              <label style={{...label, marginBottom: 5, fontSize: 11}}>Forma de pagamento</label>
-              <select value={formaSelecionada} onChange={(event) => setFormaSelecionada(event.target.value)} style={{...input, height: 32, fontSize: 11}}>
-                {['PIX', 'DINHEIRO', 'CREDITO', 'DEBITO', 'BOLETO', 'CREDIARIO', 'LINK_PAGAMENTO'].map((forma) => (
-                  <option key={forma} value={forma}>{forma}</option>
-                ))}
-              </select>
+              <label style={{...label, marginBottom: 5, fontSize: 11}}>Pagamento</label>
+              <div style={{ color: '#647674', fontSize: 11 }}>
+                A forma de pagamento e a comprovacao sao informadas no pop-up ao finalizar.
+              </div>
             </div>
 
             {/* Carrinho */}
@@ -1204,11 +1249,11 @@ export default function Vendas() {
               <div style={{ fontSize: 10, color: '#647674', marginBottom: 3 }}>Total da venda</div>
               <div style={{ fontSize: 26, fontWeight: 900, color: '#2f6f73', marginBottom: 8 }}>{money(totalCarrinho)}</div>
               <button 
-                onClick={finalizarVenda} 
+                onClick={abrirPagamentoPDV}
                 style={{ ...buttonPrimary, width: '100%', fontSize: 12, padding: '10px 0' }}
                 disabled={carrinho.length === 0}
               >
-                ✓ Finalizar venda
+                ✓ Finalizar venda e receber
               </button>
             </div>
           </div>
@@ -1493,6 +1538,72 @@ export default function Vendas() {
 
                   <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
                     <button onClick={() => setModalAberto(null)} style={buttonPrimary}>Fechar resumo</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {modalAberto === 'confirmar-pagamento' && (
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', zIndex: 1003 }} onClick={() => !finalizandoVenda && setModalAberto(null)}>
+                <div style={{ ...panel, width: 'min(560px, 96vw)', maxHeight: '90vh', overflow: 'auto', padding: 16 }} onClick={(event) => event.stopPropagation()}>
+                  <h3 style={{ margin: '0 0 10px' }}>Confirmar pagamento da venda</h3>
+                  <div style={{ fontSize: 12, color: '#647674', marginBottom: 10 }}>
+                    Total a receber: <strong style={{ color: '#2f6f73' }}>{money(totalCarrinho)}</strong>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div>
+                      <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>Forma de pagamento</label>
+                      <select value={formaSelecionada} onChange={(event) => setFormaSelecionada(event.target.value)} style={{ ...input, height: 34, fontSize: 12 }}>
+                        {formasPagamentoPDV.map((forma) => (
+                          <option key={forma} value={forma}>{forma}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>Valor pago</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={valorPago}
+                        onChange={(event) => setValorPago(event.target.value)}
+                        style={{ ...input, height: 34, fontSize: 12 }}
+                        placeholder="0,00"
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>
+                        Comprovante / protocolo {formaSelecionada === 'DINHEIRO' ? '(opcional)' : '(obrigatorio)'}
+                      </label>
+                      <input
+                        type="text"
+                        value={comprovantePagamento}
+                        onChange={(event) => setComprovantePagamento(event.target.value)}
+                        style={{ ...input, height: 34, fontSize: 12 }}
+                        placeholder="Ex: NSU, TxId, autorizacao da maquininha"
+                      />
+                    </div>
+
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#243332' }}>
+                      <input
+                        type="checkbox"
+                        checked={pagamentoComprovado}
+                        onChange={(event) => setPagamentoComprovado(event.target.checked)}
+                      />
+                      Confirmo que o pagamento foi comprovado.
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14 }}>
+                    <button onClick={finalizarVenda} style={{ ...buttonPrimary, fontSize: 12 }} disabled={finalizandoVenda}>
+                      {finalizandoVenda ? 'Finalizando...' : 'Confirmar e finalizar'}
+                    </button>
+                    <button onClick={() => setModalAberto(null)} style={{ ...buttonSecondary, fontSize: 12 }} disabled={finalizandoVenda}>
+                      Cancelar
+                    </button>
                   </div>
                 </div>
               </div>
