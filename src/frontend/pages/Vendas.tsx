@@ -315,6 +315,8 @@ export default function Vendas() {
   const [loading, setLoading] = useState(true);
   const [savingConfig, setSavingConfig] = useState(false);
   const [erro, setErro] = useState('');
+  const [falhasCarga, setFalhasCarga] = useState<string[]>([]);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [vendas, setVendas] = useState<Venda[]>([]);
@@ -331,6 +333,9 @@ export default function Vendas() {
   const [buscaProduto, setBuscaProduto] = useState('');
   const [buscaCliente, setBuscaCliente] = useState('');
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
+  const [criandoClienteRapido, setCriandoClienteRapido] = useState(false);
+  const [salvandoClienteRapido, setSalvandoClienteRapido] = useState(false);
+  const [novoClienteRapido, setNovoClienteRapido] = useState({ nome: '', telefone: '', email: '' });
   const [formaSelecionada, setFormaSelecionada] = useState('PIX');
   const [valorPago, setValorPago] = useState('0');
   const [comprovantePagamento, setComprovantePagamento] = useState('');
@@ -366,24 +371,47 @@ export default function Vendas() {
 
   const token = localStorage.getItem('token');
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 920px)');
+    const update = () => setIsMobileViewport(mediaQuery.matches);
+
+    update();
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', update);
+      return () => mediaQuery.removeEventListener('change', update);
+    }
+
+    mediaQuery.addListener(update);
+    return () => mediaQuery.removeListener(update);
+  }, []);
+
   const carregarTudo = async () => {
     try {
       setLoading(true);
       setErro('');
+      setFalhasCarga([]);
 
-      const responses = await Promise.allSettled([
-        api.get('/produtos?limit=100', token),
-        api.get('/vendas/vendas', token),
-        api.get('/vendas/caixas', token),
-        api.get('/vendas/movimentos-caixa', token),
-        api.get('/vendas/clientes/ranking', token),
-        api.get('/vendas/clientes/saldos', token),
-        api.get('/vendas/listas-preco', token),
-        api.get('/vendas/formas-recebimento', token),
-        api.get('/vendas/orcamentos', token),
-        api.get('/vendas/modelo-demonstrativo?periodoDias=30', token),
-        api.get('/vendas/configuracao', token),
-      ]);
+      if (!token) {
+        setErro('Sessao expirada. Entre novamente para carregar o ponto de venda.');
+        return;
+      }
+
+      const blocos = [
+        { nome: 'Produtos', request: api.get('/produtos?limit=100', token) },
+        { nome: 'Vendas', request: api.get('/vendas/vendas', token) },
+        { nome: 'Caixas', request: api.get('/vendas/caixas', token) },
+        { nome: 'Movimentos de caixa', request: api.get('/vendas/movimentos-caixa', token) },
+        { nome: 'Ranking de clientes', request: api.get('/vendas/clientes/ranking', token) },
+        { nome: 'Saldo de clientes', request: api.get('/vendas/clientes/saldos', token) },
+        { nome: 'Listas de preco', request: api.get('/vendas/listas-preco', token) },
+        { nome: 'Formas de recebimento', request: api.get('/vendas/formas-recebimento', token) },
+        { nome: 'Orcamentos', request: api.get('/vendas/orcamentos', token) },
+        { nome: 'Demonstrativo', request: api.get('/vendas/modelo-demonstrativo?periodoDias=30', token) },
+        { nome: 'Configuracao', request: api.get('/vendas/configuracao', token) },
+      ];
+
+      const responses = await Promise.allSettled(blocos.map((bloco) => bloco.request));
 
       const [
         produtosData,
@@ -413,13 +441,21 @@ export default function Vendas() {
         setConfig({ ...defaultConfig, ...configData.value });
       }
 
-      const failures = responses.filter((item) => item.status === 'rejected').length;
-      if (failures > 0) {
-        setErro(`Alguns paineis nao carregaram (${failures}). Verifique migracoes e backend.`);
+      const failures = responses
+        .map((item, index) => {
+          if (item.status !== 'rejected') return null;
+          const detalhe = parseApiError(item.reason, 'falha de comunicacao');
+          return `${blocos[index].nome}: ${detalhe}`;
+        })
+        .filter((item): item is string => Boolean(item));
+
+      if (failures.length > 0) {
+        setFalhasCarga(failures);
+        setErro(`Alguns blocos nao carregaram (${failures.length}).`);
       }
     } catch (error) {
       console.error(error);
-      setErro('Nao foi possivel carregar o modulo de vendas.');
+      setErro(parseApiError(error, 'Nao foi possivel carregar o modulo de vendas.'));
     } finally {
       setLoading(false);
     }
@@ -493,13 +529,56 @@ export default function Vendas() {
   };
 
   const buscarCliente = async () => {
-    if (!buscaCliente.trim()) return;
+    const termo = buscaCliente.trim();
+    if (!termo) return;
+
+    const somenteDigitos = termo.replace(/\D/g, '');
+    const params = new URLSearchParams();
+
+    if (termo.includes('@')) {
+      params.set('email', termo);
+    } else if (somenteDigitos.length >= 8) {
+      params.set('telefone', somenteDigitos);
+    } else {
+      params.set('nome', termo);
+    }
+
     try {
-      const cliente = await api.get(`/vendas/clientes/buscar?nome=${encodeURIComponent(buscaCliente)}`, token);
+      const cliente = await api.get(`/vendas/clientes/buscar?${params.toString()}`, token);
       setClienteSelecionado(cliente || null);
     } catch (error) {
       console.error(error);
-      alert('Cliente nao encontrado.');
+      alert(parseApiError(error, 'Cliente nao encontrado.'));
+    }
+  };
+
+  const criarClienteRapido = async () => {
+    const nome = novoClienteRapido.nome.trim();
+    const telefone = novoClienteRapido.telefone.trim();
+    const email = novoClienteRapido.email.trim();
+
+    if (!nome) {
+      alert('Informe o nome do cliente.');
+      return;
+    }
+
+    try {
+      setSalvandoClienteRapido(true);
+      const clienteCriado = await api.post('/vendas/clientes', {
+        nome,
+        telefone: telefone || undefined,
+        email: email || undefined,
+      }, token);
+
+      setClienteSelecionado(clienteCriado || null);
+      setBuscaCliente(clienteCriado?.nome || nome);
+      setNovoClienteRapido({ nome: '', telefone: '', email: '' });
+      setCriandoClienteRapido(false);
+    } catch (error) {
+      console.error(error);
+      alert(parseApiError(error, 'Nao foi possivel cadastrar cliente no PDV.'));
+    } finally {
+      setSalvandoClienteRapido(false);
     }
   };
 
@@ -1134,7 +1213,15 @@ export default function Vendas() {
         );
       }
       return (
-        <section style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.2fr 0.9fr', gap: 14, alignItems: 'start', minHeight: 600 }}>
+        <section
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobileViewport ? '1fr' : '1.1fr 1.2fr 0.9fr',
+            gap: 14,
+            alignItems: 'start',
+            minHeight: isMobileViewport ? 'auto' : 600,
+          }}
+        >
           {/* COLUNA 1: PRODUTOS */}
           <div style={{ ...panel, padding: 12, display: 'grid', gridTemplateRows: 'auto 1fr', gap: 10 }}>
             <div>
@@ -1175,7 +1262,18 @@ export default function Vendas() {
           <div style={{ display: 'grid', gap: 10, gridTemplateRows: 'auto auto 1fr auto auto' }}>
             {/* Cliente */}
             <div style={{ ...panel, padding: 11 }}>
-              <h3 style={{ margin: '0 0 7px', fontSize: 12, color: '#243332' }}>Cliente</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+                <h3 style={{ margin: 0, fontSize: 12, color: '#243332' }}>Cliente</h3>
+                <button
+                  onClick={() => {
+                    setCriandoClienteRapido((atual) => !atual);
+                    setNovoClienteRapido({ nome: '', telefone: '', email: '' });
+                  }}
+                  style={{ ...buttonSecondary, fontSize: 10, padding: '4px 8px', height: 24 }}
+                >
+                  {criandoClienteRapido ? 'Cancelar' : 'Novo cliente'}
+                </button>
+              </div>
               <div style={{ display: 'flex', gap: 5 }}>
                 <input 
                   value={buscaCliente} 
@@ -1197,6 +1295,36 @@ export default function Vendas() {
                   'Venda sem cliente'
                 )}
               </div>
+
+              {criandoClienteRapido && (
+                <div style={{ marginTop: 8, border: '1px solid #d9e2e1', borderRadius: 6, padding: 8, background: '#f8faf9', display: 'grid', gap: 6 }}>
+                  <input
+                    value={novoClienteRapido.nome}
+                    onChange={(event) => setNovoClienteRapido((atual) => ({ ...atual, nome: event.target.value }))}
+                    placeholder="Nome do cliente"
+                    style={{ ...input, height: 30, fontSize: 11 }}
+                  />
+                  <input
+                    value={novoClienteRapido.telefone}
+                    onChange={(event) => setNovoClienteRapido((atual) => ({ ...atual, telefone: event.target.value }))}
+                    placeholder="Telefone"
+                    style={{ ...input, height: 30, fontSize: 11 }}
+                  />
+                  <input
+                    value={novoClienteRapido.email}
+                    onChange={(event) => setNovoClienteRapido((atual) => ({ ...atual, email: event.target.value }))}
+                    placeholder="E-mail (opcional)"
+                    style={{ ...input, height: 30, fontSize: 11 }}
+                  />
+                  <button
+                    onClick={criarClienteRapido}
+                    disabled={salvandoClienteRapido}
+                    style={{ ...buttonPrimary, fontSize: 11, height: 30 }}
+                  >
+                    {salvandoClienteRapido ? 'Salvando...' : 'Salvar cliente'}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div style={{ ...panel, padding: 11 }}>
@@ -2477,12 +2605,12 @@ export default function Vendas() {
 
   return (
     <div style={{ display: 'grid', gap: 18 }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', position: 'relative' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', position: 'relative', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 26, color: '#243332' }}>Modulo de Vendas</h1>
           <p style={{ margin: '6px 0 0', color: '#647674' }}>Estrutura comercial integrada a caixa, recebimentos, orcamentos e marketplace.</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             style={{
@@ -2509,7 +2637,8 @@ export default function Vendas() {
               borderRadius: 8,
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
               zIndex: 1000,
-              minWidth: 280,
+              minWidth: isMobileViewport ? 220 : 280,
+              width: isMobileViewport ? 'min(92vw, 340px)' : undefined,
               maxHeight: 400,
               overflow: 'auto',
             }}
@@ -2565,7 +2694,18 @@ export default function Vendas() {
         )}
       </header>
 
-      {erro && <div style={{ ...panel, padding: 14, color: '#8a4b20', background: '#fff8ed' }}>{erro}</div>}
+      {erro && (
+        <div style={{ ...panel, padding: 14, color: '#8a4b20', background: '#fff8ed' }}>
+          <div>{erro}</div>
+          {falhasCarga.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18, color: '#7a3e1d', fontSize: 12 }}>
+              {falhasCarga.slice(0, 6).map((falha) => (
+                <li key={falha}>{falha}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
         <Kpi label="Receita" value={money(kpis.receita)} icon={Banknote} color="#2f6f73" />

@@ -5,7 +5,6 @@ export type Page =
   | "marcas"
   | "cadastro-produtos"
   | "cadastros"
-  | "atendimento"
   | "clientes"
   | "agenda"
   | "comissionamento"
@@ -13,6 +12,5 @@ export type Page =
   | "manutencao-veiculo"
   | "peso-carga"
   | "log"
-  | "internacao"
   | "estoque"
   | "financeiro";

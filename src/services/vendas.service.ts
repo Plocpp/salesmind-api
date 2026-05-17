@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 const clienteSchema = z.object({
   nome: z.string().min(1, 'Nome e obrigatorio'),
   telefone: z.string().optional(),
-  email: z.string().email().optional(),
+  email: z.string().email().optional().or(z.literal('')),
 });
 
 const itemVendaSchema = z.object({
@@ -119,8 +119,128 @@ const configuracaoVendasSchema = z.object({
 });
 
 export class VendasService {
+  private async hasColumn(tableName: string, columnName: string) {
+    const rows = await prisma.$queryRawUnsafe<Array<{ found: number }>>(
+      `
+      SELECT 1 as found
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME = ?
+      LIMIT 1
+      `,
+      tableName,
+      columnName,
+    );
+
+    return rows.length > 0;
+  }
+
+  private async addColumnIfMissing(tableName: 'Produto' | 'Venda', columnName: string, definition: string) {
+    const exists = await this.hasColumn(tableName, columnName);
+    if (exists) return;
+
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`,
+    );
+  }
+
+  private async ensureLegacySalesColumns() {
+    await this.addColumnIfMissing('Produto', 'tipo', `ENUM('FISICO','SERVICO','DIGITAL') NOT NULL DEFAULT 'FISICO'`);
+    await this.addColumnIfMissing('Produto', 'estoqueDisponivel', 'FLOAT NOT NULL DEFAULT 0');
+    await this.addColumnIfMissing('Produto', 'custoMedio', 'FLOAT NULL');
+
+    await prisma.$executeRawUnsafe(`UPDATE Produto SET estoqueDisponivel = estoque WHERE estoqueDisponivel = 0 AND estoque > 0`);
+
+    await this.addColumnIfMissing('Venda', 'numero', 'VARCHAR(191) NULL');
+    await this.addColumnIfMissing('Venda', 'tipo', `ENUM('PDV','PEDIDO','ORCAMENTO_CONVERTIDO','MARKETPLACE','ASSINATURA','SERVICO') NOT NULL DEFAULT 'PDV'`);
+    await this.addColumnIfMissing('Venda', 'origem', `ENUM('PDV','BALCAO','MERCADO_LIVRE','SHOPEE','AMAZON','MAGAZINE_LUIZA','BLING','API','MANUAL','OFFLINE') NOT NULL DEFAULT 'PDV'`);
+    await this.addColumnIfMissing('Venda', 'subtotal', 'DECIMAL(12,2) NOT NULL DEFAULT 0');
+    await this.addColumnIfMissing('Venda', 'descontoTotal', 'DECIMAL(12,2) NOT NULL DEFAULT 0');
+    await this.addColumnIfMissing('Venda', 'frete', 'DECIMAL(12,2) NOT NULL DEFAULT 0');
+    await this.addColumnIfMissing('Venda', 'comissao', 'DECIMAL(12,2) NOT NULL DEFAULT 0');
+    await this.addColumnIfMissing('Venda', 'custoTotal', 'DECIMAL(12,2) NOT NULL DEFAULT 0');
+    await this.addColumnIfMissing('Venda', 'lucro', 'DECIMAL(12,2) NOT NULL DEFAULT 0');
+    await this.addColumnIfMissing('Venda', 'margem', 'DECIMAL(8,2) NOT NULL DEFAULT 0');
+    await this.addColumnIfMissing('Venda', 'listaPrecoId', 'VARCHAR(191) NULL');
+    await this.addColumnIfMissing('Venda', 'caixaId', 'VARCHAR(191) NULL');
+    await this.addColumnIfMissing('Venda', 'marketplacePedidoId', 'VARCHAR(191) NULL');
+    await this.addColumnIfMissing('Venda', 'marketplaceConta', 'VARCHAR(191) NULL');
+    await this.addColumnIfMissing('Venda', 'canal', 'VARCHAR(191) NULL');
+    await this.addColumnIfMissing('Venda', 'terminal', 'VARCHAR(191) NULL');
+    await this.addColumnIfMissing('Venda', 'offline', 'BOOLEAN NOT NULL DEFAULT false');
+    await this.addColumnIfMissing('Venda', 'dataPagamento', 'DATETIME(3) NULL');
+    await this.addColumnIfMissing('Venda', 'observacoes', 'TEXT NULL');
+  }
+
+  private isProdutoColunaAusente(error: unknown) {
+    if (!(error instanceof Error)) return false;
+    const mensagem = error.message || '';
+    const colunaProdutoAusente = mensagem.includes('Produto.');
+
+    return colunaProdutoAusente && mensagem.includes('does not exist in the current database');
+  }
+
+  private async carregarProdutosParaVenda(produtoIds: string[]) {
+    try {
+      return await prisma.produto.findMany({
+        where: { id: { in: produtoIds } },
+      });
+    } catch (error) {
+      if (!this.isProdutoColunaAusente(error)) throw error;
+
+      const placeholders = produtoIds.map(() => '?').join(',');
+      return prisma.$queryRawUnsafe<any[]>(
+        `
+        SELECT
+          id,
+          nome,
+          estoque,
+          estoque AS estoqueDisponivel,
+          0 AS custoMedio,
+          'FISICO' AS tipo
+        FROM Produto
+        WHERE id IN (${placeholders})
+        `,
+        ...produtoIds,
+      );
+    }
+  }
+
+  private async decrementarEstoqueProduto(
+    tx: any,
+    produtoId: string,
+    quantidade: number,
+  ) {
+    try {
+      await tx.produto.update({
+        where: { id: produtoId },
+        data: {
+          estoque: { decrement: quantidade },
+          estoqueDisponivel: { decrement: quantidade },
+        },
+      });
+    } catch (error) {
+      if (!this.isProdutoColunaAusente(error)) throw error;
+
+      await tx.produto.update({
+        where: { id: produtoId },
+        data: {
+          estoque: { decrement: quantidade },
+        },
+      });
+    }
+  }
+
   async criarCliente(data: z.infer<typeof clienteSchema>) {
-    return prisma.cliente.create({ data: clienteSchema.parse(data) });
+    const cliente = clienteSchema.parse(data);
+    return prisma.cliente.create({
+      data: {
+        nome: cliente.nome,
+        telefone: cliente.telefone,
+        email: cliente.email || undefined,
+      },
+    });
   }
 
   async buscarCliente(nome?: string, telefone?: string, email?: string) {
@@ -159,10 +279,12 @@ export class VendasService {
   }
 
   async criarVenda(data: z.infer<typeof vendaSchema>, usuarioId: string) {
+    await this.ensureLegacySalesColumns();
+
     const vendaValidada = vendaSchema.parse(data);
-    const produtos = await prisma.produto.findMany({
-      where: { id: { in: vendaValidada.itens.map((item) => item.produtoId) } },
-    });
+    const produtos = await this.carregarProdutosParaVenda(
+      vendaValidada.itens.map((item) => item.produtoId),
+    );
 
     const produtosPorId = new Map(produtos.map((produto) => [produto.id, produto]));
     const itensCalculados = vendaValidada.itens.map((item) => {
@@ -251,13 +373,7 @@ export class VendasService {
       for (const item of itensCalculados) {
         const produto = produtosPorId.get(item.produtoId);
         if (produto?.tipo === 'FISICO') {
-          await tx.produto.update({
-            where: { id: item.produtoId },
-            data: {
-              estoque: { decrement: item.quantidade },
-              estoqueDisponivel: { decrement: item.quantidade },
-            },
-          });
+          await this.decrementarEstoqueProduto(tx, item.produtoId, item.quantidade);
 
           await (tx as any).movimentacaoEstoque.create({
             data: {

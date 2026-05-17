@@ -3,6 +3,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import CadastroProdutos from './pages/CadastroProdutos';
 import Cadastros from './pages/Cadastros';
+import Clientes from './pages/Clientes';
 import Dashboard from './pages/Dashboard';
 import Diagnostico from './pages/Diagnostico';
 import Estoque from './pages/Estoque';
@@ -16,6 +17,7 @@ import FinanceiroFluxoCaixa from './pages/FinanceiroFluxoCaixa';
 import FinanceiroFormasPagamento from './pages/FinanceiroFormasPagamento';
 import FinanceiroLancamentos from './pages/FinanceiroLancamentos';
 import Fornecedores from './pages/Fornecedores';
+import IntegracoesHub from './pages/IntegracoesHub';
 import KmPorLitro from './pages/KmPorLitro';
 import Login from './pages/Login';
 import ManutencaoVeiculo from './pages/ManutencaoVeiculo';
@@ -26,7 +28,6 @@ import Placeholder from './pages/Placeholder';
 import Vendas from './pages/Vendas';
 
 const placeholderPageTitles: Record<string, string> = {
-    atendimento: 'Atendimento clinico',
     clientes: 'Clientes',
     agenda: 'Agenda',
     comissionamento: 'Comissionamento',
@@ -34,14 +35,8 @@ const placeholderPageTitles: Record<string, string> = {
     'manutencao-veiculo': 'Manutencao Veiculo',
     'peso-carga': 'Peso da Carga',
     log: 'Log de inteligencia',
-    internacao: 'Internacao',
     'vendas-consulta': 'Consulta de Vendas',
     'vendas-devolucoes': 'Devolucoes e Estornos',
-    'integracoes-hub': 'Integracoes - HUB',
-    'integracoes-marketplaces': 'Integracoes - Marketplaces',
-    'integracoes-gateways': 'Integracoes - Gateways de Pagamento',
-    'integracoes-bancos': 'Integracoes - Bancos e Open Finance',
-    'integracoes-webhooks': 'Integracoes - Webhooks e Eventos',
 };
 
 function App() {
@@ -107,6 +102,8 @@ function App() {
                 return <CadastroProdutos onNavigate={setCurrentPage} />;
             case 'cadastros':
                 return <Cadastros />;
+            case 'clientes':
+                return <Clientes />;
             case 'estoque':
                 return <Estoque />;
             case 'financeiro':
@@ -133,6 +130,16 @@ function App() {
                 return <ManutencaoVeiculo />;
             case 'peso-carga':
                 return <PesoCarga />;
+            case 'integracoes-hub':
+                return <IntegracoesHub initialSection="hub" />;
+            case 'integracoes-marketplaces':
+                return <IntegracoesHub initialSection="marketplaces" />;
+            case 'integracoes-gateways':
+                return <IntegracoesHub initialSection="gateways" />;
+            case 'integracoes-bancos':
+                return <IntegracoesHub initialSection="banks" />;
+            case 'integracoes-webhooks':
+                return <IntegracoesHub initialSection="webhooks" />;
             default:
                 if (placeholderPageTitles[currentPage]) {
                     return <Placeholder title={placeholderPageTitles[currentPage]} />;

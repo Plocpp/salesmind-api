@@ -1,0 +1,103 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap');
+
+:root {
+  --sm-font-heading: 'Sora', 'Segoe UI', sans-serif;
+  --sm-font-body: 'Manrope', 'Segoe UI', sans-serif;
+  --sm-bg-base: #f6f3ec;
+  --sm-bg-overlay: #eef4ef;
+  --sm-ink: #1f312c;
+  --sm-ink-muted: #5f726c;
+  --sm-accent: #0e7a6d;
+  --sm-accent-soft: #dff3ee;
+  --sm-card: #fffcf6;
+  --sm-border: #d8d3c6;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--sm-ink);
+  background: var(--sm-bg-base);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  width: 100%;
+}
+
+body {
+  min-height: 100svh;
+  font-family: var(--sm-font-body);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(223, 127, 75, 0.18), transparent 30%),
+    radial-gradient(circle at 82% 12%, rgba(14, 122, 109, 0.15), transparent 32%),
+    radial-gradient(circle at 55% 85%, rgba(121, 157, 108, 0.1), transparent 26%),
+    linear-gradient(180deg, #fcfaf5 0%, var(--sm-bg-base) 48%, var(--sm-bg-overlay) 100%);
+  overflow-x: hidden;
+  animation: sm-bg-shift 22s ease-in-out infinite alternate;
+}
+
+#root {
+  animation: sm-fade-in 520ms ease-out;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+img,
+svg,
+canvas {
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--sm-font-heading);
+}
+
+@keyframes sm-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sm-bg-shift {
+  from {
+    background-position: 0% 0%, 100% 0%, 50% 100%, 50% 50%;
+  }
+  to {
+    background-position: 8% 4%, 94% 4%, 52% 94%, 50% 50%;
+  }
+}
+
+@media (max-width: 920px) {
+  :root {
+    font-size: 15px;
+  }
+}

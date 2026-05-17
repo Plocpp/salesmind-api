@@ -1,5 +1,18 @@
-// API service para fazer chamadas para o backend
-const API_BASE_URL = 'http://localhost:3000';
+// API service para fazer chamadas para o backend.
+// Em producao, configure VITE_API_BASE_URL para a URL publica da API.
+const API_BASE_URL = (() => {
+  const envBase = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL)
+    ? String(import.meta.env.VITE_API_BASE_URL).trim()
+    : '';
+
+  if (envBase) return envBase.replace(/\/$/, '');
+
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+    return window.location.origin.replace(/\/$/, '');
+  }
+
+  return 'http://localhost:3000';
+})();
 
 const apiClient = {
   request: async (endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data?: any, token?: string | null) => {
@@ -59,6 +72,24 @@ export const api = {
     },
     criar: async (token: string, produto: any) => {
       return apiClient.post('/produtos', produto, token);
+    },
+  },
+  acessos: {
+    meus: async (token: string) => {
+      return apiClient.get('/acessos/me', token);
+    },
+    listar: async (token: string) => {
+      return apiClient.get('/acessos', token);
+    },
+    criar: async (token: string, payload: any) => {
+      return apiClient.post('/acessos', payload, token);
+    },
+    revogar: async (token: string, id: string, motivo?: string) => {
+      return apiClient.post(`/acessos/${id}/revoke`, { motivo }, token);
+    },
+    auditoriaLgpd: async (token: string, userId?: string) => {
+      const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+      return apiClient.get(`/acessos/auditoria/lgpd${query}`, token);
     },
   },
 };

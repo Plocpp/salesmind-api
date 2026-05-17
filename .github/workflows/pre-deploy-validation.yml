@@ -1,0 +1,90 @@
+name: Pre-Deploy Validation
+
+on:
+  pull_request:
+    branches: ["main", "master"]
+  push:
+    branches: ["main", "master"]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: salesmind_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/salesmind_test
+      JWT_ACCESS_SECRET: ci_access_secret
+      JWT_REFRESH_SECRET: ci_refresh_secret
+      ONBOARDING_WEBHOOK_TOKEN: ci_webhook_token
+      EMAIL_MOCK_MODE: true
+      EMAIL_DEV_RETURN_CODE: true
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Sync database schema
+        run: npx prisma db push
+
+      - name: Seed test database
+        run: npm run seed
+
+      - name: Start API in background
+        run: |
+          npm run dev > api.log 2>&1 &
+          echo $! > api.pid
+
+      - name: Wait for API health
+        run: |
+          for i in {1..60}; do
+            if curl -sf http://localhost:3000/health > /dev/null; then
+              echo "API healthy"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API failed to start"
+          cat api.log || true
+          exit 1
+
+      - name: Run API smoke tests
+        run: npm run test:smoke
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f api.pid ]; then
+            kill $(cat api.pid) || true
+          fi
+
+      - name: Run onboarding access E2E
+        run: npm run test:onboarding-acesso
+
+      - name: Build frontend
+        run: npm run build

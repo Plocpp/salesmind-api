@@ -9,6 +9,8 @@ const requireUser = (req: AuthRequest) => {
   return req.userId;
 };
 
+const getParam = (value: string | string[]) => Array.isArray(value) ? value[0] : value;
+
 export class VendasController {
   async criarCliente(req: AuthRequest, res: Response) {
     const cliente = await vendasService.criarCliente(req.body);
@@ -80,13 +82,13 @@ export class VendasController {
 
   async resumoCaixa(req: AuthRequest, res: Response) {
     requireUser(req);
-    const resumo = await vendasService.resumoCaixa(req.params.id);
+    const resumo = await vendasService.resumoCaixa(getParam(req.params.id));
     return res.json(resumo);
   }
 
   async fecharCaixa(req: AuthRequest, res: Response) {
     const userId = requireUser(req);
-    const fechamento = await vendasService.fecharCaixa(req.params.id, userId, req.body);
+    const fechamento = await vendasService.fecharCaixa(getParam(req.params.id), userId, req.body);
     return res.json(fechamento);
   }
 
@@ -153,13 +155,13 @@ export class VendasController {
 
   async atualizarListaPreco(req: AuthRequest, res: Response) {
     requireUser(req);
-    const lista = await vendasService.atualizarListaPreco(req.params.id, req.body);
+    const lista = await vendasService.atualizarListaPreco(getParam(req.params.id), req.body);
     return res.json(lista);
   }
 
   async deletarListaPreco(req: AuthRequest, res: Response) {
     requireUser(req);
-    await vendasService.deletarListaPreco(req.params.id);
+    await vendasService.deletarListaPreco(getParam(req.params.id));
     return res.status(204).send();
   }
 
@@ -171,44 +173,44 @@ export class VendasController {
 
   async atualizarFormaRecebimento(req: AuthRequest, res: Response) {
     requireUser(req);
-    const forma = await vendasService.atualizarFormaRecebimento(req.params.id, req.body);
+    const forma = await vendasService.atualizarFormaRecebimento(getParam(req.params.id), req.body);
     return res.json(forma);
   }
 
   async converterOrcamentoParaVenda(req: AuthRequest, res: Response) {
     const userId = requireUser(req);
-    const venda = await vendasService.converterOrcamentoParaVenda(req.params.id, userId);
+    const venda = await vendasService.converterOrcamentoParaVenda(getParam(req.params.id), userId);
     return res.status(201).json(venda);
   }
 
   async enviarOrcamentoPorEmail(req: AuthRequest, res: Response) {
     requireUser(req);
     const { email } = req.body;
-    await vendasService.enviarOrcamentoPorEmail(req.params.id, email);
+    await vendasService.enviarOrcamentoPorEmail(getParam(req.params.id), email);
     return res.json({ message: 'Email enviado com sucesso' });
   }
 
   async deletarOrcamento(req: AuthRequest, res: Response) {
     requireUser(req);
-    await vendasService.deletarOrcamento(req.params.id);
+    await vendasService.deletarOrcamento(getParam(req.params.id));
     return res.status(204).send();
   }
 
   async registrarPagamento(req: AuthRequest, res: Response) {
     requireUser(req);
-    const pagamento = await vendasService.registrarPagamento(req.params.id, req.body);
+    const pagamento = await vendasService.registrarPagamento(getParam(req.params.id), req.body);
     return res.json(pagamento);
   }
 
   async renovarPacote(req: AuthRequest, res: Response) {
     const userId = requireUser(req);
-    const resultado = await vendasService.renovarPacote(req.params.id, userId);
+    const resultado = await vendasService.renovarPacote(getParam(req.params.id), userId);
     return res.json(resultado);
   }
 
   async cancelarPacote(req: AuthRequest, res: Response) {
     const userId = requireUser(req);
-    const resultado = await vendasService.cancelarPacote(req.params.id, userId);
+    const resultado = await vendasService.cancelarPacote(getParam(req.params.id), userId);
     return res.json(resultado);
   }
 }

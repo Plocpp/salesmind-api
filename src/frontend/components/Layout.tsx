@@ -12,11 +12,12 @@ import {
     Home,
     Lightbulb,
     LogOut,
+    Menu,
     Search,
     ShoppingCart,
-    Stethoscope
+    X
 } from 'lucide-react';
-import React, { ReactNode, useState } from 'react';
+import React, { ReactNode, useEffect, useMemo, useState } from 'react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -27,16 +28,18 @@ interface LayoutProps {
 }
 
 const colors = {
-  shell: '#eef3f5',
-  sidebar: '#f8faf9',
-  border: '#d9e2e1',
-  text: '#243332',
-  muted: '#647674',
-  active: '#2f6f73',
-  activeSoft: '#e1eeee',
-  accent: '#6c8f7d',
-  danger: '#a64b4b',
+  shell: '#f6f3ec',
+  sidebar: '#fffcf6',
+  border: '#d8d3c6',
+  text: '#1f312c',
+  muted: '#62726c',
+  active: '#0e7a6d',
+  activeSoft: '#dff3ee',
+  accent: '#df7f4b',
+  danger: '#9f3f4f',
 };
+
+const MOBILE_BREAKPOINT = 920;
 
 type MenuChild = {
   id: string;
@@ -58,11 +61,33 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
     financeiro: true,
     nfce: false,
     estoque: false,
-    operacao: false,
     integracoes: false,
     inteligencia: false,
     administracao: false,
   });
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+
+    const update = () => setIsMobile(mediaQuery.matches);
+    update();
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', update);
+      return () => mediaQuery.removeEventListener('change', update);
+    }
+
+    mediaQuery.addListener(update);
+    return () => mediaQuery.removeListener(update);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setIsDrawerOpen(false);
+    }
+  }, [isMobile]);
 
   const operationModules: MenuModule[] = [
     {
@@ -96,15 +121,6 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
         { id: 'cadastro-produtos', label: 'Cadastro de Produtos' },
         { id: 'fornecedores', label: 'Fornecedores' },
         { id: 'marcas', label: 'Marcas' },
-      ],
-    },
-    {
-      id: 'operacao',
-      label: 'Operacao Clinica',
-      icon: Stethoscope,
-      children: [
-        { id: 'atendimento', label: 'Atendimento' },
-        { id: 'internacao', label: 'Internacao' },
       ],
     },
   ];
@@ -179,6 +195,26 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
     setOpenModules((current) => ({ ...current, [moduleId]: !current[moduleId] }));
   };
 
+  const navigateTo = (page: string) => {
+    onNavigate(page);
+    if (isMobile) setIsDrawerOpen(false);
+  };
+
+  const handleLogout = () => {
+    setIsDrawerOpen(false);
+    onLogout();
+  };
+
+  const quickNav = useMemo(
+    () => [
+      { id: 'dashboard', label: 'Início', icon: Home },
+      { id: 'vendas', label: 'Vendas', icon: ShoppingCart, hidden: userRole !== 'ADMIN' && userRole !== 'VENDEDOR' },
+      { id: 'estoque', label: 'Estoque', icon: Boxes },
+      { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
+    ].filter((item) => !item.hidden),
+    [userRole]
+  );
+
   const isModuleActive = (module: MenuModule) => module.children.some((child) => child.id === currentPage);
 
   const submenuItem = (item: MenuChild) => {
@@ -187,7 +223,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
     return (
       <button
         key={item.id}
-        onClick={() => onNavigate(item.id)}
+        onClick={() => navigateTo(item.id)}
         style={{
           width: '100%',
           height: 32,
@@ -264,64 +300,455 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
     );
   };
 
-  return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', background: colors.shell, fontFamily: 'Inter, Segoe UI, Arial, sans-serif', color: colors.text }}>
-      <aside style={{ width: 272, background: colors.sidebar, borderRight: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ height: 72, padding: '14px 18px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 8, background: colors.active, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 }}>SM</div>
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: 0 }}>SalesMind</div>
+  const renderNavigation = () => (
+    <>
+      {sectionHeader('OPERACAO', ClipboardList)}
+      <div style={{ display: 'grid', gap: 6 }}>
+        {operationModules.filter((item) => !item.hidden).map(moduleItem)}
+      </div>
+
+      {sectionHeader('GESTAO', Boxes)}
+      <div style={{ display: 'grid', gap: 6 }}>
+        {managementModules.filter((item) => !item.hidden).map(moduleItem)}
+      </div>
+    </>
+  );
+
+  const renderDesktopHeader = () => (
+    <header
+      style={{
+        height: 64,
+        background: '#ffffff',
+        borderBottom: `1px solid ${colors.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        padding: '0 22px',
+        flexWrap: 'wrap',
+      }}
+    >
+      <div
+        style={{
+          height: 38,
+          maxWidth: 420,
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '0 12px',
+          background: '#f4f7f7',
+          border: `1px solid ${colors.border}`,
+          borderRadius: 8,
+          color: colors.muted,
+        }}
+      >
+        <Search size={16} />
+        <span style={{ fontSize: 13 }}>Buscar produto, cliente, venda ou lancamento</span>
+      </div>
+
+      <button
+        style={{
+          height: 36,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          border: `1px solid ${colors.border}`,
+          background: '#fff',
+          color: colors.text,
+          borderRadius: 8,
+          padding: '0 12px',
+          cursor: 'pointer',
+          fontWeight: 600,
+        }}
+      >
+        <BarChart3 size={16} /> Relatorios
+      </button>
+
+      <button
+        style={{
+          height: 36,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          border: `1px solid ${colors.border}`,
+          background: '#fff',
+          color: colors.text,
+          borderRadius: 8,
+          padding: '0 12px',
+          cursor: 'pointer',
+          fontWeight: 600,
+        }}
+      >
+        <CircleHelp size={16} /> Ajuda
+      </button>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 8 }}>
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            background: colors.accent,
+            display: 'grid',
+            placeItems: 'center',
+            color: '#fff',
+            fontWeight: 800,
+          }}
+        >
+          {(localStorage.getItem('userName') || userRole || 'U').charAt(0).toUpperCase()}
+        </div>
+        <div style={{ minWidth: 116 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{localStorage.getItem('userName') || userRole || 'Usuario'}</div>
+          <div style={{ fontSize: 11, color: colors.muted }}>SalesMind</div>
+        </div>
+      </div>
+
+      <button
+        onClick={handleLogout}
+        title="Sair"
+        style={{
+          width: 36,
+          height: 36,
+          border: 'none',
+          borderRadius: 8,
+          background: '#f7eeee',
+          color: colors.danger,
+          cursor: 'pointer',
+          display: 'grid',
+          placeItems: 'center',
+        }}
+      >
+        <LogOut size={17} />
+      </button>
+    </header>
+  );
+
+  const renderMobileHeader = () => (
+    <header
+      style={{
+        height: 68,
+        background: '#ffffff',
+        borderBottom: `1px solid ${colors.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '0 14px',
+        boxSizing: 'border-box',
+      }}
+    >
+      <button
+        onClick={() => setIsDrawerOpen(true)}
+        aria-label="Abrir menu"
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 12,
+          border: `1px solid ${colors.border}`,
+          background: '#fff',
+          display: 'grid',
+          placeItems: 'center',
+          color: colors.text,
+          flexShrink: 0,
+        }}
+      >
+        <Menu size={20} />
+      </button>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              background: colors.active,
+              color: '#fff',
+              display: 'grid',
+              placeItems: 'center',
+              fontWeight: 800,
+              flexShrink: 0,
+            }}
+          >
+            SM
+          </div>
+          <div style={{ minWidth: 0, textAlign: 'left' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: colors.text }}>SalesMind</div>
+            <div style={{ fontSize: 11, color: colors.muted }}>Acesso mobile</div>
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={handleLogout}
+        aria-label="Sair"
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          border: 'none',
+          background: '#f7eeee',
+          color: colors.danger,
+          display: 'grid',
+          placeItems: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <LogOut size={18} />
+      </button>
+    </header>
+  );
+
+  const renderDrawer = () => (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 50,
+        display: 'flex',
+        background: 'rgba(15, 23, 42, 0.38)',
+      }}
+      onClick={() => setIsDrawerOpen(false)}
+    >
+      <aside
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: '88vw',
+          maxWidth: 340,
+          background: colors.sidebar,
+          borderRight: `1px solid ${colors.border}`,
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '20px 0 40px rgba(15, 23, 42, 0.2)',
+        }}
+      >
+        <div
+          style={{
+            minHeight: 72,
+            padding: '14px 16px',
+            borderBottom: `1px solid ${colors.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 10,
+              background: colors.active,
+              color: '#fff',
+              display: 'grid',
+              placeItems: 'center',
+              fontWeight: 800,
+              flexShrink: 0,
+            }}
+          >
+            SM
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: colors.text }}>SalesMind</div>
             <div style={{ fontSize: 12, color: colors.muted }}>Operacao integrada</div>
           </div>
+          <button
+            onClick={() => setIsDrawerOpen(false)}
+            aria-label="Fechar menu"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              border: `1px solid ${colors.border}`,
+              background: '#fff',
+              display: 'grid',
+              placeItems: 'center',
+              color: colors.text,
+            }}
+          >
+            <X size={18} />
+          </button>
         </div>
 
         <nav style={{ flex: 1, padding: 14, overflowY: 'auto' }}>
-          {sectionHeader('OPERACAO', ClipboardList)}
-          <div style={{ display: 'grid', gap: 6 }}>
-            {operationModules.filter((item) => !item.hidden).map(moduleItem)}
-          </div>
-
-          {sectionHeader('GESTAO', Boxes)}
-          <div style={{ display: 'grid', gap: 6 }}>
-            {managementModules.filter((item) => !item.hidden).map(moduleItem)}
-          </div>
+          {renderNavigation()}
         </nav>
+
+        <div
+          style={{
+            borderTop: `1px solid ${colors.border}`,
+            padding: 14,
+            display: 'grid',
+            gap: 10,
+          }}
+        >
+          <button
+            onClick={() => navigateTo('dashboard')}
+            style={{
+              height: 42,
+              borderRadius: 10,
+              border: `1px solid ${colors.border}`,
+              background: '#fff',
+              color: colors.text,
+              fontWeight: 700,
+            }}
+          >
+            Ir para Dashboard
+          </button>
+          <button
+            onClick={handleLogout}
+            style={{
+              height: 42,
+              borderRadius: 10,
+              border: 'none',
+              background: '#f7eeee',
+              color: colors.danger,
+              fontWeight: 700,
+            }}
+          >
+            Sair da conta
+          </button>
+        </div>
       </aside>
+    </div>
+  );
 
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header style={{ height: 64, background: '#ffffff', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 14, padding: '0 22px' }}>
-          <div style={{ height: 38, maxWidth: 420, flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', background: '#f4f7f7', border: `1px solid ${colors.border}`, borderRadius: 8, color: colors.muted }}>
-            <Search size={16} />
-            <span style={{ fontSize: 13 }}>Buscar produto, cliente, venda ou lancamento</span>
+  return (
+    <div
+      style={{
+        display: 'flex',
+        minHeight: '100svh',
+        width: '100%',
+        background: `
+          radial-gradient(circle at 10% 8%, rgba(223, 127, 75, 0.08), transparent 28%),
+          radial-gradient(circle at 92% 10%, rgba(14, 122, 109, 0.1), transparent 30%),
+          ${colors.shell}
+        `,
+        fontFamily: "Sora, Manrope, 'Segoe UI', sans-serif",
+        color: colors.text,
+        overflow: 'hidden',
+        position: 'relative',
+      }}
+    >
+      {!isMobile && (
+        <aside
+          style={{
+            width: 272,
+            background: colors.sidebar,
+            borderRight: `1px solid ${colors.border}`,
+            display: 'flex',
+            flexDirection: 'column',
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              minHeight: 72,
+              padding: '14px 18px',
+              borderBottom: `1px solid ${colors.border}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <div style={{ width: 38, height: 38, borderRadius: 8, background: colors.active, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 }}>SM</div>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: 0 }}>SalesMind</div>
+              <div style={{ fontSize: 12, color: colors.muted }}>Operacao integrada</div>
+            </div>
           </div>
 
-          <button style={{ height: 36, display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${colors.border}`, background: '#fff', color: colors.text, borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 600 }}>
-            <BarChart3 size={16} /> Relatorios
-          </button>
+          <nav style={{ flex: 1, padding: 14, overflowY: 'auto' }}>{renderNavigation()}</nav>
+        </aside>
+      )}
 
-          <button style={{ height: 36, display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${colors.border}`, background: '#fff', color: colors.text, borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 600 }}>
-            <CircleHelp size={16} /> Ajuda
-          </button>
+      <main
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          minWidth: 0,
+          paddingBottom: isMobile ? 76 : 0,
+        }}
+      >
+        {isMobile ? renderMobileHeader() : renderDesktopHeader()}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 8 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 8, background: colors.accent, display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 800 }}>
-              {(localStorage.getItem('userName') || userRole || 'U').charAt(0).toUpperCase()}
-            </div>
-            <div style={{ minWidth: 116 }}>
-              <div style={{ fontSize: 13, fontWeight: 800 }}>{localStorage.getItem('userName') || userRole || 'Usuario'}</div>
-              <div style={{ fontSize: 11, color: colors.muted }}>SalesMind</div>
-            </div>
-          </div>
-
-          <button onClick={onLogout} title="Sair" style={{ width: 36, height: 36, border: 'none', borderRadius: 8, background: '#f7eeee', color: colors.danger, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
-            <LogOut size={17} />
-          </button>
-        </header>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: 22 }}>
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            padding: isMobile ? 16 : 22,
+            paddingBottom: isMobile ? 96 : 22,
+            boxSizing: 'border-box',
+          }}
+        >
           {children}
         </div>
+
+        {isMobile && (
+          <nav
+            style={{
+              position: 'fixed',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 66,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(5, 1fr)',
+              background: '#ffffff',
+              borderTop: `1px solid ${colors.border}`,
+              zIndex: 30,
+              boxShadow: '0 -12px 30px rgba(15, 23, 42, 0.08)',
+            }}
+          >
+            {quickNav.map((item) => {
+              const Icon = item.icon;
+              const active = currentPage === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => navigateTo(item.id)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: active ? colors.active : colors.muted,
+                    display: 'grid',
+                    placeItems: 'center',
+                    gap: 4,
+                    padding: '8px 4px 6px',
+                    fontSize: 11,
+                    fontWeight: active ? 800 : 600,
+                  }}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+
+            <button
+              onClick={() => setIsDrawerOpen(true)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: colors.muted,
+                display: 'grid',
+                placeItems: 'center',
+                gap: 4,
+                padding: '8px 4px 6px',
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              <Menu size={18} />
+              <span>Menu</span>
+            </button>
+          </nav>
+        )}
       </main>
+
+      {isMobile && isDrawerOpen && renderDrawer()}
     </div>
   );
 };
