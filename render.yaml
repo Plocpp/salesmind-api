@@ -2,7 +2,7 @@ services:
   - type: web
     name: salesmind-api
     runtime: node
-    plan: starter
+    plan: free
     rootDir: .
     buildCommand: npm ci && npx prisma generate
     preDeployCommand: npx prisma db push
@@ -76,10 +76,8 @@ services:
   - type: web
     name: salesmind-app
     runtime: static
-    plan: free
-    rootDir: .
+    rootDir: ./frontend
     buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
     autoDeploy: true
     envVars:
       - key: VITE_API_BASE_URL
