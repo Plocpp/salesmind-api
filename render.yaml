@@ -5,7 +5,6 @@ services:
     plan: free
     rootDir: .
     buildCommand: npm ci && npx prisma generate
-    preDeployCommand: npx prisma db push
     startCommand: npm run start:runtime
     healthCheckPath: /health
     autoDeploy: true
