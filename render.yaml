@@ -75,7 +75,7 @@ services:
   - type: web
     name: salesmind-app
     runtime: static
-    rootDir: ./frontend
+    rootDir: .
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     autoDeploy: true
