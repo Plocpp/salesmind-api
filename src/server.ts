@@ -5,6 +5,8 @@ import prisma from "./database/prisma";
 import { runStartup } from "./startup";
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+const host = process.env.HOST || "0.0.0.0";
+const startupRetryDelayMs = Number(process.env.STARTUP_RETRY_DELAY_MS || 15000);
 
 // ── Handlers globais ──────────────────────────────────────────────────────────
 // Evitam que o processo caia silenciosamente por promise não tratada ou
@@ -30,6 +32,23 @@ app.get("/", (_req, res) => {
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 let httpServer: http.Server;
 let shutdownInProgress = false;
+
+async function runStartupWithRetry(): Promise<void> {
+  let attempt = 0;
+
+  while (!shutdownInProgress) {
+    attempt += 1;
+    try {
+      await runStartup();
+      console.log("[server] Inicializacao de runtime concluida.");
+      return;
+    } catch (err) {
+      console.error(`[server] Falha na inicializacao (tentativa ${attempt}):`, err);
+      console.log(`[server] Nova tentativa em ${startupRetryDelayMs}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, startupRetryDelayMs));
+    }
+  }
+}
 
 async function gracefulShutdown(signal: string): Promise<void> {
   if (shutdownInProgress) return;
@@ -59,16 +78,13 @@ process.on("SIGINT",  () => gracefulShutdown("SIGINT").finally(() => process.exi
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot(): Promise<void> {
-  try {
-    await runStartup();
-  } catch (err) {
-    console.error("[server] Falha na inicialização:", err);
-    process.exit(1);
-  }
-
-  httpServer = app.listen(port, () => {
-    console.log(`[server] Servidor rodando na porta ${port}`);
+  httpServer = app.listen(port, host, () => {
+    console.log(`[server] Servidor rodando em ${host}:${port}`);
   });
+
+  // Inicializacao do banco e tabelas runtime em background com retentativa,
+  // para nao derrubar o processo durante flutuacoes de rede no boot.
+  void runStartupWithRetry();
 }
 
 boot();
