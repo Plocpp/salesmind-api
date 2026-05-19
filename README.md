@@ -8,7 +8,7 @@ Sistema de gestão de vendas e estoque para pet shop, com backend em Node.js + E
 - Frontend: `src/frontend/`
 - Banco de dados: Prisma + MySQL
 - Autenticação: JWT
-- Papéis de usuário: `ADMIN`, `VENDEDOR`, `USER`
+- Papéis de usuário: `ADMIN`, `GERENTE`, `VENDEDOR`, `CAIXA`, `ESTOQUISTA`, `USER`
 
 ## Como executar
 
@@ -230,6 +230,8 @@ A página `src/frontend/pages/CadastroProdutos.tsx` foi construída para:
 ## Documentação oficial do projeto
 
 - Documentação técnica sênior: `docs/documentacao-senior.md`
+- Boas práticas e convenções: `docs/guia-boas-praticas-senior.md`
+- ADR da hierarquia de usuários: `docs/adr/001-hierarquia-usuarios-permissoes.md`
 - Programa LGPD: `docs/lgpd-programa-adequacao.md`
 - Registro de operações de tratamento (Art. 37): `docs/lgpd-registro-operacoes.md`
 - Playbook de incidentes de dados: `docs/lgpd-playbook-incidentes.md`
