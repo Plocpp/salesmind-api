@@ -49,8 +49,37 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      - name: Trigger Render API deploy
+        if: ${{ secrets.RENDER_API_DEPLOY_HOOK != '' }}
+        run: |
+          curl -fsS -X POST "${{ secrets.RENDER_API_DEPLOY_HOOK }}"
+          echo "Render API deploy acionado."
+
+      - name: Trigger Render frontend deploy
+        if: ${{ secrets.RENDER_APP_DEPLOY_HOOK != '' }}
+        run: |
+          curl -fsS -X POST "${{ secrets.RENDER_APP_DEPLOY_HOOK }}"
+          echo "Render frontend deploy acionado."
+
+      - name: Warn when Render hooks are missing
+        if: ${{ secrets.RENDER_API_DEPLOY_HOOK == '' || secrets.RENDER_APP_DEPLOY_HOOK == '' }}
+        run: |
+          echo "Aviso: um ou mais deploy hooks do Render nao estao configurados."
+          echo "Configure os secrets RENDER_API_DEPLOY_HOOK e RENDER_APP_DEPLOY_HOOK para deploy 100% automatico."
+
       - name: Deployment summary
         run: |
           echo "Imagem publicada com sucesso no GHCR."
-          echo "Repositório: ghcr.io/${{ github.repository }}/salesmind-api"
+          echo "Repositorio: ghcr.io/${{ github.repository }}/salesmind-api"
           echo "Tags: latest e sha"
+          if [ -n "${{ secrets.RENDER_API_DEPLOY_HOOK }}" ]; then
+            echo "Render API: hook executado"
+          else
+            echo "Render API: hook nao configurado"
+          fi
+
+          if [ -n "${{ secrets.RENDER_APP_DEPLOY_HOOK }}" ]; then
+            echo "Render frontend: hook executado"
+          else
+            echo "Render frontend: hook nao configurado"
+          fi

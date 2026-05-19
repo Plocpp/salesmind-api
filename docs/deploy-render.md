@@ -13,7 +13,8 @@ Este guia coloca o SalesMind online no Render com menor complexidade.
 O Prisma esta configurado para **MySQL** (`prisma/schema.prisma`).
 O Render nao oferece MySQL gerenciado nativamente no mesmo nivel de simplicidade do Postgres.
 
-Use uma opcao externa de MySQL e preencha `DATABASE_URL` no Render:
+Use uma opcao externa de MySQL e preencha `DATABASE_URL` no Render.
+Se a URL vier com host interno do Railway (`*.railway.internal`), configure tambem `DATABASE_URL_PUBLIC` (ou `MYSQL_PUBLIC_URL`) para acesso externo:
 
 - PlanetScale
 - Railway MySQL
@@ -50,6 +51,28 @@ Depois que o Render gerar as URLs finais, atualize:
   - `VITE_API_BASE_URL`
 
 Use as URLs reais `*.onrender.com` criadas no seu ambiente.
+
+## 4.1 Deploy totalmente automatico (GitHub Actions + Render)
+
+Este repositorio ja possui workflow de deploy em [salesmind-api/.github/workflows/deploy-online.yml](.github/workflows/deploy-online.yml), que agora:
+
+- publica a imagem da API no GHCR
+- aciona deploy da API no Render (hook)
+- aciona deploy do frontend no Render (hook)
+
+Para funcionar sem etapas manuais, configure estes secrets no GitHub (Settings -> Secrets and variables -> Actions):
+
+- `RENDER_API_DEPLOY_HOOK`
+- `RENDER_APP_DEPLOY_HOOK`
+
+Onde encontrar os hooks no Render:
+
+1. Abra o servico no Render.
+2. Acesse **Settings** -> **Deploy Hook**.
+3. Crie/copiei a URL do hook.
+4. Salve no secret correspondente no GitHub.
+
+Depois disso, basta rodar o workflow **Deploy Online** manualmente (workflow_dispatch) ou deixar ele seguir automaticamente apos o **Pre-Deploy Validation**.
 
 ## 5. Migracao e seed
 

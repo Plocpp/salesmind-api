@@ -17,6 +17,8 @@ services:
         value: 10000
       - key: DATABASE_URL
         sync: false
+      - key: DATABASE_URL_PUBLIC
+        sync: false
       - key: JWT_ACCESS_SECRET
         sync: false
       - key: JWT_REFRESH_SECRET
