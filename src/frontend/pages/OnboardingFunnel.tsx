@@ -208,6 +208,35 @@ const OnboardingFunnel: React.FC<OnboardingFunnelProps> = ({ onVoltarLogin }) =>
     setPayload((prev) => ({ ...prev, [key]: value }));
   };
 
+  const normalizeCheckoutUrl = (url: string) => {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return '';
+
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    if (trimmed.startsWith('//')) return `https:${trimmed}`;
+    if (trimmed.startsWith('/')) return `${window.location.origin}${trimmed}`;
+
+    return `https://${trimmed}`;
+  };
+
+  const abrirCheckout = () => {
+    const targetUrl = normalizeCheckoutUrl(checkoutUrl);
+    if (!targetUrl) {
+      setMensagem('Link de checkout indisponível no momento. Tente novamente em alguns instantes.');
+      return;
+    }
+
+    try {
+      const checkoutWindow = window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      if (!checkoutWindow) {
+        // Fallback para ambientes que bloqueiam popup.
+        window.location.assign(targetUrl);
+      }
+    } catch {
+      window.location.assign(targetUrl);
+    }
+  };
+
   // ─── Força da senha ────────────────────────────────────────────────────────
   const forcaSenha = useMemo(() => {
     const s = payload.adminSenha;
@@ -639,13 +668,21 @@ const OnboardingFunnel: React.FC<OnboardingFunnelProps> = ({ onVoltarLogin }) =>
             )}
 
             {checkoutUrl && (
-              <button
-                type="button"
-                className="btn-checkout btn-lg"
-                onClick={() => window.open(checkoutUrl, '_blank', 'noopener,noreferrer')}
-              >
-                💳 Abrir checkout da assinatura
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="btn-checkout btn-lg"
+                  onClick={abrirCheckout}
+                >
+                  💳 Abrir checkout da assinatura
+                </button>
+                <p className="checkout-link-fallback">
+                  Se o botão não abrir, acesse direto:{' '}
+                  <a href={normalizeCheckoutUrl(checkoutUrl)} target="_blank" rel="noopener noreferrer">
+                    abrir checkout
+                  </a>
+                </p>
+              </>
             )}
 
             <div className="checkout-timeline">

@@ -3,6 +3,79 @@ import { AuthRequest } from "../middlewares/auth.middleware";
 import acessosService from "../services/acessos.service";
 
 class AcessosController {
+  async listarPerfisHierarquia(req: AuthRequest, res: Response) {
+    try {
+      const data = acessosService.listarPerfisHierarquia();
+      return res.json(data);
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || "erro_listar_perfis_hierarquia" });
+    }
+  }
+
+  async listarFuncionariosHierarquia(req: AuthRequest, res: Response) {
+    try {
+      const data = await acessosService.listarFuncionariosHierarquia();
+      return res.json({ funcionarios: data });
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || "erro_listar_funcionarios_hierarquia" });
+    }
+  }
+
+  async criarFuncionarioHierarquia(req: AuthRequest, res: Response) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ error: "Nao autenticado" });
+      }
+
+      const payload = req.body || {};
+
+      const result = await acessosService.criarFuncionarioHierarquia({
+        nome: String(payload.nome || ""),
+        email: String(payload.email || ""),
+        senha: String(payload.senha || ""),
+        perfilId: String(payload.perfilId || ""),
+        areasExtras: Array.isArray(payload.areasExtras) ? payload.areasExtras : [],
+        areasRemovidas: Array.isArray(payload.areasRemovidas) ? payload.areasRemovidas : [],
+        dadosPermitidosExtras: Array.isArray(payload.dadosPermitidosExtras) ? payload.dadosPermitidosExtras : [],
+        dadosPermitidosRemovidos: Array.isArray(payload.dadosPermitidosRemovidos)
+          ? payload.dadosPermitidosRemovidos
+          : [],
+        autorUserId: req.userId,
+      });
+
+      return res.status(201).json(result);
+    } catch (error: any) {
+      return res.status(400).json({ error: error?.message || "erro_criar_funcionario_hierarquia" });
+    }
+  }
+
+  async atualizarPermissoesHierarquia(req: AuthRequest, res: Response) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ error: "Nao autenticado" });
+      }
+
+      const payload = req.body || {};
+      const userIdAlvo = String(req.params.userId || "");
+
+      const result = await acessosService.atualizarPermissoesHierarquia({
+        userIdAlvo,
+        areasExtras: Array.isArray(payload.areasExtras) ? payload.areasExtras : [],
+        areasRemovidas: Array.isArray(payload.areasRemovidas) ? payload.areasRemovidas : [],
+        dadosPermitidosExtras: Array.isArray(payload.dadosPermitidosExtras) ? payload.dadosPermitidosExtras : [],
+        dadosPermitidosRemovidos: Array.isArray(payload.dadosPermitidosRemovidos)
+          ? payload.dadosPermitidosRemovidos
+          : [],
+        justificativa: payload.justificativa ? String(payload.justificativa) : undefined,
+        autorUserId: req.userId,
+      });
+
+      return res.json(result);
+    } catch (error: any) {
+      return res.status(400).json({ error: error?.message || "erro_atualizar_permissoes_hierarquia" });
+    }
+  }
+
   async criarAcesso(req: AuthRequest, res: Response) {
     try {
       const autorUserId = req.userId || "";

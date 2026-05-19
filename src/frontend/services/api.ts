@@ -78,6 +78,18 @@ export const api = {
     meus: async (token: string) => {
       return apiClient.get('/acessos/me', token);
     },
+    listarPerfisHierarquia: async (token: string) => {
+      return apiClient.get('/acessos/hierarquia/perfis', token);
+    },
+    listarFuncionariosHierarquia: async (token: string) => {
+      return apiClient.get('/acessos/hierarquia/funcionarios', token);
+    },
+    criarFuncionarioHierarquia: async (token: string, payload: any) => {
+      return apiClient.post('/acessos/hierarquia/funcionarios', payload, token);
+    },
+    atualizarPermissoesHierarquia: async (token: string, userId: string, payload: any) => {
+      return apiClient.put(`/acessos/hierarquia/funcionarios/${userId}/permissoes`, payload, token);
+    },
     listar: async (token: string) => {
       return apiClient.get('/acessos', token);
     },

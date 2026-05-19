@@ -221,6 +221,23 @@
 .btn-checkout:hover { opacity: 0.9; transform: translateY(-2px); }
 .btn-checkout.btn-lg { padding: 16px 32px; font-size: 1.05rem; }
 
+.checkout-link-fallback {
+  margin: 10px 0 0;
+  font-size: 0.86rem;
+  color: #9cb8d3;
+  text-align: center;
+}
+
+.checkout-link-fallback a {
+  color: #7ad5ff;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.checkout-link-fallback a:hover {
+  color: #a8e4ff;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    BARRA DE PROGRESSO EM ETAPAS
 ═══════════════════════════════════════════════════════════════ */

@@ -9,6 +9,15 @@ router.use(authMiddleware);
 
 router.get("/me", acessosController.listarMeusAcessos);
 
+router.get("/hierarquia/perfis", authorizeRole(["ADMIN"]), acessosController.listarPerfisHierarquia);
+router.get("/hierarquia/funcionarios", authorizeRole(["ADMIN"]), acessosController.listarFuncionariosHierarquia);
+router.post("/hierarquia/funcionarios", authorizeRole(["ADMIN"]), acessosController.criarFuncionarioHierarquia);
+router.put(
+	"/hierarquia/funcionarios/:userId/permissoes",
+	authorizeRole(["ADMIN"]),
+	acessosController.atualizarPermissoesHierarquia
+);
+
 router.get("/", authorizeRole(["ADMIN", "GERENTE"]), acessosController.listarAcessos);
 router.post("/", authorizeRole(["ADMIN", "GERENTE"]), acessosController.criarAcesso);
 router.post("/:id/revoke", authorizeRole(["ADMIN", "GERENTE"]), acessosController.revogarAcesso);

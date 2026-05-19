@@ -187,6 +187,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       hidden: userRole !== 'ADMIN',
       children: [
         { id: 'cadastros', label: 'Cadastros Gerais' },
+        { id: 'usuarios-hierarquia', label: 'Usuários e Hierarquia' },
       ],
     },
   ];

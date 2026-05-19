@@ -1,5 +1,7 @@
+import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import prisma from "../database/prisma";
+import { validatePasswordStrength } from "../utils/password-policy";
 
 export type CadastroAcessoInput = {
   userIdAlvo: string;
@@ -17,6 +19,121 @@ export type CadastroAcessoInput = {
 const TABELA_ACESSO = "acesso_restrito";
 const TABELA_AUDITORIA = "acesso_lgpd_auditoria";
 
+type PerfilHierarquia = {
+  id: string;
+  nome: string;
+  descricao: string;
+  nivel: number;
+  roleBase: "ADMIN" | "GERENTE" | "VENDEDOR" | "CAIXA" | "ESTOQUISTA" | "USER";
+  areasPadrao: string[];
+  dadosPermitidosPadrao: string[];
+};
+
+const AREAS_SISTEMA = [
+  "dashboard",
+  "agenda",
+  "clientes",
+  "vendas",
+  "consulta-vendas",
+  "devolucoes",
+  "comissoes",
+  "cadastro-produtos",
+  "fornecedores",
+  "marcas",
+  "estoque",
+  "compras",
+  "financeiro",
+  "lancamentos",
+  "conciliacao",
+  "fluxo-caixa",
+  "categorias",
+  "formas-pagamento",
+  "integracoes",
+  "diagnostico",
+  "relatorios",
+  "cadastros",
+  "acessos",
+];
+
+const PERFIS_HIERARQUIA: PerfilHierarquia[] = [
+  {
+    id: "admin-master",
+    nome: "Administrador Master",
+    descricao: "Acesso total ao sistema e gestão de usuários e requisitos.",
+    nivel: 100,
+    roleBase: "ADMIN",
+    areasPadrao: ["*"],
+    dadosPermitidosPadrao: ["*"],
+  },
+  {
+    id: "gerente-geral",
+    nome: "Gerente Geral",
+    descricao: "Gestão de operação, financeiro e time com acesso amplo.",
+    nivel: 90,
+    roleBase: "GERENTE",
+    areasPadrao: [
+      "dashboard",
+      "agenda",
+      "clientes",
+      "vendas",
+      "consulta-vendas",
+      "devolucoes",
+      "comissoes",
+      "cadastro-produtos",
+      "fornecedores",
+      "marcas",
+      "estoque",
+      "compras",
+      "financeiro",
+      "lancamentos",
+      "conciliacao",
+      "fluxo-caixa",
+      "categorias",
+      "formas-pagamento",
+      "integracoes",
+      "relatorios",
+      "acessos",
+    ],
+    dadosPermitidosPadrao: ["vendas", "estoque", "financeiro", "clientes", "integracoes"],
+  },
+  {
+    id: "supervisor-vendas",
+    nome: "Supervisor de Vendas",
+    descricao: "Foco em vendas, clientes e metas comerciais.",
+    nivel: 75,
+    roleBase: "VENDEDOR",
+    areasPadrao: ["dashboard", "agenda", "clientes", "vendas", "consulta-vendas", "devolucoes", "comissoes", "relatorios"],
+    dadosPermitidosPadrao: ["vendas", "clientes", "comissoes"],
+  },
+  {
+    id: "operador-caixa",
+    nome: "Operador de Caixa",
+    descricao: "Operações de PDV e fechamento de caixa.",
+    nivel: 60,
+    roleBase: "CAIXA",
+    areasPadrao: ["dashboard", "clientes", "vendas", "consulta-vendas", "formas-pagamento"],
+    dadosPermitidosPadrao: ["vendas", "clientes", "pagamentos"],
+  },
+  {
+    id: "estoquista",
+    nome: "Estoquista",
+    descricao: "Gestão de estoque, produtos e fornecedores.",
+    nivel: 55,
+    roleBase: "ESTOQUISTA",
+    areasPadrao: ["dashboard", "estoque", "cadastro-produtos", "fornecedores", "marcas", "compras"],
+    dadosPermitidosPadrao: ["estoque", "produtos", "fornecedores"],
+  },
+  {
+    id: "estagiario",
+    nome: "Estagiário",
+    descricao: "Acesso inicial controlado, focado em tarefas operacionais.",
+    nivel: 20,
+    roleBase: "USER",
+    areasPadrao: ["dashboard", "agenda", "clientes"],
+    dadosPermitidosPadrao: ["clientes-basico"],
+  },
+];
+
 const sanitizeArea = (value: string) =>
   value
     .trim()
@@ -26,6 +143,22 @@ const sanitizeArea = (value: string) =>
 
 class AcessosService {
   private _tablesReady = false;
+
+  private getAreasPadraoPorRole(role?: string) {
+    const normalizedRole = String(role || "").toUpperCase();
+    if (!normalizedRole || normalizedRole === "ADMIN") return [];
+
+    const perfil = PERFIS_HIERARQUIA.find((item) => item.roleBase === normalizedRole && item.id !== "admin-master");
+    return perfil?.areasPadrao || [];
+  }
+
+  private getDadosPermitidosPadraoPorRole(role?: string) {
+    const normalizedRole = String(role || "").toUpperCase();
+    if (!normalizedRole || normalizedRole === "ADMIN") return [];
+
+    const perfil = PERFIS_HIERARQUIA.find((item) => item.roleBase === normalizedRole && item.id !== "admin-master");
+    return perfil?.dadosPermitidosPadrao || ["operacao-basica"];
+  }
 
   async init() {
     await this.ensureTables();
@@ -76,6 +209,210 @@ class AcessosService {
       .map((item) => sanitizeArea(String(item || "")))
       .filter(Boolean);
     return Array.from(new Set(normalized));
+  }
+
+  private normalizeDadosPermitidos(dados: string[]) {
+    const normalized = (dados || [])
+      .map((item) => String(item || "").trim().toLowerCase())
+      .filter(Boolean);
+    return Array.from(new Set(normalized));
+  }
+
+  listarPerfisHierarquia() {
+    return {
+      perfis: PERFIS_HIERARQUIA,
+      areasDisponiveis: AREAS_SISTEMA,
+    };
+  }
+
+  async criarFuncionarioHierarquia(input: {
+    nome: string;
+    email: string;
+    senha: string;
+    perfilId: string;
+    areasExtras?: string[];
+    areasRemovidas?: string[];
+    dadosPermitidosExtras?: string[];
+    dadosPermitidosRemovidos?: string[];
+    autorUserId: string;
+  }) {
+    await this.ensureTables();
+
+    const perfil = PERFIS_HIERARQUIA.find((item) => item.id === input.perfilId);
+    if (!perfil) throw new Error("perfil_hierarquico_invalido");
+
+    const email = String(input.email || "").trim().toLowerCase();
+    if (!email) throw new Error("email_obrigatorio");
+    if (!String(input.nome || "").trim()) throw new Error("nome_obrigatorio");
+
+    const passwordValidation = validatePasswordStrength(input.senha);
+    if (!passwordValidation.ok) throw new Error(passwordValidation.message || "senha_invalida");
+
+    const existing = await prisma.usuario.findUnique({ where: { email } });
+    if (existing) throw new Error("email_ja_cadastrado");
+
+    const areasBase = perfil.areasPadrao.includes("*") ? ["*"] : this.normalizeAreas(perfil.areasPadrao);
+    const extras = this.normalizeAreas(input.areasExtras || []);
+    const removidas = this.normalizeAreas(input.areasRemovidas || []);
+
+    let areasFinal = areasBase;
+    if (!areasBase.includes("*")) {
+      const merged = new Set<string>([...areasBase, ...extras]);
+      removidas.forEach((item) => merged.delete(item));
+      areasFinal = Array.from(merged);
+    }
+
+    const dadosBase = this.normalizeDadosPermitidos(perfil.dadosPermitidosPadrao);
+    const dadosExtras = this.normalizeDadosPermitidos(input.dadosPermitidosExtras || []);
+    const dadosRemovidos = this.normalizeDadosPermitidos(input.dadosPermitidosRemovidos || []);
+    const dadosFinal = Array.from(new Set([...dadosBase, ...dadosExtras])).filter((item) => !dadosRemovidos.includes(item));
+
+    const senhaHash = await bcrypt.hash(input.senha, 10);
+
+    const novoUsuario = await prisma.usuario.create({
+      data: {
+        nome: String(input.nome || "").trim(),
+        email,
+        senha: senhaHash,
+        role: perfil.roleBase,
+      },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+        createdAt: true,
+      },
+    });
+
+    let acessoHierarquico: any = null;
+    if (perfil.roleBase !== "ADMIN") {
+      acessoHierarquico = await this.cadastrarAcesso({
+        userIdAlvo: novoUsuario.id,
+        nomeAcesso: `perfil-hierarquia:${perfil.id}`,
+        areasPermitidas: areasFinal,
+        dadosPermitidos: dadosFinal.length > 0 ? dadosFinal : ["operacao-basica"],
+        baseLegal: "execucao_de_contrato",
+        finalidade: "controle_hierarquico_de_acesso",
+        justificativa: `Perfil hierarquico inicial ${perfil.nome}`,
+        autorUserId: input.autorUserId,
+      });
+    }
+
+    return {
+      usuario: novoUsuario,
+      perfil,
+      permissoes: {
+        areasPermitidas: perfil.roleBase === "ADMIN" ? ["*"] : areasFinal,
+        dadosPermitidos: perfil.roleBase === "ADMIN" ? ["*"] : (dadosFinal.length > 0 ? dadosFinal : ["operacao-basica"]),
+      },
+      acessoHierarquico,
+    };
+  }
+
+  async atualizarPermissoesHierarquia(input: {
+    userIdAlvo: string;
+    areasExtras?: string[];
+    areasRemovidas?: string[];
+    dadosPermitidosExtras?: string[];
+    dadosPermitidosRemovidos?: string[];
+    justificativa?: string;
+    autorUserId: string;
+  }) {
+    await this.ensureTables();
+
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: input.userIdAlvo },
+      select: { id: true, role: true },
+    });
+
+    if (!usuario) throw new Error("usuario_nao_encontrado");
+    if (usuario.role === "ADMIN") {
+      return {
+        userId: usuario.id,
+        role: usuario.role,
+        areasPermitidas: ["*"],
+        dadosPermitidos: ["*"],
+        message: "admin_possui_acesso_total",
+      };
+    }
+
+    const baseAreas = this.getAreasPadraoPorRole(usuario.role);
+    const extras = this.normalizeAreas(input.areasExtras || []);
+    const removidas = this.normalizeAreas(input.areasRemovidas || []);
+
+    const mergedAreas = new Set<string>([...this.normalizeAreas(baseAreas), ...extras]);
+    removidas.forEach((item) => mergedAreas.delete(item));
+    const areasFinal = Array.from(mergedAreas);
+
+    if (areasFinal.length === 0) {
+      throw new Error("usuario_precisa_ao_menos_uma_area");
+    }
+
+    const baseDados = this.getDadosPermitidosPadraoPorRole(usuario.role);
+    const dadosExtras = this.normalizeDadosPermitidos(input.dadosPermitidosExtras || []);
+    const dadosRemovidos = this.normalizeDadosPermitidos(input.dadosPermitidosRemovidos || []);
+    const dadosFinal = Array.from(new Set([...this.normalizeDadosPermitidos(baseDados), ...dadosExtras])).filter(
+      (item) => !dadosRemovidos.includes(item)
+    );
+
+    await prisma.$executeRawUnsafe(
+      `
+      UPDATE ${TABELA_ACESSO}
+      SET status = 'REVOGADO', revoked_at = ?, updated_at = ?
+      WHERE user_id = ?
+        AND status = 'ATIVO'
+        AND nome_acesso LIKE 'perfil-hierarquia:%'
+      `,
+      new Date(),
+      new Date(),
+      usuario.id
+    );
+
+    const novoAcesso = await this.cadastrarAcesso({
+      userIdAlvo: usuario.id,
+      nomeAcesso: `perfil-hierarquia:custom-${Date.now()}`,
+      areasPermitidas: areasFinal,
+      dadosPermitidos: dadosFinal.length > 0 ? dadosFinal : ["operacao-basica"],
+      baseLegal: "execucao_de_contrato",
+      finalidade: "ajuste_de_permissoes_por_hierarquia",
+      justificativa: input.justificativa || "Ajuste manual de requisitos por administrador",
+      autorUserId: input.autorUserId,
+    });
+
+    return {
+      userId: usuario.id,
+      role: usuario.role,
+      areasPermitidas: areasFinal,
+      dadosPermitidos: dadosFinal.length > 0 ? dadosFinal : ["operacao-basica"],
+      acesso: novoAcesso,
+    };
+  }
+
+  async listarFuncionariosHierarquia() {
+    await this.ensureTables();
+
+    const usuarios = await prisma.usuario.findMany({
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+    });
+
+    return Promise.all(
+      usuarios.map(async (usuario) => {
+        const areasPermitidas = await this.listarAreasPermitidas(usuario.id, usuario.role);
+        return {
+          ...usuario,
+          areasPermitidas,
+        };
+      })
+    );
   }
 
   private async registrarAuditoria(input: {
@@ -308,9 +645,13 @@ class AcessosService {
     if (!userId) return false;
     if (role === "ADMIN") return true;
 
-    await this.ensureTables();
-
     const normalizedArea = sanitizeArea(area);
+    const areasPadrao = this.getAreasPadraoPorRole(role);
+    if (areasPadrao.includes(normalizedArea)) {
+      return true;
+    }
+
+    await this.ensureTables();
     const rows = await prisma.$queryRawUnsafe<any[]>(
       `
       SELECT id
@@ -335,7 +676,7 @@ class AcessosService {
     const acessos = await this.listarAcessosPorUsuario(userId);
     const now = Date.now();
 
-    const areas = new Set<string>();
+    const areas = new Set<string>(this.getAreasPadraoPorRole(role));
     acessos
       .filter((item) => {
         if (item.status !== "ATIVO") return false;

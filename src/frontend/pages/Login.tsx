@@ -9,6 +9,7 @@
  */
 import { LogIn } from "lucide-react";
 import React, { useState } from "react";
+import PasswordRequirements from "../components/PasswordRequirements";
 import { api } from "../services/api";
 import "./Login.css";
 import OnboardingFunnel from "./OnboardingFunnel";
@@ -108,6 +109,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                             onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                             autoComplete="current-password"
                         />
+                        {senha.length > 0 && (
+                            <PasswordRequirements password={senha} minLength={10} showDetails={true} />
+                        )}
                     </div>
 
                     {erro && <p className="login-erro">{erro}</p>}
