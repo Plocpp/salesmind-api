@@ -76,9 +76,15 @@ Depois disso, basta rodar o workflow **Deploy Online** manualmente (workflow_dis
 
 ## 5. Migracao e seed
 
-O blueprint ja executa `npx prisma db push` no pre-deploy da API.
+Para evitar falhas de deploy por indisponibilidade temporaria de banco, o build da API no Render nao executa mais comandos que dependem de conexao com banco.
 
-Se precisar popular dados base, rode uma vez no shell do servico API:
+Quando for necessario aplicar schema/dados, execute manualmente no Shell do servico API (com o banco online):
+
+```bash
+npx prisma db push
+```
+
+Se precisar popular dados base, rode em seguida:
 
 ```bash
 npm run seed
@@ -117,7 +123,7 @@ Status validado nesta sessao (17/05/2026):
 - [x] `healthCheckPath` da API em `/health`
 - [x] `npm run release:check` verde (smoke 44/44 + build frontend)
 - [x] `npm run build:api` verde
-- [x] `preDeployCommand` configurado com `npx prisma db push`
+- [x] Build da API sem dependencia de banco (`npm ci && npx prisma generate`)
 - [ ] Secrets obrigatorios preenchidos no Render (`DATABASE_URL`, `JWT_*`, `ONBOARDING_WEBHOOK_TOKEN`, `INTEGRACOES_ENCRYPTION_KEY`, `EMAIL_FROM`, `SMTP_USER`, `SMTP_PASS`)
 - [ ] Revisar URLs finais dos servicos e atualizar: `FRONTEND_BASE_URL`, `CORS_ORIGIN_ALLOWLIST`, `PUBLIC_BASE_URL`, `VITE_API_BASE_URL`
 - [ ] Rodar smoke remoto contra URL publica da API

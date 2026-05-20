@@ -64,6 +64,11 @@ mysql://root:CQXAjYPQUQchtCabIJOurZvmwYnSHGGb@autorack.proxy.rlwy.net:18228/rail
 2. O Render vai detectar a mudança e fazer **redeploy automático**
 3. Aguarde até que apareça ✅ **Live** no status
 
+Observacao importante:
+- Mantenha o build da API sem dependencia de banco para evitar falhas intermitentes de deploy.
+- Em blueprint, use `buildCommand: npm ci && npx prisma generate`.
+- Rode `npx prisma db push` e `npm run seed` manualmente no Shell da API apenas quando necessario.
+
 ---
 
 ## Passo 4: Validar a Conexão
