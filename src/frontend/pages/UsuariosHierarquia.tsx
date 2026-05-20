@@ -113,6 +113,8 @@ export default function UsuariosHierarquia() {
   const [justificativa, setJustificativa] = useState('Ajuste operacional definido pela administração.');
   const [filtroBusca, setFiltroBusca] = useState('');
   const [filtroRole, setFiltroRole] = useState('TODOS');
+  const [backendHierarquiaIndisponivel, setBackendHierarquiaIndisponivel] = useState(false);
+  const [mensagemBackend, setMensagemBackend] = useState('');
 
   const perfilSelecionado = useMemo(
     () => perfis.find((item) => item.id === perfilId) || null,
@@ -155,6 +157,9 @@ export default function UsuariosHierarquia() {
     try {
       setLoading(true);
       setErro('');
+      setMensagemBackend('');
+      setBackendHierarquiaIndisponivel(false);
+
       const [perfisResp, funcionariosResp] = await Promise.all([
         api.acessos.listarPerfisHierarquia(token),
         api.acessos.listarFuncionariosHierarquia(token),
@@ -169,7 +174,21 @@ export default function UsuariosHierarquia() {
         setPerfilId(perfisList[0].id);
       }
     } catch (e: any) {
-      setErro(e?.message || 'Falha ao carregar dados de hierarquia.');
+      const message = String(e?.message || 'Falha ao carregar dados de hierarquia.');
+      const rotaNaoPublicada = message.includes('Cannot GET /acessos/hierarquia/perfis') || message.includes('HTTP 404');
+
+      if (rotaNaoPublicada) {
+        setBackendHierarquiaIndisponivel(true);
+        setMensagemBackend(
+          'A funcionalidade de hierarquia ainda não está publicada na API deste ambiente. Tente novamente após o deploy do backend.'
+        );
+        setPerfis([]);
+        setFuncionarios([]);
+        setAreasDisponiveis([]);
+        return;
+      }
+
+      setErro(message);
     } finally {
       setLoading(false);
     }
@@ -325,6 +344,17 @@ export default function UsuariosHierarquia() {
           {erro}
         </div>
       )}
+
+      {backendHierarquiaIndisponivel && (
+        <div style={{ ...cardStyle, borderColor: '#d9c49c', background: '#fff8ec', color: '#7c4a03' }}>
+          <strong>Deploy em andamento</strong>
+          <p style={{ margin: '8px 0 0' }}>{mensagemBackend}</p>
+          <p style={{ margin: '8px 0 0' }}>
+            Enquanto isso, as ações desta tela ficam em modo de leitura para evitar erros de operação.
+          </p>
+        </div>
+      )}
+
       {sucesso && (
         <div style={{ ...cardStyle, borderColor: '#a5e1c7', background: '#effcf5', color: '#166534' }}>
           {sucesso}
@@ -469,7 +499,7 @@ export default function UsuariosHierarquia() {
 
           <button
             type="submit"
-            disabled={saving || loading}
+            disabled={saving || loading || backendHierarquiaIndisponivel}
             style={{
               border: 'none',
               borderRadius: 8,
@@ -607,7 +637,7 @@ export default function UsuariosHierarquia() {
 
           <button
             type="submit"
-            disabled={updating || loading}
+            disabled={updating || loading || backendHierarquiaIndisponivel}
             style={{
               border: 'none',
               borderRadius: 8,
@@ -679,7 +709,7 @@ export default function UsuariosHierarquia() {
                     {PROMOCOES_POR_ROLE[funcionario.role] ? (
                       <button
                         type="button"
-                        disabled={updating}
+                        disabled={updating || backendHierarquiaIndisponivel}
                         onClick={() => aplicarPromocaoRapida(funcionario)}
                         style={{
                           border: '1px solid #c7c1b2',
