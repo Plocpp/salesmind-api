@@ -7,7 +7,7 @@
  * 2) Persistir token e role no localStorage e disparar callback de rota.
  * 3) Exibir funil comercial de onboarding para compra da plataforma.
  */
-import { LogIn } from "lucide-react";
+import { LogIn, Search } from "lucide-react";
 import React, { useState } from "react";
 import PasswordRequirements from "../components/PasswordRequirements";
 import { api } from "../services/api";
@@ -21,6 +21,7 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const [email, setEmail] = useState("");
     const [senha, setSenha] = useState("");
+    const [sessaoRastreio, setSessaoRastreio] = useState("");
     const [mostrarFunil, setMostrarFunil] = useState(false);
     const [loading, setLoading] = useState(false);
     const [erro, setErro] = useState("");
@@ -71,6 +72,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         } finally {
             setLoading(false);
         }
+    }
+
+    function abrirRastreio() {
+        const valor = sessaoRastreio.trim();
+        if (!valor) {
+            setErro("Informe o codigo ou o link de rastreio enviado pela loja.");
+            return;
+        }
+
+        const marker = "/rastreio-publico/";
+        const markerIndex = valor.indexOf(marker);
+        const codigo = markerIndex >= 0
+            ? valor.slice(markerIndex + marker.length).split(/[?#]/)[0]
+            : valor.replace(/^#\/rastreio-publico\//i, '').split(/[?#]/)[0];
+        const hash = `#/rastreio-publico/${encodeURIComponent(codigo || valor)}`;
+
+        window.location.hash = hash;
     }
 
     if (mostrarFunil) {
@@ -134,6 +152,31 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 >
                     🚀 Conhecer planos e contratar
                 </button>
+
+                <div className="login-divider"><span>acompanhamento da entrega</span></div>
+
+                <div className="login-form" style={{ marginTop: 0 }}>
+                    <div className="login-field">
+                        <label>Codigo ou link de rastreio</label>
+                        <input
+                            type="text"
+                            placeholder="Cole o codigo da entrega ou o link recebido"
+                            value={sessaoRastreio}
+                            onChange={(e) => setSessaoRastreio(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && abrirRastreio()}
+                            autoComplete="off"
+                        />
+                    </div>
+
+                    <button
+                        className="login-btn-primary"
+                        onClick={abrirRastreio}
+                        disabled={!sessaoRastreio}
+                    >
+                        <Search size={16} />
+                        Ver rastreio da entrega
+                    </button>
+                </div>
 
                 <p className="login-footer-note">
                     Plataforma protegida por LGPD · Acesso monitorado por auditoria
