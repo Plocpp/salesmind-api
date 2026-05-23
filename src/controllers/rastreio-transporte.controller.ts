@@ -74,6 +74,18 @@ export class RastreioTransporteController {
     return res.json(await service.listarPontosSessao(sessaoId, limit));
   }
 
+  async obterRastreioPublico(req: AuthRequest, res: Response) {
+    const sessaoId = Array.isArray(req.params.sessaoId) ? req.params.sessaoId[0] : req.params.sessaoId;
+    const limit = getLimit(req.query.limit as string | string[] | undefined);
+
+    try {
+      return res.json(await service.obterRastreioPublico(sessaoId, limit));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Sessao de rastreio nao encontrada.';
+      return res.status(404).json({ success: false, message });
+    }
+  }
+
   // Endpoints para app mobile (sem JWT de usuario, autenticados por token do dispositivo)
   async iniciarSessaoMobile(req: AuthRequest, res: Response) {
     const token = getBearerToken(req);

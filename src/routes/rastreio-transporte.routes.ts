@@ -6,6 +6,9 @@ import { authorizeRole } from '../middlewares/role.middleware';
 const router = Router();
 const controller = new RastreioTransporteController();
 
+// Rota pública de acompanhamento do cliente
+router.get('/publico/sessoes/:sessaoId', controller.obterRastreioPublico);
+
 // Backoffice (JWT)
 router.get('/entregadores', authMiddleware, authorizeRole(['ADMIN']), controller.listarEntregadores);
 router.post('/dispositivos', authMiddleware, authorizeRole(['ADMIN']), controller.criarDispositivo);

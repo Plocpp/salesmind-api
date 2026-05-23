@@ -522,4 +522,43 @@ export class RastreioTransporteService {
       nota: typeof lerRawJson(item.raw)?.nota === 'string' ? lerRawJson(item.raw)?.nota : null,
     }));
   }
+
+  async obterRastreioPublico(sessaoId: string, limit = 60) {
+    await this.ensureSchema();
+    const safeLimit = Math.max(1, Math.min(120, Number(limit) || 60));
+
+    const sessaoRows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT s.id, s.entregador_id, s.dispositivo_id, s.venda_id, s.status, s.iniciada_em, s.finalizada_em, s.motivo,
+             e.nome AS entregador_nome
+      FROM rastreio_sessao s
+      LEFT JOIN Entregador e ON e.id = s.entregador_id
+      WHERE s.id = ?
+      LIMIT 1
+      `,
+      sessaoId,
+    );
+
+    const sessao = sessaoRows[0];
+    if (!sessao) throw new Error('Sessao de rastreio nao encontrada.');
+
+    const pontos = await this.listarPontosSessao(sessaoId, safeLimit);
+    const ultimaPosicao = pontos[0] || null;
+
+    const ultimoPontoComNota = pontos.find((item) => item.nota) || null;
+
+    return {
+      sessaoId: sessao.id,
+      entregadorNome: sessao.entregador_nome || 'Entregador nao encontrado',
+      vendaId: sessao.venda_id,
+      status: sessao.status,
+      motivo: sessao.motivo,
+      iniciadaEm: sessao.iniciada_em,
+      finalizadaEm: sessao.finalizada_em,
+      ultimaPosicao,
+      notaAtual: ultimaPosicao?.nota || ultimoPontoComNota?.nota || null,
+      pontos,
+      atualizadaEm: ultimaPosicao?.registradoEm || sessao.finalizada_em || sessao.iniciada_em,
+    };
+  }
 }

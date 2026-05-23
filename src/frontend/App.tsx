@@ -28,6 +28,7 @@ const PesoCarga = lazy(() => import('./pages/PesoCarga'));
 const IntegracoesHub = lazy(() => import('./pages/IntegracoesHub'));
 const UsuariosHierarquia = lazy(() => import('./pages/UsuariosHierarquia'));
 const RastreioTransporte = lazy(() => import('./pages/RastreioTransporte'));
+const RastreioPublico = lazy(() => import('./pages/RastreioPublico'));
 const Placeholder = lazy(() => import('./pages/Placeholder'));
 
 const placeholderPageTitles: Record<string, string> = {
@@ -46,15 +47,39 @@ function App() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [currentPage, setCurrentPage] = useState<string>('dashboard');
     const [userRole, setUserRole] = useState<string>('');
+    const [publicSessaoId, setPublicSessaoId] = useState('');
+
+    const readPublicRoute = () => {
+        if (typeof window === 'undefined') return '';
+        const match = window.location.hash.match(/^#\/rastreio-publico\/([^/?#]+)/i);
+        return match ? decodeURIComponent(match[1]) : '';
+    };
 
     useEffect(() => {
+        const syncPublicRoute = () => setPublicSessaoId(readPublicRoute());
+        syncPublicRoute();
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('hashchange', syncPublicRoute);
+        }
+
+        return () => {
+            if (typeof window !== 'undefined') {
+                window.removeEventListener('hashchange', syncPublicRoute);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (publicSessaoId) return;
+
         const token = localStorage.getItem('token');
         const role = localStorage.getItem('userRole');
         if (token) {
             setIsLoggedIn(true);
             setUserRole(role || '');
         }
-    }, []);
+    }, [publicSessaoId]);
 
     const handleLogin = (role?: string) => {
         setIsLoggedIn(true);
@@ -157,6 +182,22 @@ function App() {
                 return <Placeholder title="Pagina nao encontrada" />;
         }
     };
+
+    if (publicSessaoId) {
+        return (
+            <ErrorBoundary>
+                <Suspense
+                    fallback={
+                        <div style={{ padding: 24, color: '#334155' }}>
+                            Carregando rastreio...
+                        </div>
+                    }
+                >
+                    <RastreioPublico sessaoId={publicSessaoId} />
+                </Suspense>
+            </ErrorBoundary>
+        );
+    }
 
     if (!isLoggedIn) {
         return <Login onLogin={handleLogin} />;

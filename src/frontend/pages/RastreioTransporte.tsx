@@ -211,6 +211,9 @@ export default function RastreioTransporte() {
 
   const token = localStorage.getItem('token');
   const userRole = localStorage.getItem('userRole') || '';
+  const linkPublico = selectedSessaoId && typeof window !== 'undefined'
+    ? `${window.location.origin}/#/rastreio-publico/${encodeURIComponent(selectedSessaoId)}`
+    : '';
 
   const carregarTudo = async () => {
     try {
@@ -453,6 +456,28 @@ export default function RastreioTransporte() {
                 </option>
               ))}
             </select>
+            {linkPublico && (
+              <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
+                <label style={{ color: '#647674', fontSize: 12, fontWeight: 700 }}>Link do cliente</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input value={linkPublico} readOnly style={{ ...input, flex: '1 1 100%', fontSize: 12 }} />
+                  <button
+                    type="button"
+                    style={buttonSecondary}
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(linkPublico);
+                        window.alert('Link do cliente copiado.');
+                      } catch {
+                        window.prompt('Copie o link do cliente', linkPublico);
+                      }
+                    }}
+                  >
+                    Copiar link
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
