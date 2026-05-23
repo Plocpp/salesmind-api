@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "SalesMind Rastreio",
+    "slug": "salesmind-rastreio-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0f2e30"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "android": {
+      "package": "com.salesmind.rastreio",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE"
+      ]
+    },
+    "extra": {
+      "apiBaseUrl": "https://salesmind-api.onrender.com",
+      "eas": {
+        "projectId": "2a8471f8-1e90-4c26-805c-2bb7babd97d0"
+      }
+    }
+  }
+}

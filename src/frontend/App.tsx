@@ -27,6 +27,7 @@ const ManutencaoVeiculo = lazy(() => import('./pages/ManutencaoVeiculo'));
 const PesoCarga = lazy(() => import('./pages/PesoCarga'));
 const IntegracoesHub = lazy(() => import('./pages/IntegracoesHub'));
 const UsuariosHierarquia = lazy(() => import('./pages/UsuariosHierarquia'));
+const RastreioTransporte = lazy(() => import('./pages/RastreioTransporte'));
 const Placeholder = lazy(() => import('./pages/Placeholder'));
 
 const placeholderPageTitles: Record<string, string> = {
@@ -144,6 +145,11 @@ function App() {
                 return <IntegracoesHub initialSection="webhooks" />;
             case 'usuarios-hierarquia':
                 return <UsuariosHierarquia />;
+            case 'rastreio-transporte':
+                if (userRole !== 'ADMIN') {
+                    return <Placeholder title="Acesso restrito" />;
+                }
+                return <RastreioTransporte />;
             default:
                 if (placeholderPageTitles[currentPage]) {
                     return <Placeholder title={placeholderPageTitles[currentPage]} />;

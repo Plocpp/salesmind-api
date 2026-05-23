@@ -12,6 +12,7 @@ import fornecedoresRoutes from "./routes/fornecedores.routes";
 import integracoesRoutes from "./routes/integracoes.routes";
 import onboardingPagamentoRoutes from "./routes/onboarding-pagamento.routes";
 import produtoRoutes from "./routes/produto.routes";
+import rastreioTransporteRoutes from "./routes/rastreio-transporte.routes";
 import vendasRoutes from "./routes/vendas.routes";
 
 // App principal do backend SalesMind.
@@ -94,6 +95,17 @@ app.use(
   })
 );
 
+app.use(
+  "/rastreio/mobile",
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: Number(process.env.RATE_LIMIT_MAX_RASTREIO_MOBILE || 240),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: "Limite de envio de localizacao excedido. Tente novamente em instantes." },
+  })
+);
+
 // Rotas da aplicação
 app.use("/auth", authRoutes);
 app.use("/acessos", acessosRoutes);
@@ -104,6 +116,7 @@ app.use("/financeiro", financeiroRoutes);
 app.use("/estoque", estoqueRoutes);
 app.use("/integracoes", integracoesRoutes);
 app.use("/onboarding", onboardingPagamentoRoutes);
+app.use("/rastreio", rastreioTransporteRoutes);
 
 // Rotas de diagnóstico (sem autenticação para acesso em emergências)
 app.use("/diagnostico", diagnosticoRoutes);
