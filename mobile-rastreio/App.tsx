@@ -1,7 +1,17 @@
 import * as React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, SafeAreaView, ScrollView, StatusBar, Text, TextInput, View } from 'react-native';
-import { atualizarNotaAtiva, finalizarRastreio, iniciarRastreio, limparNotaAtiva, obterEstadoRastreio, sincronizarPendencias } from './src/tracking';
+
+type TrackingModule = typeof import('./src/tracking');
+
+let trackingModulePromise: Promise<TrackingModule> | null = null;
+
+function loadTrackingModule() {
+  if (!trackingModulePromise) {
+    trackingModulePromise = import('./src/tracking');
+  }
+  return trackingModulePromise;
+}
 
 const colors = {
   bg: '#f3f8f8',
@@ -51,23 +61,6 @@ export default function App() {
   const [pendentes, setPendentes] = useState(0);
   const [status, setStatus] = useState('Pronto para iniciar.');
 
-  useEffect(() => {
-    obterEstadoRastreio()
-      .then((estado) => {
-        setAtivo(estado.ativo);
-        setSessaoId(estado.sessionId);
-        setEntregadorId(estado.entregadorId);
-        setVendaId(estado.vendaId);
-        setToken(estado.token);
-        setNotaAtual(estado.notaAtual);
-        setPendentes(estado.pendentes);
-        if (estado.ativo) {
-          setStatus('Sessao restaurada no dispositivo.');
-        }
-      })
-      .catch(() => setAtivo(false));
-  }, []);
-
   const ready = useMemo(() => entregadorId.trim() && token.trim(), [entregadorId, token]);
 
   async function handleIniciar() {
@@ -78,7 +71,8 @@ export default function App() {
 
     try {
       setLoading(true);
-      const result = await iniciarRastreio({
+      const tracking = await loadTrackingModule();
+      const result = await tracking.iniciarRastreio({
         entregadorId: entregadorId.trim(),
         vendaId: vendaId.trim() || undefined,
         token: token.trim(),
@@ -97,7 +91,8 @@ export default function App() {
   async function handleFinalizar() {
     try {
       setLoading(true);
-      await finalizarRastreio('FINALIZADO_MANUALMENTE');
+      const tracking = await loadTrackingModule();
+      await tracking.finalizarRastreio('FINALIZADO_MANUALMENTE');
       setAtivo(false);
       setSessaoId('');
       setPendentes(0);
@@ -112,7 +107,8 @@ export default function App() {
   async function handleSincronizar() {
     try {
       setLoading(true);
-      const result = await sincronizarPendencias();
+      const tracking = await loadTrackingModule();
+      const result = await tracking.sincronizarPendencias();
       setPendentes(result.pendentes);
       setStatus(`Sincronizacao concluida: ${result.enviados} enviados, ${result.pendentes} pendentes.`);
     } catch (error) {
@@ -125,7 +121,8 @@ export default function App() {
   async function handleSalvarNota() {
     try {
       setLoading(true);
-      const value = await atualizarNotaAtiva(notaAtual);
+      const tracking = await loadTrackingModule();
+      const value = await tracking.atualizarNotaAtiva(notaAtual);
       setNotaAtual(value);
       setStatus(value ? 'Nota ativa salva no dispositivo.' : 'Nota limpa do dispositivo.');
     } catch (error) {
@@ -138,7 +135,8 @@ export default function App() {
   async function handleLimparNota() {
     try {
       setLoading(true);
-      await limparNotaAtiva();
+      const tracking = await loadTrackingModule();
+      await tracking.limparNotaAtiva();
       setNotaAtual('');
       setStatus('Nota ativa removida.');
     } catch (error) {
