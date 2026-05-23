@@ -14,7 +14,7 @@ import {
     Trophy,
     Wallet
 } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../services/api';
 
 type SalesModuleId =
@@ -36,10 +36,12 @@ interface Produto {
   id: string;
   nome: string;
   preco: number;
+  precoOriginal?: number;
   estoque: number;
   estoqueDisponivel?: number;
   codigo?: string;
   codigoBarras?: string;
+  validade?: string;
   marca?: { nome: string };
 }
 
@@ -88,7 +90,14 @@ interface ListaPreco {
   markupPadrao?: number;
   vigenciaInicio?: string;
   vigenciaFim?: string;
-  itens?: Array<{ id: string }>;
+  itens?: Array<{
+    id: string;
+    produtoId?: string;
+    preco?: number;
+    promocional?: number;
+    inicio?: string;
+    fim?: string;
+  }>;
 }
 
 interface Orcamento {
@@ -309,6 +318,10 @@ const menuGroups: MenuGroup[] = [
   },
 ];
 
+const BANDEIRAS_CARTAO_BR = ['VISA', 'MASTERCARD', 'ELO', 'HIPERCARD', 'AMEX', 'CABAL', 'DISCOVER'] as const;
+const ADQUIRENTES_BR = ['MERCADO PAGO', 'PAGSEGURO', 'STONE', 'REDE', 'CIELO', 'GETNET', 'SUMUP', 'SAFRA PAY'] as const;
+const DIAS_VALIDADE_CURTA = 15;
+
 export default function Vendas() {
   const [active, setActive] = useState<SalesModuleId>('ponto-venda');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -331,17 +344,25 @@ export default function Vendas() {
   const [config, setConfig] = useState<ConfiguracaoVendas>(defaultConfig);
 
   const [buscaProduto, setBuscaProduto] = useState('');
+  const [codigoBarrasRapido, setCodigoBarrasRapido] = useState('');
   const [buscaCliente, setBuscaCliente] = useState('');
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
   const [criandoClienteRapido, setCriandoClienteRapido] = useState(false);
   const [salvandoClienteRapido, setSalvandoClienteRapido] = useState(false);
   const [novoClienteRapido, setNovoClienteRapido] = useState({ nome: '', telefone: '', email: '' });
   const [formaSelecionada, setFormaSelecionada] = useState('PIX');
+  const [bandeiraCartao, setBandeiraCartao] = useState('VISA');
+  const [adquirenteCartao, setAdquirenteCartao] = useState('MERCADO PAGO');
+  const [parcelasCartao, setParcelasCartao] = useState(1);
+  const [emitirNfceNaVenda, setEmitirNfceNaVenda] = useState(false);
+  const [clienteDocumentoNfce, setClienteDocumentoNfce] = useState('');
   const [valorPago, setValorPago] = useState('0');
   const [comprovantePagamento, setComprovantePagamento] = useState('');
   const [pagamentoComprovado, setPagamentoComprovado] = useState(false);
   const [finalizandoVenda, setFinalizandoVenda] = useState(false);
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
+  const [ultimaAdicao, setUltimaAdicao] = useState<{ nome: string; quantidade: number; valor: number } | null>(null);
+  const [ultimosItensAdicionados, setUltimosItensAdicionados] = useState<Array<{ produtoId: string; nome: string; quantidade: number; valor: number }>>([]);
   
   const [caixaAberto, setCaixaAberto] = useState(false);
   const [saldoCaixa, setSaldoCaixa] = useState(0);
@@ -368,6 +389,9 @@ export default function Vendas() {
   const [novoOrcamento, setNovoOrcamento] = useState({ titulo: '', clienteId: '', itens: [] as any[] });
   const [exportando, setExportando] = useState(false);
   const [resumoFechamento, setResumoFechamento] = useState<ResumoFechamentoCaixa | null>(null);
+
+  const buscaProdutoRef = useRef<HTMLInputElement | null>(null);
+  const codigoBarrasRef = useRef<HTMLInputElement | null>(null);
 
   const token = localStorage.getItem('token');
 
@@ -489,13 +513,62 @@ export default function Vendas() {
   }, [caixas, movimentos]);
 
   const produtosFiltrados = useMemo(() => {
+    const agora = new Date();
+    const promoPorProduto = new Map<string, number>();
+
+    for (const lista of listasPreco) {
+      for (const item of lista.itens || []) {
+        if (!item.produtoId || typeof item.promocional !== 'number' || item.promocional <= 0) continue;
+
+        const inicio = item.inicio ? new Date(item.inicio) : null;
+        const fim = item.fim ? new Date(item.fim) : null;
+        const dentroDaVigencia = (!inicio || inicio <= agora) && (!fim || fim >= agora);
+        if (!dentroDaVigencia) continue;
+
+        promoPorProduto.set(item.produtoId, item.promocional);
+      }
+    }
+
+    const diferencaDias = (dataIso?: string) => {
+      if (!dataIso) return Number.POSITIVE_INFINITY;
+      const dataValidade = new Date(dataIso);
+      if (Number.isNaN(dataValidade.getTime())) return Number.POSITIVE_INFINITY;
+      const diffMs = dataValidade.getTime() - agora.getTime();
+      return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    };
+
     const termo = buscaProduto.toLowerCase();
-    return produtos.filter((produto) => (
-      produto.nome.toLowerCase().includes(termo)
-      || produto.codigo?.toLowerCase().includes(termo)
-      || produto.codigoBarras?.includes(buscaProduto)
-    ));
-  }, [produtos, buscaProduto]);
+    return produtos
+      .filter((produto) => (
+        produto.nome.toLowerCase().includes(termo)
+        || produto.codigo?.toLowerCase().includes(termo)
+        || produto.codigoBarras?.includes(buscaProduto)
+      ))
+      .sort((a, b) => {
+        const aPromo = promoPorProduto.get(a.id) ?? null;
+        const bPromo = promoPorProduto.get(b.id) ?? null;
+        const aTemPromo = aPromo !== null;
+        const bTemPromo = bPromo !== null;
+        if (aTemPromo !== bTemPromo) return aTemPromo ? -1 : 1;
+
+        const aDias = diferencaDias(a.validade);
+        const bDias = diferencaDias(b.validade);
+        const aValidadeCurta = aDias >= 0 && aDias <= DIAS_VALIDADE_CURTA;
+        const bValidadeCurta = bDias >= 0 && bDias <= DIAS_VALIDADE_CURTA;
+        if (aValidadeCurta !== bValidadeCurta) return aValidadeCurta ? -1 : 1;
+
+        if (aTemPromo && bTemPromo && aPromo !== bPromo) return Number(aPromo) - Number(bPromo);
+        if (aDias !== bDias) return aDias - bDias;
+        return a.nome.localeCompare(b.nome);
+      })
+      .map((produto) => {
+        const precoPromocional = promoPorProduto.get(produto.id);
+        if (typeof precoPromocional === 'number' && precoPromocional > 0) {
+          return { ...produto, preco: Number(precoPromocional), precoOriginal: Number(produto.preco) };
+        }
+        return produto;
+      });
+  }, [produtos, buscaProduto, listasPreco]);
 
   const totalCarrinho = useMemo(
     () => carrinho.reduce((total, item) => total + item.produto.preco * item.quantidade - item.desconto, 0),
@@ -503,6 +576,20 @@ export default function Vendas() {
   );
 
   const formasPagamentoPDV = ['PIX', 'DINHEIRO', 'CREDITO', 'DEBITO', 'BOLETO', 'CREDIARIO', 'LINK_PAGAMENTO'];
+
+  const formaCartao = formaSelecionada === 'CREDITO' || formaSelecionada === 'DEBITO';
+
+  const dashboardPDV = useMemo(() => {
+    const ultimasVendas = vendas.slice(0, 15);
+    const volume = ultimasVendas.reduce((acc, venda) => acc + Number(venda.total || 0), 0);
+    const itensNoCarrinho = carrinho.reduce((acc, item) => acc + Number(item.quantidade || 0), 0);
+    return {
+      pedidosDia: ultimasVendas.length,
+      volume,
+      itensNoCarrinho,
+      ticketMedio: ultimasVendas.length ? volume / ultimasVendas.length : 0,
+    };
+  }, [vendas, carrinho]);
 
   const kpis = useMemo(() => {
     const receita = vendas.reduce((total, venda) => total + Number(venda.total || 0), 0);
@@ -517,15 +604,116 @@ export default function Vendas() {
   }, [vendas]);
 
   const adicionarAoCarrinho = (produto: Produto) => {
+    const quantidadeAdicionada = 1;
     setCarrinho((atual) => {
       const existente = atual.find((item) => item.produto.id === produto.id);
       if (!existente) {
-        return [...atual, { produto, quantidade: 1, desconto: 0 }];
+        return [...atual, { produto, quantidade: quantidadeAdicionada, desconto: 0 }];
       }
       return atual.map((item) => (
-        item.produto.id === produto.id ? { ...item, quantidade: item.quantidade + 1 } : item
+        item.produto.id === produto.id ? { ...item, quantidade: item.quantidade + quantidadeAdicionada } : item
       ));
     });
+
+    setUltimaAdicao({ nome: produto.nome, quantidade: quantidadeAdicionada, valor: Number(produto.preco || 0) });
+    setUltimosItensAdicionados((atual) => [
+      { produtoId: produto.id, nome: produto.nome, quantidade: quantidadeAdicionada, valor: Number(produto.preco || 0) },
+      ...atual.filter((item) => item.produtoId !== produto.id),
+    ].slice(0, 6));
+    try {
+      if (typeof window !== 'undefined' && 'AudioContext' in window) {
+        const AudioCtor = window.AudioContext || (window as any).webkitAudioContext;
+        const audioContext = new AudioCtor();
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.02;
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.08);
+      }
+    } catch {
+      // feedback visual continua funcionando mesmo sem audio
+    }
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate?.(20);
+    }
+  };
+
+  const adicionarAoCarrinhoQuantidade = (produto: Produto, quantidade: number) => {
+    const quantidadeAdicionada = Math.max(1, Number(quantidade) || 1);
+    setCarrinho((atual) => {
+      const existente = atual.find((item) => item.produto.id === produto.id);
+      if (!existente) {
+        return [...atual, { produto, quantidade: quantidadeAdicionada, desconto: 0 }];
+      }
+      return atual.map((item) => (
+        item.produto.id === produto.id ? { ...item, quantidade: item.quantidade + quantidadeAdicionada } : item
+      ));
+    });
+
+    setUltimaAdicao({ nome: produto.nome, quantidade: quantidadeAdicionada, valor: Number(produto.preco || 0) });
+    setUltimosItensAdicionados((atual) => [
+      { produtoId: produto.id, nome: produto.nome, quantidade: quantidadeAdicionada, valor: Number(produto.preco || 0) },
+      ...atual.filter((item) => item.produtoId !== produto.id),
+    ].slice(0, 6));
+    try {
+      if (typeof window !== 'undefined' && 'AudioContext' in window) {
+        const AudioCtor = window.AudioContext || (window as any).webkitAudioContext;
+        const audioContext = new AudioCtor();
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = 'triangle';
+        oscillator.frequency.value = 660;
+        gain.gain.value = 0.02;
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.07);
+      }
+    } catch {
+      // feedback visual continua funcionando mesmo sem audio
+    }
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate?.(15);
+    }
+  };
+
+  const atualizarQuantidadeCarrinho = (produtoId: string, quantidade: number) => {
+    const quantidadeValida = Math.max(1, Number(quantidade) || 1);
+    setCarrinho((atual) => atual.map((row) => (
+      row.produto.id === produtoId ? { ...row, quantidade: quantidadeValida } : row
+    )));
+  };
+
+  const adicionarPorCodigoBarras = () => {
+    const bruto = codigoBarrasRapido.trim();
+    const partes = bruto.match(/^(.+?)(?:[x\*](\d+))?$/i);
+    const codigo = (partes?.[1] || bruto).trim();
+    const quantidade = Math.max(1, Number(partes?.[2] || 1) || 1);
+    if (!codigo) return;
+
+    const produto = produtos.find((item) => (
+      (item.codigoBarras && item.codigoBarras === codigo)
+      || (item.codigo && item.codigo === codigo)
+    ));
+
+    if (!produto) {
+      alert(`Nenhum produto encontrado para o codigo ${codigo}.`);
+      return;
+    }
+
+    adicionarAoCarrinhoQuantidade(produto, quantidade);
+    setCodigoBarrasRapido('');
+    codigoBarrasRef.current?.focus();
+  };
+
+  const repetirUltimoItem = (produtoId: string) => {
+    const produto = produtos.find((item) => item.id === produtoId);
+    if (!produto) return;
+    adicionarAoCarrinho(produto);
   };
 
   const buscarCliente = async () => {
@@ -854,6 +1042,11 @@ export default function Vendas() {
 
   const limparPagamentoPDV = () => {
     setFormaSelecionada('PIX');
+    setBandeiraCartao('VISA');
+    setAdquirenteCartao('MERCADO PAGO');
+    setParcelasCartao(1);
+    setEmitirNfceNaVenda(Boolean(config.nfeAutomatica));
+    setClienteDocumentoNfce('');
     setValorPago(totalCarrinho.toFixed(2));
     setComprovantePagamento('');
     setPagamentoComprovado(false);
@@ -874,6 +1067,27 @@ export default function Vendas() {
     setModalAberto('confirmar-pagamento');
   };
 
+  useEffect(() => {
+    if (active !== 'ponto-venda') return;
+    const timer = window.setTimeout(() => {
+      buscaProdutoRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [active]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (active !== 'ponto-venda') return;
+      if (event.key === 'F8') {
+        event.preventDefault();
+        codigoBarrasRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [active]);
+
   const finalizarVenda = async () => {
     if (finalizandoVenda) return;
 
@@ -893,9 +1107,14 @@ export default function Vendas() {
       return;
     }
 
+    if (formaCartao && !bandeiraCartao.trim()) {
+      alert('Informe a bandeira do cartao para continuar.');
+      return;
+    }
+
     try {
       setFinalizandoVenda(true);
-      await api.post('/vendas/vendas', {
+      const vendaCriada = await api.post('/vendas/vendas', {
         clienteId: clienteSelecionado?.id,
         tipo: 'PDV',
         origem: 'PDV',
@@ -911,13 +1130,35 @@ export default function Vendas() {
         pagamentos: [{
           forma: formaSelecionada as any,
           valor: totalCarrinho,
-          parcelas: 1,
+          parcelas: formaSelecionada === 'CREDITO' ? parcelasCartao : 1,
+          gateway: formaCartao ? adquirenteCartao : undefined,
+          nsu: comprovantePagamento.trim() || undefined,
           autorizacao: comprovantePagamento.trim() || undefined,
+          metadata: {
+            comprovadoNoPdv: true,
+            bandeira: formaCartao ? bandeiraCartao : undefined,
+            adquirente: formaCartao ? adquirenteCartao : undefined,
+            modalidade: formaCartao ? 'CARTAO' : formaSelecionada,
+          },
         }],
         observacoes: comprovantePagamento.trim()
           ? `Pagamento comprovado no PDV. Referencia: ${comprovantePagamento.trim()}`
           : 'Pagamento comprovado no PDV.',
       }, token);
+
+      if (emitirNfceNaVenda && vendaCriada?.id) {
+        try {
+          await api.post(`/vendas/vendas/${vendaCriada.id}/emitir-nfce`, {
+            clienteNome: clienteSelecionado?.nome || undefined,
+            clienteDocumento: clienteDocumentoNfce.trim() || undefined,
+            ambiente: 'HOMOLOGACAO',
+            observacoes: 'Emissao solicitada no fechamento do PDV.',
+          }, token);
+        } catch (nfceError) {
+          console.error(nfceError);
+          alert('Venda concluida, mas houve falha na emissao da NFC-e. Tente emitir pelo modulo fiscal.');
+        }
+      }
 
       setCarrinho([]);
       setBuscaCliente('');
@@ -926,7 +1167,7 @@ export default function Vendas() {
       await carregarTudo();
     } catch (error) {
       console.error(error);
-      alert('Falha ao finalizar venda.');
+      alert(parseApiError(error, 'Falha ao finalizar venda.'));
     } finally {
       setFinalizandoVenda(false);
     }
@@ -1216,7 +1457,7 @@ export default function Vendas() {
         <section
           style={{
             display: 'grid',
-            gridTemplateColumns: isMobileViewport ? '1fr' : '1.1fr 1.2fr 0.9fr',
+            gridTemplateColumns: isMobileViewport ? '1fr' : '1.2fr 1.15fr 0.95fr',
             gap: 14,
             alignItems: 'start',
             minHeight: isMobileViewport ? 'auto' : 600,
@@ -1226,12 +1467,35 @@ export default function Vendas() {
           <div style={{ ...panel, padding: 12, display: 'grid', gridTemplateRows: 'auto 1fr', gap: 10 }}>
             <div>
               <h3 style={{ margin: '0 0 8px', fontSize: 13 }}>Produtos e Serviços</h3>
+              <div style={{ color: '#647674', fontSize: 10, marginBottom: 8 }}>
+                Ordem inteligente: promocoes primeiro, depois itens com validade curta.
+              </div>
               <input
+                ref={buscaProdutoRef}
                 value={buscaProduto}
                 onChange={(event) => setBuscaProduto(event.target.value)}
                 placeholder="Pesquisar por nome, código ou código de barras"
                 style={{...input, height: 34, fontSize: 12}}
               />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, marginTop: 6 }}>
+                <input
+                  ref={codigoBarrasRef}
+                  value={codigoBarrasRapido}
+                  onChange={(event) => setCodigoBarrasRapido(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      adicionarPorCodigoBarras();
+                    }
+                  }}
+                  placeholder="Leitor / codigo de barras (Enter)"
+                  style={{ ...input, height: 32, fontSize: 11 }}
+                />
+                <button onClick={adicionarPorCodigoBarras} style={{ ...buttonSecondary, height: 32, fontSize: 11 }}>
+                  Adicionar
+                </button>
+              </div>
+              <div style={{ color: '#8a9b99', fontSize: 10, marginTop: 4 }}>Atalho rapido: F8 foca no campo de leitor.</div>
             </div>
             {produtosFiltrados.length === 0 ? (
               <div style={{ color: '#647674', padding: 16, textAlign: 'center', fontSize: 12 }}>
@@ -1247,11 +1511,28 @@ export default function Vendas() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = '#eef3f5')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = '#f8faf9')}
                   >
-                    <strong style={{ fontSize: 11, display: 'block', marginBottom: 3 }}>{produto.nome.substring(0, 20)}</strong>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                      <strong style={{ fontSize: 11, display: 'block', marginBottom: 3 }}>{produto.nome.substring(0, 20)}</strong>
+                      {produto.precoOriginal && (
+                        <span style={{ background: '#ffe8cc', color: '#9a5a14', borderRadius: 999, padding: '2px 6px', fontSize: 9, fontWeight: 700 }}>
+                          Promo
+                        </span>
+                      )}
+                    </div>
                     <div style={{ color: '#647674', fontSize: 10, marginBottom: 4 }}>
                       Est: {produto.estoqueDisponivel ?? produto.estoque}
                     </div>
+                    {produto.validade && (
+                      <div style={{ color: '#8a9b99', fontSize: 9, marginBottom: 4 }}>
+                        Validade: {new Date(produto.validade).toLocaleDateString('pt-BR')}
+                      </div>
+                    )}
                     <div style={{ color: '#2f6f73', fontWeight: 800, fontSize: 12 }}>{money(Number(produto.preco || 0))}</div>
+                    {produto.precoOriginal && (
+                      <div style={{ color: '#8a9b99', fontSize: 9, textDecoration: 'line-through' }}>
+                        {money(Number(produto.precoOriginal || 0))}
+                      </div>
+                    )}
                   </button>
                 ))}
               </div>
@@ -1261,6 +1542,18 @@ export default function Vendas() {
           {/* COLUNA 2: CARRINHO E CLIENTE */}
           <div style={{ display: 'grid', gap: 10, gridTemplateRows: 'auto auto 1fr auto auto' }}>
             {/* Cliente */}
+            {ultimaAdicao && (
+              <div style={{ ...panel, padding: 10, background: '#ecf8f4', border: '1px solid #c7e7d9' }}>
+                <div style={{ fontSize: 10, color: '#647674', marginBottom: 3 }}>Ultimo item adicionado</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                  <strong style={{ fontSize: 12, color: '#243332' }}>{ultimaAdicao.nome}</strong>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#2f6f73' }}>
+                    x{ultimaAdicao.quantidade} {money(ultimaAdicao.valor)}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div style={{ ...panel, padding: 11 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
                 <h3 style={{ margin: 0, fontSize: 12, color: '#243332' }}>Cliente</h3>
@@ -1327,6 +1620,27 @@ export default function Vendas() {
               )}
             </div>
 
+            {ultimosItensAdicionados.length > 0 && (
+              <div style={{ ...panel, padding: 11 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ ...label, marginBottom: 0, fontSize: 11 }}>Repetir itens recentes</label>
+                  <span style={{ fontSize: 10, color: '#8a9b99' }}>1 clique adiciona novamente</span>
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {ultimosItensAdicionados.map((item) => (
+                    <button
+                      key={item.produtoId}
+                      onClick={() => repetirUltimoItem(item.produtoId)}
+                      style={{ ...buttonSecondary, justifyContent: 'space-between', height: 34, fontSize: 11 }}
+                    >
+                      <span style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.nome}</span>
+                      <span style={{ fontWeight: 800 }}>+1</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div style={{ ...panel, padding: 11 }}>
               <label style={{...label, marginBottom: 5, fontSize: 11}}>Pagamento</label>
               <div style={{ color: '#647674', fontSize: 11 }}>
@@ -1344,21 +1658,33 @@ export default function Vendas() {
               ) : (
                 <div style={{ display: 'grid', gap: 6 }}>
                   {carrinho.map((item) => (
-                    <div key={item.produto.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 40px 50px 24px', gap: 5, alignItems: 'center', padding: 7, background: '#f8faf9', borderRadius: 5, fontSize: 10 }}>
+                    <div key={item.produto.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 88px 50px 24px', gap: 5, alignItems: 'center', padding: 7, background: '#f8faf9', borderRadius: 5, fontSize: 10 }}>
                       <div style={{ color: '#2f6f73', fontWeight: 800, fontSize: 11 }}>●</div>
                       <div style={{ minWidth: 0 }}>
                         <strong style={{ fontSize: 10, display: 'block' }}>{item.produto.nome.substring(0, 16)}</strong>
                         <div style={{ color: '#8a9b99', fontSize: 9 }}>{money(item.produto.preco)}</div>
                       </div>
-                      <input
-                        type="number"
-                        min={1}
-                        value={item.quantidade}
-                        onChange={(event) => setCarrinho((atual) => atual.map((row) => (
-                          row.produto.id === item.produto.id ? { ...row, quantidade: Number(event.target.value) || 1 } : row
-                        )))}
-                        style={{...input, height: 26, padding: '0 4px', fontSize: 10, textAlign: 'center'}}
-                      />
+                      <div style={{ display: 'grid', gridTemplateColumns: '22px 1fr 22px', gap: 4, alignItems: 'center' }}>
+                        <button
+                          onClick={() => atualizarQuantidadeCarrinho(item.produto.id, item.quantidade - 1)}
+                          style={{ ...iconButton, width: 22, height: 22, fontSize: 11, padding: 0 }}
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.quantidade}
+                          onChange={(event) => atualizarQuantidadeCarrinho(item.produto.id, Number(event.target.value) || 1)}
+                          style={{...input, height: 24, padding: '0 4px', fontSize: 10, textAlign: 'center'}}
+                        />
+                        <button
+                          onClick={() => atualizarQuantidadeCarrinho(item.produto.id, item.quantidade + 1)}
+                          style={{ ...iconButton, width: 22, height: 22, fontSize: 11, padding: 0 }}
+                        >
+                          +
+                        </button>
+                      </div>
                       <strong style={{ fontSize: 11, textAlign: 'right' }}>{money(item.produto.preco * item.quantidade)}</strong>
                       <button 
                         onClick={() => setCarrinho(atual => atual.filter(row => row.produto.id !== item.produto.id))} 
@@ -1401,6 +1727,28 @@ export default function Vendas() {
             </div>
 
             <div style={{ display: 'grid', gap: 5, gridTemplateColumns: 'repeat(2, 1fr)', gridAutoRows: 'max-content' }}>
+              <div style={{ gridColumn: '1 / -1', border: '1px solid #d9e2e1', borderRadius: 6, padding: 8, background: '#f8faf9' }}>
+                <div style={{ fontSize: 11, color: '#647674', marginBottom: 6, fontWeight: 700 }}>Dashboard rapido</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <div style={{ border: '1px solid #e0e8e7', borderRadius: 6, padding: 6, background: '#fff' }}>
+                    <div style={{ fontSize: 10, color: '#647674' }}>Pedidos</div>
+                    <strong style={{ fontSize: 14 }}>{dashboardPDV.pedidosDia}</strong>
+                  </div>
+                  <div style={{ border: '1px solid #e0e8e7', borderRadius: 6, padding: 6, background: '#fff' }}>
+                    <div style={{ fontSize: 10, color: '#647674' }}>Ticket medio</div>
+                    <strong style={{ fontSize: 12 }}>{money(dashboardPDV.ticketMedio)}</strong>
+                  </div>
+                  <div style={{ border: '1px solid #e0e8e7', borderRadius: 6, padding: 6, background: '#fff' }}>
+                    <div style={{ fontSize: 10, color: '#647674' }}>Volume</div>
+                    <strong style={{ fontSize: 12 }}>{money(dashboardPDV.volume)}</strong>
+                  </div>
+                  <div style={{ border: '1px solid #e0e8e7', borderRadius: 6, padding: 6, background: '#fff' }}>
+                    <div style={{ fontSize: 10, color: '#647674' }}>Itens no carrinho</div>
+                    <strong style={{ fontSize: 14 }}>{dashboardPDV.itensNoCarrinho}</strong>
+                  </div>
+                </div>
+              </div>
+
               <button 
                 onClick={() => setOperacaoCaixa('abrir')}
                 style={{...buttonPrimary, fontSize: 10, padding: '7px 4px', height: 'auto', background: caixaAberto ? '#999' : '#2f6f73', opacity: caixaAberto ? 0.6 : 1}} 
@@ -1689,6 +2037,43 @@ export default function Vendas() {
                       </select>
                     </div>
 
+                    {formaCartao && (
+                      <>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div>
+                            <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>Bandeira do cartao</label>
+                            <select value={bandeiraCartao} onChange={(event) => setBandeiraCartao(event.target.value)} style={{ ...input, height: 34, fontSize: 12 }}>
+                              {BANDEIRAS_CARTAO_BR.map((bandeira) => (
+                                <option key={bandeira} value={bandeira}>{bandeira}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>Adquirente</label>
+                            <select value={adquirenteCartao} onChange={(event) => setAdquirenteCartao(event.target.value)} style={{ ...input, height: 34, fontSize: 12 }}>
+                              {ADQUIRENTES_BR.map((adquirente) => (
+                                <option key={adquirente} value={adquirente}>{adquirente}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {formaSelecionada === 'CREDITO' && (
+                          <div>
+                            <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>Parcelas</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={12}
+                              value={parcelasCartao}
+                              onChange={(event) => setParcelasCartao(Math.max(1, Math.min(12, Number(event.target.value) || 1)))}
+                              style={{ ...input, height: 34, fontSize: 12 }}
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+
                     <div>
                       <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>Valor pago</label>
                       <input
@@ -1723,6 +2108,28 @@ export default function Vendas() {
                       />
                       Confirmo que o pagamento foi comprovado.
                     </label>
+
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#243332' }}>
+                      <input
+                        type="checkbox"
+                        checked={emitirNfceNaVenda}
+                        onChange={(event) => setEmitirNfceNaVenda(event.target.checked)}
+                      />
+                      Emitir nota fiscal (NFC-e) ao concluir a venda.
+                    </label>
+
+                    {emitirNfceNaVenda && (
+                      <div>
+                        <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>CPF/CNPJ do consumidor (opcional)</label>
+                        <input
+                          type="text"
+                          value={clienteDocumentoNfce}
+                          onChange={(event) => setClienteDocumentoNfce(event.target.value)}
+                          style={{ ...input, height: 34, fontSize: 12 }}
+                          placeholder="Somente numeros"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14 }}>
@@ -2707,12 +3114,14 @@ export default function Vendas() {
         </div>
       )}
 
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
-        <Kpi label="Receita" value={money(kpis.receita)} icon={Banknote} color="#2f6f73" />
-        <Kpi label="Lucro" value={money(kpis.lucro)} icon={BarChart3} color="#54736b" />
-        <Kpi label="Pedidos abertos" value={kpis.pedidosAbertos} icon={Receipt} color="#9a6a2f" />
-        <Kpi label="Ticket medio" value={money(kpis.ticketMedio)} icon={CreditCard} color="#6c8f7d" />
-      </section>
+      {active !== 'ponto-venda' && (
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+          <Kpi label="Receita" value={money(kpis.receita)} icon={Banknote} color="#2f6f73" />
+          <Kpi label="Lucro" value={money(kpis.lucro)} icon={BarChart3} color="#54736b" />
+          <Kpi label="Pedidos abertos" value={kpis.pedidosAbertos} icon={Receipt} color="#9a6a2f" />
+          <Kpi label="Ticket medio" value={money(kpis.ticketMedio)} icon={CreditCard} color="#6c8f7d" />
+        </section>
+      )}
 
       <main>{loading ? <div style={{ ...panel, padding: 18, color: '#647674' }}>Carregando modulo de vendas...</div> : renderModule()}</main>
     </div>

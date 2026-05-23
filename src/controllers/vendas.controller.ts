@@ -202,6 +202,12 @@ export class VendasController {
     return res.json(pagamento);
   }
 
+  async emitirNfce(req: AuthRequest, res: Response) {
+    const userId = requireUser(req);
+    const resultado = await vendasService.emitirNfceVenda(getParam(req.params.id), userId, req.body);
+    return res.json(resultado);
+  }
+
   async renovarPacote(req: AuthRequest, res: Response) {
     const userId = requireUser(req);
     const resultado = await vendasService.renovarPacote(getParam(req.params.id), userId);
