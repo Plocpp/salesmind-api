@@ -10,11 +10,11 @@ import {
     DollarSign,
     FileText,
     Home,
-    Lightbulb,
     LogOut,
     Menu,
     Search,
     ShoppingCart,
+    Truck,
     X
 } from 'lucide-react';
 import React, { ReactNode, useEffect, useMemo, useState } from 'react';
@@ -62,7 +62,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
     nfce: false,
     estoque: false,
     integracoes: false,
-    inteligencia: false,
+    'transporte-rastreamento': false,
     administracao: false,
   });
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -170,10 +170,11 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       ],
     },
     {
-      id: 'inteligencia',
-      label: 'Inteligencia',
-      icon: Lightbulb,
+      id: 'transporte-rastreamento',
+      label: 'Transporte e Rastreamento',
+      icon: Truck,
       children: [
+        { id: 'rastreio-transporte', label: 'Central de Rastreamento' },
         { id: 'km-por-litro', label: 'Km por Litro' },
         { id: 'manutencao-veiculo', label: 'Manutencao Veiculo' },
         { id: 'peso-carga', label: 'Peso da Carga' },
@@ -186,7 +187,6 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       icon: Bed,
       hidden: userRole !== 'ADMIN',
       children: [
-        { id: 'rastreio-transporte', label: 'Central de Rastreamento' },
         { id: 'cadastros', label: 'Cadastros Gerais' },
         { id: 'usuarios-hierarquia', label: 'Usuários e Hierarquia' },
       ],
