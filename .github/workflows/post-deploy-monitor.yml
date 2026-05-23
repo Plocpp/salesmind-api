@@ -1,0 +1,55 @@
+name: Post-Deploy Monitor
+
+on:
+  workflow_run:
+    workflows: ["Deploy Online"]
+    types:
+      - completed
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL != '' && vars.API_BASE_URL || 'https://salesmind-api.onrender.com' }}
+      APP_BASE_URL: ${{ vars.APP_BASE_URL != '' && vars.APP_BASE_URL || 'https://salesmind-app.onrender.com' }}
+      POST_DEPLOY_MAX_ATTEMPTS: ${{ vars.POST_DEPLOY_MAX_ATTEMPTS != '' && vars.POST_DEPLOY_MAX_ATTEMPTS || '20' }}
+      POST_DEPLOY_RETRY_DELAY_MS: ${{ vars.POST_DEPLOY_RETRY_DELAY_MS != '' && vars.POST_DEPLOY_RETRY_DELAY_MS || '15000' }}
+      ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run post-deploy checks
+        run: node scripts/post-deploy-check.js
+
+      - name: Install dependencies for optional smoke
+        if: ${{ secrets.SMOKE_USER_EMAIL != '' && secrets.SMOKE_USER_PASSWORD != '' }}
+        run: npm ci
+
+      - name: Run optional authenticated smoke
+        if: ${{ secrets.SMOKE_USER_EMAIL != '' && secrets.SMOKE_USER_PASSWORD != '' }}
+        env:
+          SMOKE_BASE_URL: ${{ env.API_BASE_URL }}
+          SMOKE_USER_EMAIL: ${{ secrets.SMOKE_USER_EMAIL }}
+          SMOKE_USER_PASSWORD: ${{ secrets.SMOKE_USER_PASSWORD }}
+          NODE_OPTIONS: ""
+        run: node scripts/test-smoke-system.js
+
+      - name: Warn when smoke credentials are missing
+        if: ${{ secrets.SMOKE_USER_EMAIL == '' || secrets.SMOKE_USER_PASSWORD == '' }}
+        run: |
+          echo "Smoke autenticado pos-deploy nao executado."
+          echo "Configure os secrets SMOKE_USER_EMAIL e SMOKE_USER_PASSWORD para habilitar o teste completo."

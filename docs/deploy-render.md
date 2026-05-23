@@ -74,6 +74,26 @@ Onde encontrar os hooks no Render:
 
 Depois disso, basta rodar o workflow **Deploy Online** manualmente (workflow_dispatch) ou deixar ele seguir automaticamente apos o **Pre-Deploy Validation**.
 
+## 4.1 Monitoramento automatico pos-deploy
+
+Agora o repositório inclui o workflow **Post-Deploy Monitor** (`.github/workflows/post-deploy-monitor.yml`), acionado apos o **Deploy Online** com:
+
+- health check com retry da API
+- check de diagnostico (`/diagnostico/saude`)
+- validacao da rota protegida de hierarquia (`/acessos/hierarquia/perfis` retornando 401/403 sem token)
+- check basico do frontend (`salesmind-app`)
+- alerta opcional via webhook quando a verificacao falha
+
+Secrets/vars opcionais para monitoramento:
+
+- `ALERT_WEBHOOK_URL` (secret)
+- `SMOKE_USER_EMAIL` (secret, para smoke autenticado pos-deploy)
+- `SMOKE_USER_PASSWORD` (secret, para smoke autenticado pos-deploy)
+- `API_BASE_URL` (variable, default `https://salesmind-api.onrender.com`)
+- `APP_BASE_URL` (variable, default `https://salesmind-app.onrender.com`)
+- `POST_DEPLOY_MAX_ATTEMPTS` (variable, default `20`)
+- `POST_DEPLOY_RETRY_DELAY_MS` (variable, default `15000`)
+
 ## 5. Migracao e seed
 
 Para evitar falhas de deploy por indisponibilidade temporaria de banco, o build da API no Render nao executa mais comandos que dependem de conexao com banco.
