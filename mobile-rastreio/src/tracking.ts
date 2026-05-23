@@ -190,6 +190,11 @@ export function prepararRastreioBackground() {
 }
 
 export async function iniciarRastreio(input: IniciarSessaoInput) {
+  const prepared = prepararRastreioBackground();
+  if (!prepared) {
+    throw new Error('Modulo de tarefa em segundo plano indisponivel no dispositivo.');
+  }
+
   const Location = loadLocationModule();
   if (!Location) {
     throw new Error('Modulo de localizacao indisponivel no dispositivo.');
@@ -284,9 +289,8 @@ export async function sincronizarPendencias() {
 }
 
 export async function obterEstadoRastreio(): Promise<EstadoRastreio> {
-  const Location = loadLocationModule();
   const [ativo, sessionId, entregadorId, vendaId, token, queue] = await Promise.all([
-    Location ? Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME) : Promise.resolve(false),
+    SecureStore.getItemAsync(STORAGE_KEYS.sessionId).then((id) => Boolean(id)),
     SecureStore.getItemAsync(STORAGE_KEYS.sessionId),
     SecureStore.getItemAsync(STORAGE_KEYS.entregadorId),
     SecureStore.getItemAsync(STORAGE_KEYS.vendaId),
