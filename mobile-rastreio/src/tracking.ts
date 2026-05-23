@@ -1,6 +1,6 @@
-import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
-import * as TaskManager from 'expo-task-manager';
+
+declare const require: (moduleName: string) => any;
 
 const LOCATION_TASK_NAME = 'salesmind-background-location-task';
 
@@ -14,6 +14,29 @@ const STORAGE_KEYS = {
 };
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://salesmind-api.onrender.com';
+
+let cachedLocationModule: typeof import('expo-location') | null = null;
+let cachedTaskManagerModule: typeof import('expo-task-manager') | null = null;
+
+function loadLocationModule() {
+  if (cachedLocationModule) return cachedLocationModule;
+  try {
+    cachedLocationModule = require('expo-location') as typeof import('expo-location');
+    return cachedLocationModule;
+  } catch {
+    return null;
+  }
+}
+
+function loadTaskManagerModule() {
+  if (cachedTaskManagerModule) return cachedTaskManagerModule;
+  try {
+    cachedTaskManagerModule = require('expo-task-manager') as typeof import('expo-task-manager');
+    return cachedTaskManagerModule;
+  } catch {
+    return null;
+  }
+}
 
 type IniciarSessaoInput = {
   entregadorId: string;
@@ -126,40 +149,52 @@ async function post(path: string, token: string, payload: unknown) {
   return response.json();
 }
 
-try {
-  if (!TaskManager.isTaskDefined(LOCATION_TASK_NAME)) {
-    TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
-      try {
-        if (error) return;
+export function prepararRastreioBackground() {
+  const TaskManager = loadTaskManagerModule();
+  if (!TaskManager) return false;
 
-        const token = await SecureStore.getItemAsync(STORAGE_KEYS.token);
-        const sessaoId = await SecureStore.getItemAsync(STORAGE_KEYS.sessionId);
-        if (!token || !sessaoId) return;
-        const nota = await obterNotaAtiva();
+  try {
+    if (typeof TaskManager.isTaskDefined === 'function' && !TaskManager.isTaskDefined(LOCATION_TASK_NAME)) {
+      TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
+        try {
+          if (error) return;
 
-        const payload = data as { locations?: Location.LocationObject[] } | undefined;
-        const location = payload?.locations?.[0];
-        if (!location?.coords) return;
+          const token = await SecureStore.getItemAsync(STORAGE_KEYS.token);
+          const sessaoId = await SecureStore.getItemAsync(STORAGE_KEYS.sessionId);
+          if (!token || !sessaoId) return;
+          const nota = await obterNotaAtiva();
 
-        await enviarOuEnfileirar(token, sessaoId, {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          precisao: location.coords.accuracy ?? undefined,
-          velocidade: location.coords.speed ?? undefined,
-          fonte: 'GPS_BACKGROUND',
-          registradoEm: new Date().toISOString(),
-          raw: nota ? { nota } : undefined,
-        });
-      } catch {
-        // Falhas no background nao devem derrubar o task manager.
-      }
-    });
+          const payload = data as { locations?: Array<{ coords?: { latitude: number; longitude: number; accuracy?: number | null; speed?: number | null } }> } | undefined;
+          const location = payload?.locations?.[0];
+          if (!location?.coords) return;
+
+          await enviarOuEnfileirar(token, sessaoId, {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            precisao: location.coords.accuracy ?? undefined,
+            velocidade: location.coords.speed ?? undefined,
+            fonte: 'GPS_BACKGROUND',
+            registradoEm: new Date().toISOString(),
+            raw: nota ? { nota } : undefined,
+          });
+        } catch {
+          // Falhas no background nao devem derrubar o task manager.
+        }
+      });
+    }
+
+    return true;
+  } catch {
+    return false;
   }
-} catch {
-  // Se a task nao puder ser registrada, o app ainda deve abrir normalmente.
 }
 
 export async function iniciarRastreio(input: IniciarSessaoInput) {
+  const Location = loadLocationModule();
+  if (!Location) {
+    throw new Error('Modulo de localizacao indisponivel no dispositivo.');
+  }
+
   const foreground = await Location.requestForegroundPermissionsAsync();
   if (foreground.status !== 'granted') {
     throw new Error('Permissao de localizacao em primeiro plano nao concedida.');
@@ -207,6 +242,7 @@ export async function iniciarRastreio(input: IniciarSessaoInput) {
 }
 
 export async function finalizarRastreio(motivo?: string) {
+  const Location = loadLocationModule();
   const token = await SecureStore.getItemAsync(STORAGE_KEYS.token);
   const sessaoId = await SecureStore.getItemAsync(STORAGE_KEYS.sessionId);
 
@@ -218,9 +254,11 @@ export async function finalizarRastreio(motivo?: string) {
     });
   }
 
-  const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-  if (started) {
-    await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+  if (Location) {
+    const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+    if (started) {
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+    }
   }
 
   await SecureStore.deleteItemAsync(STORAGE_KEYS.sessionId);
@@ -228,6 +266,8 @@ export async function finalizarRastreio(motivo?: string) {
 }
 
 export async function isRastreioAtivo() {
+  const Location = loadLocationModule();
+  if (!Location) return false;
   return Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
 }
 
@@ -244,8 +284,9 @@ export async function sincronizarPendencias() {
 }
 
 export async function obterEstadoRastreio(): Promise<EstadoRastreio> {
+  const Location = loadLocationModule();
   const [ativo, sessionId, entregadorId, vendaId, token, queue] = await Promise.all([
-    isRastreioAtivo(),
+    Location ? Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME) : Promise.resolve(false),
     SecureStore.getItemAsync(STORAGE_KEYS.sessionId),
     SecureStore.getItemAsync(STORAGE_KEYS.entregadorId),
     SecureStore.getItemAsync(STORAGE_KEYS.vendaId),

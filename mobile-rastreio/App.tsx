@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, SafeAreaView, ScrollView, StatusBar, Text, TextInput, View } from 'react-native';
-import { atualizarNotaAtiva, finalizarRastreio, iniciarRastreio, limparNotaAtiva, obterEstadoRastreio, sincronizarPendencias } from './src/tracking';
+import { atualizarNotaAtiva, finalizarRastreio, iniciarRastreio, limparNotaAtiva, obterEstadoRastreio, prepararRastreioBackground, sincronizarPendencias } from './src/tracking';
 
 const colors = {
   bg: '#f3f8f8',
@@ -52,6 +52,8 @@ export default function App() {
   const [status, setStatus] = useState('Pronto para iniciar.');
 
   useEffect(() => {
+    prepararRastreioBackground();
+
     obterEstadoRastreio()
       .then((estado) => {
         setAtivo(estado.ativo);
