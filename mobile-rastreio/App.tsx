@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, ScrollView, StatusBar, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StatusBar, Text, TextInput, View } from 'react-native';
 
 type TrackingModule = typeof import('./src/tracking');
 
@@ -14,12 +14,15 @@ function loadTrackingModule() {
 }
 
 const colors = {
-  bg: '#f3f8f8',
+  bg: '#f7f9f9',
+  hero: '#112428',
   card: '#ffffff',
-  accent: '#0f5d63',
-  danger: '#b6413d',
-  text: '#153133',
-  muted: '#607674',
+  accent: '#17766e',
+  accentSoft: '#deeeeb',
+  danger: '#c9463d',
+  neutral: '#4b6461',
+  text: '#0d2224',
+  border: '#c6d7d4',
 };
 
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -39,7 +42,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
           <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', textAlign: 'center' }}>
             O app encontrou um erro ao iniciar.
           </Text>
-          <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 8 }}>
+          <Text style={{ color: colors.neutral, textAlign: 'center', marginTop: 8 }}>
             Reinicie o aplicativo. Se persistir, me avise que eu ajusto o build.
           </Text>
         </SafeAreaView>
@@ -51,17 +54,53 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 }
 
 export default function App() {
+  const [booting, setBooting] = useState(true);
   const [entregadorId, setEntregadorId] = useState('');
   const [vendaId, setVendaId] = useState('');
   const [token, setToken] = useState('');
+  const [mostrarToken, setMostrarToken] = useState(false);
   const [loading, setLoading] = useState(false);
   const [ativo, setAtivo] = useState(false);
   const [sessaoId, setSessaoId] = useState('');
   const [notaAtual, setNotaAtual] = useState('');
   const [pendentes, setPendentes] = useState(0);
-  const [status, setStatus] = useState('Pronto para iniciar.');
+  const [status, setStatus] = useState('Inicializando aplicacao em modo seguro...');
 
   const ready = useMemo(() => entregadorId.trim() && token.trim(), [entregadorId, token]);
+
+  React.useEffect(() => {
+    let ativoNoComponente = true;
+
+    async function carregarEstadoInicial() {
+      try {
+        const tracking = await loadTrackingModule();
+        const estado = await tracking.obterEstadoRastreio();
+        if (!ativoNoComponente) return;
+
+        setEntregadorId(estado.entregadorId);
+        setVendaId(estado.vendaId);
+        setToken(estado.token);
+        setNotaAtual(estado.notaAtual);
+        setSessaoId(estado.sessionId);
+        setPendentes(estado.pendentes);
+        setAtivo(estado.ativo);
+        setStatus(estado.ativo ? 'Sessao recuperada com sucesso.' : 'Pronto para iniciar.');
+      } catch (error) {
+        if (!ativoNoComponente) return;
+        setStatus(error instanceof Error ? error.message : 'Falha ao recuperar estado local.');
+      } finally {
+        if (ativoNoComponente) {
+          setBooting(false);
+        }
+      }
+    }
+
+    carregarEstadoInicial();
+
+    return () => {
+      ativoNoComponente = false;
+    };
+  }, []);
 
   async function handleIniciar() {
     if (!ready) {
@@ -78,9 +117,12 @@ export default function App() {
         token: token.trim(),
       });
       setSessaoId(result.sessaoId);
+      setToken(token.trim());
+      setEntregadorId(entregadorId.trim());
+      setVendaId(vendaId.trim());
       setPendentes(0);
       setAtivo(true);
-      setStatus('Rastreio iniciado com sucesso.');
+      setStatus('Rastreio iniciado em modo seguro (foreground).');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Falha ao iniciar rastreio.');
     } finally {
@@ -146,27 +188,56 @@ export default function App() {
     }
   }
 
+  if (booting) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.hero, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <StatusBar barStyle="light-content" />
+        <ActivityIndicator color="#ffffff" size="large" />
+        <Text style={{ color: '#ffffff', marginTop: 14, fontSize: 16, fontWeight: '700' }}>Preparando SalesMind Rastreio</Text>
+        <Text style={{ color: '#cde0de', marginTop: 8, textAlign: 'center' }}>
+          Estamos carregando somente modulos seguros para evitar fechamento inesperado.
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <AppErrorBoundary>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-        <StatusBar barStyle="dark-content" />
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-          <View style={{ backgroundColor: colors.card, padding: 14, borderRadius: 14 }}>
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 22 }}>SalesMind Rastreio</Text>
-            <Text style={{ color: colors.muted, marginTop: 6 }}>
-              App de rastreamento em segundo plano para entregadores.
+        <StatusBar barStyle="light-content" />
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }}>
+          <View style={{ backgroundColor: colors.hero, padding: 18, borderRadius: 18 }}>
+            <Text style={{ color: '#d6f1eb', fontWeight: '700', letterSpacing: 1 }}>OPERACAO EM CAMPO</Text>
+            <Text style={{ color: '#ffffff', fontWeight: '900', fontSize: 24, marginTop: 6 }}>SalesMind Rastreio</Text>
+            <Text style={{ color: '#d0dfdd', marginTop: 8 }}>
+              Versao reconstruida do zero em modo seguro de execucao para estabilidade do APK.
             </Text>
+
+            <View
+              style={{
+                marginTop: 14,
+                backgroundColor: ativo ? '#1f544f' : '#264247',
+                borderRadius: 12,
+                padding: 10,
+                borderWidth: 1,
+                borderColor: ativo ? '#3db3a7' : '#3e6166',
+              }}
+            >
+              <Text style={{ color: '#ffffff', fontWeight: '800' }}>{ativo ? 'STATUS: RASTREIO ATIVO' : 'STATUS: RASTREIO INATIVO'}</Text>
+              {sessaoId ? <Text style={{ color: '#c8e6e2', marginTop: 4 }}>Sessao atual: {sessaoId}</Text> : null}
+            </View>
           </View>
 
-        <View style={{ backgroundColor: colors.card, padding: 14, borderRadius: 14, gap: 10 }}>
-          <Text style={{ color: colors.text, fontWeight: '700' }}>Configuracao de sessao</Text>
+          <View style={{ backgroundColor: colors.card, padding: 14, borderRadius: 14, gap: 10, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16 }}>Credenciais da sessao</Text>
 
           <TextInput
             placeholder="Entregador ID"
             value={entregadorId}
             onChangeText={setEntregadorId}
             autoCapitalize="none"
-            style={{ borderWidth: 1, borderColor: '#c9d9d8', borderRadius: 10, padding: 10 }}
+            style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.text }}
+            placeholderTextColor={colors.neutral}
           />
 
           <TextInput
@@ -174,7 +245,8 @@ export default function App() {
             value={vendaId}
             onChangeText={setVendaId}
             autoCapitalize="none"
-            style={{ borderWidth: 1, borderColor: '#c9d9d8', borderRadius: 10, padding: 10 }}
+            style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.text }}
+            placeholderTextColor={colors.neutral}
           />
 
           <TextInput
@@ -182,9 +254,17 @@ export default function App() {
             value={token}
             onChangeText={setToken}
             autoCapitalize="none"
-            secureTextEntry
-            style={{ borderWidth: 1, borderColor: '#c9d9d8', borderRadius: 10, padding: 10 }}
+            secureTextEntry={!mostrarToken}
+            style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.text }}
+            placeholderTextColor={colors.neutral}
           />
+
+          <Pressable
+            onPress={() => setMostrarToken((v) => !v)}
+            style={{ alignSelf: 'flex-start', backgroundColor: colors.accentSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}
+          >
+            <Text style={{ color: colors.accent, fontWeight: '700' }}>{mostrarToken ? 'Ocultar token' : 'Mostrar token'}</Text>
+          </Pressable>
 
           <TextInput
             placeholder="Nota ativa do motorista"
@@ -193,7 +273,8 @@ export default function App() {
             autoCapitalize="sentences"
             multiline
             numberOfLines={3}
-            style={{ borderWidth: 1, borderColor: '#c9d9d8', borderRadius: 10, padding: 10, minHeight: 72, textAlignVertical: 'top' }}
+            style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, minHeight: 78, textAlignVertical: 'top', color: colors.text }}
+            placeholderTextColor={colors.neutral}
           />
 
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -201,7 +282,7 @@ export default function App() {
               onPress={handleSalvarNota}
               disabled={loading}
               style={{
-                backgroundColor: loading ? '#9db4b3' : '#295d80',
+                backgroundColor: loading ? '#9db4b3' : '#245e79',
                 paddingVertical: 12,
                 borderRadius: 10,
                 flex: 1,
@@ -215,7 +296,7 @@ export default function App() {
               onPress={handleLimparNota}
               disabled={loading}
               style={{
-                backgroundColor: loading ? '#d7a8a6' : '#7b8b8a',
+                backgroundColor: loading ? '#d7a8a6' : '#7b8a89',
                 paddingVertical: 12,
                 borderRadius: 10,
                 flex: 1,
@@ -260,7 +341,7 @@ export default function App() {
             onPress={handleSincronizar}
             disabled={loading || !ativo}
             style={{
-              backgroundColor: loading || !ativo ? '#a7bcc0' : '#295d80',
+              backgroundColor: loading || !ativo ? '#a7bcc0' : '#245e79',
               paddingVertical: 12,
               borderRadius: 10,
               alignItems: 'center',
@@ -270,16 +351,24 @@ export default function App() {
           </Pressable>
         </View>
 
-        <View style={{ backgroundColor: colors.card, padding: 14, borderRadius: 14, gap: 8 }}>
-          <Text style={{ color: colors.text, fontWeight: '700' }}>Status</Text>
-          <Text style={{ color: ativo ? colors.accent : colors.muted, fontWeight: '700' }}>
-            {ativo ? 'ATIVO' : 'INATIVO'}
+          <View style={{ backgroundColor: colors.card, padding: 14, borderRadius: 14, gap: 8, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16 }}>Painel operacional</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1, backgroundColor: colors.accentSoft, borderRadius: 10, padding: 10 }}>
+                <Text style={{ color: colors.accent, fontWeight: '700' }}>Pendentes</Text>
+                <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 3 }}>{pendentes}</Text>
+              </View>
+              <View style={{ flex: 1, backgroundColor: '#f0e9df', borderRadius: 10, padding: 10 }}>
+                <Text style={{ color: '#9a5e2d', fontWeight: '700' }}>Modo</Text>
+                <Text style={{ color: colors.text, fontSize: 15, fontWeight: '900', marginTop: 4 }}>Seguro</Text>
+              </View>
+            </View>
+            <Text style={{ color: colors.neutral }}>{status}</Text>
+          </View>
+
+          <Text style={{ color: '#6f8683', textAlign: 'center', marginTop: 6, fontWeight: '600' }}>
+            Versao focada em estabilidade do APK para validacao em campo.
           </Text>
-          {sessaoId ? <Text style={{ color: colors.muted }}>Sessao: {sessaoId}</Text> : null}
-          {notaAtual ? <Text style={{ color: colors.muted }}>Nota ativa: {notaAtual}</Text> : null}
-          <Text style={{ color: colors.muted }}>Pontos pendentes: {pendentes}</Text>
-          <Text style={{ color: colors.muted }}>{status}</Text>
-        </View>
         </ScrollView>
       </SafeAreaView>
     </AppErrorBoundary>

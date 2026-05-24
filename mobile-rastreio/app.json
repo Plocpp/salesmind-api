@@ -3,7 +3,7 @@
     "name": "SalesMind Rastreio",
     "slug": "salesmind-rastreio-mobile",
     "version": "1.0.0",
-    "jsEngine": "jsc",
+    "jsEngine": "hermes",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "splash": {
@@ -16,8 +16,8 @@
       [
         "expo-location",
         {
-          "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
         }
       ],
       "expo-secure-store"
@@ -26,9 +26,7 @@
       "package": "com.salesmind.rastreio",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE"
+        "ACCESS_FINE_LOCATION"
       ]
     },
     "extra": {

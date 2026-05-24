@@ -2,8 +2,6 @@ import * as SecureStore from 'expo-secure-store';
 
 declare const require: (moduleName: string) => any;
 
-const LOCATION_TASK_NAME = 'salesmind-background-location-task';
-
 const STORAGE_KEYS = {
   token: 'salesmind_rastreio_token',
   sessionId: 'salesmind_rastreio_sessao_id',
@@ -16,29 +14,9 @@ const STORAGE_KEYS = {
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://salesmind-api.onrender.com';
 
 let cachedLocationModule: typeof import('expo-location') | null = null;
-let cachedTaskManagerModule: typeof import('expo-task-manager') | null = null;
+let watchSubscription: { remove: () => void } | null = null;
 
-function loadLocationModule() {
-  if (cachedLocationModule) return cachedLocationModule;
-  try {
-    cachedLocationModule = require('expo-location') as typeof import('expo-location');
-    return cachedLocationModule;
-  } catch {
-    return null;
-  }
-}
-
-function loadTaskManagerModule() {
-  if (cachedTaskManagerModule) return cachedTaskManagerModule;
-  try {
-    cachedTaskManagerModule = require('expo-task-manager') as typeof import('expo-task-manager');
-    return cachedTaskManagerModule;
-  } catch {
-    return null;
-  }
-}
-
-type IniciarSessaoInput = {
+export type IniciarSessaoInput = {
   entregadorId: string;
   vendaId?: string;
   token: string;
@@ -56,7 +34,7 @@ type PontoPayload = {
   };
 };
 
-type EstadoRastreio = {
+export type EstadoRastreio = {
   ativo: boolean;
   sessionId: string;
   entregadorId: string;
@@ -66,14 +44,41 @@ type EstadoRastreio = {
   pendentes: number;
 };
 
+function loadLocationModule() {
+  if (cachedLocationModule) return cachedLocationModule;
+  try {
+    cachedLocationModule = require('expo-location') as typeof import('expo-location');
+    return cachedLocationModule;
+  } catch {
+    return null;
+  }
+}
+
+async function post(path: string, token: string, payload: unknown) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Erro HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
 async function loadQueue() {
   const raw = await SecureStore.getItemAsync(STORAGE_KEYS.filaPontos);
   if (!raw) return [] as PontoPayload[];
 
   try {
     const parsed = JSON.parse(raw) as PontoPayload[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -85,19 +90,13 @@ async function saveQueue(queue: PontoPayload[]) {
     return;
   }
 
-  const limited = queue.slice(-200);
-  await SecureStore.setItemAsync(STORAGE_KEYS.filaPontos, JSON.stringify(limited));
+  await SecureStore.setItemAsync(STORAGE_KEYS.filaPontos, JSON.stringify(queue.slice(-200)));
 }
 
 async function enqueuePoint(payload: PontoPayload) {
   const queue = await loadQueue();
   queue.push(payload);
   await saveQueue(queue);
-}
-
-async function obterNotaAtiva() {
-  const nota = await SecureStore.getItemAsync(STORAGE_KEYS.notaAtual);
-  return (nota || '').trim();
 }
 
 async function flushQueue(token: string, sessaoId: string) {
@@ -131,70 +130,49 @@ async function enviarOuEnfileirar(token: string, sessaoId: string, payload: Pont
   }
 }
 
-async function post(path: string, token: string, payload: unknown) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Erro HTTP ${response.status}`);
-  }
-
-  return response.json();
+async function pararWatcherLocal() {
+  if (!watchSubscription) return;
+  watchSubscription.remove();
+  watchSubscription = null;
 }
 
-export function prepararRastreioBackground() {
-  const TaskManager = loadTaskManagerModule();
-  if (!TaskManager) return false;
+async function iniciarWatcherLocal(token: string, sessaoId: string) {
+  const Location = loadLocationModule();
+  if (!Location) throw new Error('Modulo de localizacao indisponivel no dispositivo.');
 
-  try {
-    if (typeof TaskManager.isTaskDefined === 'function' && !TaskManager.isTaskDefined(LOCATION_TASK_NAME)) {
-      TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
-        try {
-          if (error) return;
+  await pararWatcherLocal();
 
-          const token = await SecureStore.getItemAsync(STORAGE_KEYS.token);
-          const sessaoId = await SecureStore.getItemAsync(STORAGE_KEYS.sessionId);
-          if (!token || !sessaoId) return;
-          const nota = await obterNotaAtiva();
-
-          const payload = data as { locations?: Array<{ coords?: { latitude: number; longitude: number; accuracy?: number | null; speed?: number | null } }> } | undefined;
-          const location = payload?.locations?.[0];
-          if (!location?.coords) return;
-
-          await enviarOuEnfileirar(token, sessaoId, {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            precisao: location.coords.accuracy ?? undefined,
-            velocidade: location.coords.speed ?? undefined,
-            fonte: 'GPS_BACKGROUND',
-            registradoEm: new Date().toISOString(),
-            raw: nota ? { nota } : undefined,
-          });
-        } catch {
-          // Falhas no background nao devem derrubar o task manager.
-        }
-      });
+  watchSubscription = await Location.watchPositionAsync(
+    {
+      accuracy: Location.Accuracy.Balanced,
+      timeInterval: 12000,
+      distanceInterval: 10,
+    },
+    async (location) => {
+      try {
+        const nota = await obterNotaAtiva();
+        await enviarOuEnfileirar(token, sessaoId, {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          precisao: location.coords.accuracy ?? undefined,
+          velocidade: location.coords.speed ?? undefined,
+          fonte: 'GPS_FOREGROUND',
+          registradoEm: new Date().toISOString(),
+          raw: nota ? { nota } : undefined,
+        });
+      } catch {
+        // O callback nao pode propagar erros para evitar quebrar o stream de localizacao.
+      }
     }
+  );
+}
 
-    return true;
-  } catch {
-    return false;
-  }
+async function obterNotaAtiva() {
+  const nota = await SecureStore.getItemAsync(STORAGE_KEYS.notaAtual);
+  return (nota || '').trim();
 }
 
 export async function iniciarRastreio(input: IniciarSessaoInput) {
-  const prepared = prepararRastreioBackground();
-  if (!prepared) {
-    throw new Error('Modulo de tarefa em segundo plano indisponivel no dispositivo.');
-  }
-
   const Location = loadLocationModule();
   if (!Location) {
     throw new Error('Modulo de localizacao indisponivel no dispositivo.');
@@ -202,12 +180,7 @@ export async function iniciarRastreio(input: IniciarSessaoInput) {
 
   const foreground = await Location.requestForegroundPermissionsAsync();
   if (foreground.status !== 'granted') {
-    throw new Error('Permissao de localizacao em primeiro plano nao concedida.');
-  }
-
-  const background = await Location.requestBackgroundPermissionsAsync();
-  if (background.status !== 'granted') {
-    throw new Error('Permissao de localizacao em segundo plano nao concedida.');
+    throw new Error('Permissao de localizacao nao concedida.');
   }
 
   await SecureStore.setItemAsync(STORAGE_KEYS.token, input.token);
@@ -228,26 +201,12 @@ export async function iniciarRastreio(input: IniciarSessaoInput) {
   await SecureStore.setItemAsync(STORAGE_KEYS.sessionId, sessaoId);
   await SecureStore.deleteItemAsync(STORAGE_KEYS.filaPontos);
 
-  const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-  if (!started) {
-    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-      accuracy: Location.Accuracy.Balanced,
-      timeInterval: 15000,
-      distanceInterval: 15,
-      pausesUpdatesAutomatically: false,
-      foregroundService: {
-        notificationTitle: 'SalesMind Rastreio ativo',
-        notificationBody: 'A localizacao esta sendo enviada para o painel.',
-      },
-      showsBackgroundLocationIndicator: true,
-    });
-  }
+  await iniciarWatcherLocal(input.token, sessaoId);
 
   return { sessaoId };
 }
 
 export async function finalizarRastreio(motivo?: string) {
-  const Location = loadLocationModule();
   const token = await SecureStore.getItemAsync(STORAGE_KEYS.token);
   const sessaoId = await SecureStore.getItemAsync(STORAGE_KEYS.sessionId);
 
@@ -259,21 +218,14 @@ export async function finalizarRastreio(motivo?: string) {
     });
   }
 
-  if (Location) {
-    const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-    if (started) {
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
-    }
-  }
-
+  await pararWatcherLocal();
   await SecureStore.deleteItemAsync(STORAGE_KEYS.sessionId);
   await SecureStore.deleteItemAsync(STORAGE_KEYS.filaPontos);
 }
 
 export async function isRastreioAtivo() {
-  const Location = loadLocationModule();
-  if (!Location) return false;
-  return Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+  const sessaoId = await SecureStore.getItemAsync(STORAGE_KEYS.sessionId);
+  return Boolean(sessaoId);
 }
 
 export async function sincronizarPendencias() {
@@ -289,22 +241,22 @@ export async function sincronizarPendencias() {
 }
 
 export async function obterEstadoRastreio(): Promise<EstadoRastreio> {
-  const [ativo, sessionId, entregadorId, vendaId, token, queue] = await Promise.all([
-    SecureStore.getItemAsync(STORAGE_KEYS.sessionId).then((id) => Boolean(id)),
+  const [sessionId, entregadorId, vendaId, token, queue, notaAtual] = await Promise.all([
     SecureStore.getItemAsync(STORAGE_KEYS.sessionId),
     SecureStore.getItemAsync(STORAGE_KEYS.entregadorId),
     SecureStore.getItemAsync(STORAGE_KEYS.vendaId),
     SecureStore.getItemAsync(STORAGE_KEYS.token),
     loadQueue(),
+    SecureStore.getItemAsync(STORAGE_KEYS.notaAtual),
   ]);
 
   return {
-    ativo,
+    ativo: Boolean(sessionId),
     sessionId: sessionId || '',
     entregadorId: entregadorId || '',
     vendaId: vendaId || '',
     token: token || '',
-    notaAtual: (await SecureStore.getItemAsync(STORAGE_KEYS.notaAtual)) || '',
+    notaAtual: notaAtual || '',
     pendentes: queue.length,
   };
 }
