@@ -3,7 +3,7 @@
     "name": "SalesMind Rastreio",
     "slug": "salesmind-rastreio-mobile",
     "version": "1.0.0",
-    "jsEngine": "hermes",
+    "jsEngine": "jsc",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "splash": {

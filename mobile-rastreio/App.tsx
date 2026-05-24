@@ -54,7 +54,8 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 }
 
 export default function App() {
-  const [booting, setBooting] = useState(true);
+  const [moduleLoaded, setModuleLoaded] = useState(false);
+  const [bootingModule, setBootingModule] = useState(false);
   const [entregadorId, setEntregadorId] = useState('');
   const [vendaId, setVendaId] = useState('');
   const [token, setToken] = useState('');
@@ -64,43 +65,33 @@ export default function App() {
   const [sessaoId, setSessaoId] = useState('');
   const [notaAtual, setNotaAtual] = useState('');
   const [pendentes, setPendentes] = useState(0);
-  const [status, setStatus] = useState('Inicializando aplicacao em modo seguro...');
+  const [status, setStatus] = useState('App aberto em modo de contingencia. Toque em "Carregar recursos".');
 
   const ready = useMemo(() => entregadorId.trim() && token.trim(), [entregadorId, token]);
 
-  React.useEffect(() => {
-    let ativoNoComponente = true;
+  async function handleCarregarRecursos() {
+    try {
+      setBootingModule(true);
+      setStatus('Carregando recursos de rastreio...');
+      const tracking = await loadTrackingModule();
+      const estado = await tracking.obterEstadoRastreio();
 
-    async function carregarEstadoInicial() {
-      try {
-        const tracking = await loadTrackingModule();
-        const estado = await tracking.obterEstadoRastreio();
-        if (!ativoNoComponente) return;
-
-        setEntregadorId(estado.entregadorId);
-        setVendaId(estado.vendaId);
-        setToken(estado.token);
-        setNotaAtual(estado.notaAtual);
-        setSessaoId(estado.sessionId);
-        setPendentes(estado.pendentes);
-        setAtivo(estado.ativo);
-        setStatus(estado.ativo ? 'Sessao recuperada com sucesso.' : 'Pronto para iniciar.');
-      } catch (error) {
-        if (!ativoNoComponente) return;
-        setStatus(error instanceof Error ? error.message : 'Falha ao recuperar estado local.');
-      } finally {
-        if (ativoNoComponente) {
-          setBooting(false);
-        }
-      }
+      setEntregadorId(estado.entregadorId);
+      setVendaId(estado.vendaId);
+      setToken(estado.token);
+      setNotaAtual(estado.notaAtual);
+      setSessaoId(estado.sessionId);
+      setPendentes(estado.pendentes);
+      setAtivo(estado.ativo);
+      setModuleLoaded(true);
+      setStatus(estado.ativo ? 'Recursos carregados. Sessao ativa recuperada.' : 'Recursos carregados com sucesso.');
+    } catch (error) {
+      setModuleLoaded(false);
+      setStatus(error instanceof Error ? error.message : 'Falha ao carregar recursos de rastreio.');
+    } finally {
+      setBootingModule(false);
     }
-
-    carregarEstadoInicial();
-
-    return () => {
-      ativoNoComponente = false;
-    };
-  }, []);
+  }
 
   async function handleIniciar() {
     if (!ready) {
@@ -110,6 +101,9 @@ export default function App() {
 
     try {
       setLoading(true);
+      if (!moduleLoaded) {
+        await handleCarregarRecursos();
+      }
       const tracking = await loadTrackingModule();
       const result = await tracking.iniciarRastreio({
         entregadorId: entregadorId.trim(),
@@ -133,6 +127,10 @@ export default function App() {
   async function handleFinalizar() {
     try {
       setLoading(true);
+      if (!moduleLoaded) {
+        setStatus('Carregue os recursos antes de finalizar.');
+        return;
+      }
       const tracking = await loadTrackingModule();
       await tracking.finalizarRastreio('FINALIZADO_MANUALMENTE');
       setAtivo(false);
@@ -149,6 +147,10 @@ export default function App() {
   async function handleSincronizar() {
     try {
       setLoading(true);
+      if (!moduleLoaded) {
+        setStatus('Carregue os recursos antes de sincronizar.');
+        return;
+      }
       const tracking = await loadTrackingModule();
       const result = await tracking.sincronizarPendencias();
       setPendentes(result.pendentes);
@@ -163,6 +165,10 @@ export default function App() {
   async function handleSalvarNota() {
     try {
       setLoading(true);
+      if (!moduleLoaded) {
+        setStatus('Carregue os recursos antes de salvar nota.');
+        return;
+      }
       const tracking = await loadTrackingModule();
       const value = await tracking.atualizarNotaAtiva(notaAtual);
       setNotaAtual(value);
@@ -177,6 +183,10 @@ export default function App() {
   async function handleLimparNota() {
     try {
       setLoading(true);
+      if (!moduleLoaded) {
+        setStatus('Carregue os recursos antes de limpar nota.');
+        return;
+      }
       const tracking = await loadTrackingModule();
       await tracking.limparNotaAtiva();
       setNotaAtual('');
@@ -188,19 +198,6 @@ export default function App() {
     }
   }
 
-  if (booting) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.hero, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <StatusBar barStyle="light-content" />
-        <ActivityIndicator color="#ffffff" size="large" />
-        <Text style={{ color: '#ffffff', marginTop: 14, fontSize: 16, fontWeight: '700' }}>Preparando SalesMind Rastreio</Text>
-        <Text style={{ color: '#cde0de', marginTop: 8, textAlign: 'center' }}>
-          Estamos carregando somente modulos seguros para evitar fechamento inesperado.
-        </Text>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <AppErrorBoundary>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -210,8 +207,26 @@ export default function App() {
             <Text style={{ color: '#d6f1eb', fontWeight: '700', letterSpacing: 1 }}>OPERACAO EM CAMPO</Text>
             <Text style={{ color: '#ffffff', fontWeight: '900', fontSize: 24, marginTop: 6 }}>SalesMind Rastreio</Text>
             <Text style={{ color: '#d0dfdd', marginTop: 8 }}>
-              Versao reconstruida do zero em modo seguro de execucao para estabilidade do APK.
+              Inicio estatico: sem modulos nativos no boot para impedir fechamento automatico.
             </Text>
+
+            <Pressable
+              onPress={handleCarregarRecursos}
+              disabled={bootingModule || loading}
+              style={{
+                marginTop: 12,
+                backgroundColor: bootingModule || loading ? '#40666b' : '#2f8c83',
+                borderRadius: 10,
+                paddingVertical: 10,
+                alignItems: 'center',
+              }}
+            >
+              {bootingModule ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={{ color: '#ffffff', fontWeight: '800' }}>{moduleLoaded ? 'Recursos carregados' : 'Carregar recursos'}</Text>
+              )}
+            </Pressable>
 
             <View
               style={{
@@ -224,6 +239,7 @@ export default function App() {
               }}
             >
               <Text style={{ color: '#ffffff', fontWeight: '800' }}>{ativo ? 'STATUS: RASTREIO ATIVO' : 'STATUS: RASTREIO INATIVO'}</Text>
+              <Text style={{ color: '#c8e6e2', marginTop: 4 }}>Recursos: {moduleLoaded ? 'carregados' : 'nao carregados'}</Text>
               {sessaoId ? <Text style={{ color: '#c8e6e2', marginTop: 4 }}>Sessao atual: {sessaoId}</Text> : null}
             </View>
           </View>
@@ -310,9 +326,9 @@ export default function App() {
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Pressable
               onPress={handleIniciar}
-              disabled={!ready || loading || ativo}
+              disabled={!ready || loading || ativo || !moduleLoaded}
               style={{
-                backgroundColor: !ready || loading || ativo ? '#9db4b3' : colors.accent,
+                backgroundColor: !ready || loading || ativo || !moduleLoaded ? '#9db4b3' : colors.accent,
                 paddingVertical: 12,
                 borderRadius: 10,
                 flex: 1,
@@ -367,7 +383,7 @@ export default function App() {
           </View>
 
           <Text style={{ color: '#6f8683', textAlign: 'center', marginTop: 6, fontWeight: '600' }}>
-            Versao focada em estabilidade do APK para validacao em campo.
+            Contingencia ativa: primeiro validamos abertura estavel, depois ativamos o rastreio.
           </Text>
         </ScrollView>
       </SafeAreaView>
