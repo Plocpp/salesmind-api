@@ -601,13 +601,13 @@ export default function Estoque() {
 
   const carregarPedidosAbertos = async () => {
     setLoadingAtalho(true);
-    const data = await api.get('/estoque/compras/pedidos?status=ABERTO', token);
+    const data = await api.get('/estoque/compras/pedidos?status=SOLICITADO', token);
     setPedidosAbertos(Array.isArray(data) ? data : []);
     setLoadingAtalho(false);
   };
 
   const carregarFornecedoresFiltro = async () => {
-    const data = await api.get('/fornecedores', token);
+    const data = await api.get('/cadastros/fornecedores', token);
     setFornecedoresFiltro(Array.isArray(data) ? data.map((item: any) => ({ id: String(item.id), nome: String(item.nome || 'Fornecedor') })) : []);
   };
 
