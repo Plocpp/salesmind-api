@@ -233,6 +233,7 @@ A página `src/frontend/pages/CadastroProdutos.tsx` foi construída para:
 - Boas práticas e convenções: `docs/guia-boas-praticas-senior.md`
 - Versionamento da API (legado x v1): `docs/api-versionamento-v1.md`
 - Arquitetura em blocos reutilizáveis: `docs/arquitetura-blocos-reutilizaveis.md`
+- Matriz de priorização para extração de blocos: `docs/matriz-priorizacao-extracao-blocos.md`
 - ADR da hierarquia de usuários: `docs/adr/001-hierarquia-usuarios-permissoes.md`
 - Programa LGPD: `docs/lgpd-programa-adequacao.md`
 - Registro de operações de tratamento (Art. 37): `docs/lgpd-registro-operacoes.md`
