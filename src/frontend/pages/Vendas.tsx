@@ -355,7 +355,11 @@ export default function Vendas() {
   const [adquirenteCartao, setAdquirenteCartao] = useState('MERCADO PAGO');
   const [parcelasCartao, setParcelasCartao] = useState(1);
   const [emitirNfceNaVenda, setEmitirNfceNaVenda] = useState(false);
+  const [nfceTipoDestinatario, setNfceTipoDestinatario] = useState<'CPF' | 'CNPJ'>('CPF');
   const [clienteDocumentoNfce, setClienteDocumentoNfce] = useState('');
+  const [nfceRazaoSocial, setNfceRazaoSocial] = useState('');
+  const [nfceInscricaoEstadual, setNfceInscricaoEstadual] = useState('');
+  const [nfceEmailDestinatario, setNfceEmailDestinatario] = useState('');
   const [valorPago, setValorPago] = useState('0');
   const [comprovantePagamento, setComprovantePagamento] = useState('');
   const [pagamentoComprovado, setPagamentoComprovado] = useState(false);
@@ -1046,7 +1050,11 @@ export default function Vendas() {
     setAdquirenteCartao('MERCADO PAGO');
     setParcelasCartao(1);
     setEmitirNfceNaVenda(Boolean(config.nfeAutomatica));
+    setNfceTipoDestinatario('CPF');
     setClienteDocumentoNfce('');
+    setNfceRazaoSocial('');
+    setNfceInscricaoEstadual('');
+    setNfceEmailDestinatario('');
     setValorPago(totalCarrinho.toFixed(2));
     setComprovantePagamento('');
     setPagamentoComprovado(false);
@@ -1147,11 +1155,46 @@ export default function Vendas() {
       }, token);
 
       if (emitirNfceNaVenda && vendaCriada?.id) {
+        const documentoFiscal = clienteDocumentoNfce.replace(/\D/g, '');
+        if (documentoFiscal) {
+          if (nfceTipoDestinatario === 'CPF' && documentoFiscal.length !== 11) {
+            alert('Para emissao com CPF, informe 11 digitos.');
+            return;
+          }
+          if (nfceTipoDestinatario === 'CNPJ' && documentoFiscal.length !== 14) {
+            alert('Para emissao com CNPJ, informe 14 digitos.');
+            return;
+          }
+        }
+
+        if (nfceTipoDestinatario === 'CNPJ' && !nfceRazaoSocial.trim()) {
+          alert('Informe a razao social para emitir NFC-e com CNPJ.');
+          return;
+        }
+
         try {
           await api.post(`/vendas/vendas/${vendaCriada.id}/emitir-nfce`, {
             clienteNome: clienteSelecionado?.nome || undefined,
-            clienteDocumento: clienteDocumentoNfce.trim() || undefined,
+            clienteDocumento: documentoFiscal || undefined,
             ambiente: 'HOMOLOGACAO',
+            naturezaOperacao: 'VENDA DE MERCADORIA',
+            consumidorFinal: true,
+            presencaComprador: 'OPERACAO_PRESENCIAL',
+            destinatario: documentoFiscal
+              ? {
+                tipoPessoa: nfceTipoDestinatario === 'CNPJ' ? 'JURIDICA' : 'FISICA',
+                nome: nfceTipoDestinatario === 'CPF' ? (clienteSelecionado?.nome || undefined) : undefined,
+                razaoSocial: nfceTipoDestinatario === 'CNPJ' ? nfceRazaoSocial.trim() : undefined,
+                cpf: nfceTipoDestinatario === 'CPF' ? documentoFiscal : undefined,
+                cnpj: nfceTipoDestinatario === 'CNPJ' ? documentoFiscal : undefined,
+                indicadorIe: nfceTipoDestinatario === 'CNPJ'
+                  ? (nfceInscricaoEstadual.trim() ? 'CONTRIBUINTE' : 'CONTRIBUINTE_ISENTO')
+                  : 'NAO_CONTRIBUINTE',
+                inscricaoEstadual: nfceInscricaoEstadual.trim() || undefined,
+                email: nfceEmailDestinatario.trim() || clienteSelecionado?.email || undefined,
+                telefone: clienteSelecionado?.telefone || undefined,
+              }
+              : undefined,
             observacoes: 'Emissao solicitada no fechamento do PDV.',
           }, token);
         } catch (nfceError) {
@@ -1163,6 +1206,11 @@ export default function Vendas() {
       setCarrinho([]);
       setBuscaCliente('');
       setClienteSelecionado(null);
+      setNfceTipoDestinatario('CPF');
+      setClienteDocumentoNfce('');
+      setNfceRazaoSocial('');
+      setNfceInscricaoEstadual('');
+      setNfceEmailDestinatario('');
       setModalAberto(null);
       await carregarTudo();
     } catch (error) {
@@ -2119,15 +2167,69 @@ export default function Vendas() {
                     </label>
 
                     {emitirNfceNaVenda && (
-                      <div>
-                        <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>CPF/CNPJ do consumidor (opcional)</label>
-                        <input
-                          type="text"
-                          value={clienteDocumentoNfce}
-                          onChange={(event) => setClienteDocumentoNfce(event.target.value)}
-                          style={{ ...input, height: 34, fontSize: 12 }}
-                          placeholder="Somente numeros"
-                        />
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <div>
+                          <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>Tipo de destinatario</label>
+                          <select
+                            value={nfceTipoDestinatario}
+                            onChange={(event) => setNfceTipoDestinatario(event.target.value as 'CPF' | 'CNPJ')}
+                            style={{ ...input, height: 34, fontSize: 12 }}
+                          >
+                            <option value="CPF">Pessoa fisica (CPF)</option>
+                            <option value="CNPJ">Pessoa juridica (CNPJ)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>
+                            {nfceTipoDestinatario === 'CNPJ' ? 'CNPJ do destinatario' : 'CPF do consumidor (opcional)'}
+                          </label>
+                          <input
+                            type="text"
+                            value={clienteDocumentoNfce}
+                            onChange={(event) => setClienteDocumentoNfce(event.target.value)}
+                            style={{ ...input, height: 34, fontSize: 12 }}
+                            placeholder={nfceTipoDestinatario === 'CNPJ' ? '14 digitos' : '11 digitos'}
+                          />
+                        </div>
+
+                        {nfceTipoDestinatario === 'CNPJ' && (
+                          <>
+                            <div>
+                              <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>Razao social</label>
+                              <input
+                                type="text"
+                                value={nfceRazaoSocial}
+                                onChange={(event) => setNfceRazaoSocial(event.target.value)}
+                                style={{ ...input, height: 34, fontSize: 12 }}
+                                placeholder="Obrigatorio para emissao com CNPJ"
+                              />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                              <div>
+                                <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>Inscricao Estadual</label>
+                                <input
+                                  type="text"
+                                  value={nfceInscricaoEstadual}
+                                  onChange={(event) => setNfceInscricaoEstadual(event.target.value)}
+                                  style={{ ...input, height: 34, fontSize: 12 }}
+                                  placeholder="Opcional (ISENTO se vazio)"
+                                />
+                              </div>
+                              <div>
+                                <label style={{ ...label, fontSize: 11, marginBottom: 5 }}>E-mail da nota</label>
+                                <input
+                                  type="email"
+                                  value={nfceEmailDestinatario}
+                                  onChange={(event) => setNfceEmailDestinatario(event.target.value)}
+                                  style={{ ...input, height: 34, fontSize: 12 }}
+                                  placeholder="Opcional"
+                                />
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

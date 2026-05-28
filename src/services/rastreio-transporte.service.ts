@@ -415,28 +415,30 @@ export class RastreioTransporteService {
           ? 'DESATUALIZADA'
           : 'ONLINE';
 
-      return {
-      sessaoId: item.id,
-      entregadorId: item.entregador_id,
-      entregadorNome: item.entregador_nome || 'Entregador nao encontrado',
-      dispositivoId: item.dispositivo_id,
-      vendaId: item.venda_id,
-      iniciadaEm: item.iniciada_em,
-      conexaoStatus,
-      minutosSemAtualizar,
       const raw = lerRawJson(item.raw);
 
       return {
-        latitude: Number(item.latitude),
-        longitude: Number(item.longitude),
-        precisao: item.precisao === null ? null : Number(item.precisao),
-        velocidade: item.velocidade === null ? null : Number(item.velocidade),
-        bateria: item.bateria === null ? null : Number(item.bateria),
-        fonte: item.fonte,
-        registradoEm: item.registrado_em,
-      nota: typeof raw?.nota === 'string' ? raw.nota : null,
-      } : null,
-    };
+        sessaoId: item.id,
+        entregadorId: item.entregador_id,
+        entregadorNome: item.entregador_nome || 'Entregador nao encontrado',
+        dispositivoId: item.dispositivo_id,
+        vendaId: item.venda_id,
+        iniciadaEm: item.iniciada_em,
+        conexaoStatus,
+        minutosSemAtualizar,
+        ultimoPonto: item.registrado_em
+          ? {
+            latitude: Number(item.latitude),
+            longitude: Number(item.longitude),
+            precisao: item.precisao === null ? null : Number(item.precisao),
+            velocidade: item.velocidade === null ? null : Number(item.velocidade),
+            bateria: item.bateria === null ? null : Number(item.bateria),
+            fonte: item.fonte,
+            registradoEm: item.registrado_em,
+            nota: typeof raw?.nota === 'string' ? raw.nota : null,
+          }
+          : null,
+      };
     });
   }
 

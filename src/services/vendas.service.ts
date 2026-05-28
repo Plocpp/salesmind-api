@@ -3,6 +3,39 @@ import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
+const somenteDigitos = (valor?: string) => String(valor || '').replace(/\D/g, '');
+
+const validarCpf = (cpf: string) => {
+  const valor = somenteDigitos(cpf);
+  if (valor.length !== 11 || /^(\d)\1+$/.test(valor)) return false;
+
+  let soma = 0;
+  for (let i = 0; i < 9; i += 1) soma += Number(valor[i]) * (10 - i);
+  const primeiroDigito = (soma * 10) % 11;
+  if ((primeiroDigito % 10) !== Number(valor[9])) return false;
+
+  soma = 0;
+  for (let i = 0; i < 10; i += 1) soma += Number(valor[i]) * (11 - i);
+  const segundoDigito = (soma * 10) % 11;
+  return (segundoDigito % 10) === Number(valor[10]);
+};
+
+const validarCnpj = (cnpj: string) => {
+  const valor = somenteDigitos(cnpj);
+  if (valor.length !== 14 || /^(\d)\1+$/.test(valor)) return false;
+
+  const calcularDigito = (base: string, pesos: number[]) => {
+    const soma = base.split('').reduce((acc, numero, index) => acc + Number(numero) * pesos[index], 0);
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+
+  const base = valor.slice(0, 12);
+  const d1 = calcularDigito(base, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  const d2 = calcularDigito(`${base}${d1}`, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  return `${d1}${d2}` === valor.slice(12);
+};
+
 const clienteSchema = z.object({
   nome: z.string().min(1, 'Nome e obrigatorio'),
   telefone: z.string().optional(),
@@ -121,9 +154,121 @@ const configuracaoVendasSchema = z.object({
 
 const emitirNfceSchema = z.object({
   clienteNome: z.string().trim().optional(),
-  clienteDocumento: z.string().trim().optional(),
+  clienteDocumento: z
+    .string()
+    .trim()
+    .transform((value) => somenteDigitos(value))
+    .optional(),
   ambiente: z.enum(['HOMOLOGACAO', 'PRODUCAO']).default('HOMOLOGACAO'),
+  naturezaOperacao: z.string().trim().min(2).max(120).default('VENDA DE MERCADORIA'),
+  consumidorFinal: z.boolean().default(true),
+  presencaComprador: z
+    .enum([
+      'NAO_SE_APLICA',
+      'OPERACAO_PRESENCIAL',
+      'INTERNET',
+      'TELEATENDIMENTO',
+      'ENTREGA_DOMICILIO',
+      'PRESENCIAL_FORA_ESTABELECIMENTO',
+      'OUTROS',
+    ])
+    .default('OPERACAO_PRESENCIAL'),
+  destinatario: z
+    .object({
+      tipoPessoa: z.enum(['FISICA', 'JURIDICA']).default('FISICA'),
+      nome: z.string().trim().min(2).max(120).optional(),
+      razaoSocial: z.string().trim().min(2).max(120).optional(),
+      cpf: z.string().trim().transform((value) => somenteDigitos(value)).optional(),
+      cnpj: z.string().trim().transform((value) => somenteDigitos(value)).optional(),
+      inscricaoEstadual: z.string().trim().max(20).optional(),
+      indicadorIe: z.enum(['CONTRIBUINTE', 'CONTRIBUINTE_ISENTO', 'NAO_CONTRIBUINTE']).default('CONTRIBUINTE'),
+      email: z.string().trim().email().optional(),
+      telefone: z.string().trim().max(20).optional(),
+      endereco: z
+        .object({
+          logradouro: z.string().trim().max(120).optional(),
+          numero: z.string().trim().max(20).optional(),
+          complemento: z.string().trim().max(60).optional(),
+          bairro: z.string().trim().max(60).optional(),
+          municipioCodigoIbge: z.string().trim().length(7).optional(),
+          municipioNome: z.string().trim().max(60).optional(),
+          uf: z.string().trim().length(2).optional(),
+          cep: z.string().trim().transform((value) => somenteDigitos(value)).optional(),
+        })
+        .optional(),
+    })
+    .superRefine((destinatario, ctx) => {
+      if (destinatario.tipoPessoa === 'JURIDICA') {
+        if (!destinatario.cnpj) {
+          ctx.addIssue({ code: 'custom', message: 'CNPJ e obrigatorio para destinatario juridico.' });
+        } else if (!validarCnpj(destinatario.cnpj)) {
+          ctx.addIssue({ code: 'custom', message: 'CNPJ do destinatario e invalido.' });
+        }
+
+        if (!destinatario.razaoSocial) {
+          ctx.addIssue({ code: 'custom', message: 'Razao social e obrigatoria para destinatario juridico.' });
+        }
+      }
+
+      if (destinatario.tipoPessoa === 'FISICA' && destinatario.cpf && !validarCpf(destinatario.cpf)) {
+        ctx.addIssue({ code: 'custom', message: 'CPF do destinatario e invalido.' });
+      }
+    })
+    .optional(),
+  itensFiscais: z
+    .array(
+      z.object({
+        codigo: z.string().trim().min(1).max(60),
+        descricao: z.string().trim().min(2).max(120),
+        ncm: z.string().trim().regex(/^\d{8}$/, 'NCM deve possuir 8 digitos.'),
+        cest: z.string().trim().regex(/^\d{7}$/, 'CEST deve possuir 7 digitos.').optional(),
+        cfop: z.string().trim().regex(/^\d{4}$/, 'CFOP deve possuir 4 digitos.'),
+        unidadeComercial: z.string().trim().min(1).max(6),
+        quantidadeComercial: z.number().positive(),
+        valorUnitarioComercial: z.number().positive(),
+        desconto: z.number().nonnegative().default(0),
+        origemIcms: z.enum(['0', '1', '2', '3', '4', '5', '6', '7', '8']).default('0'),
+        cstIcms: z.string().trim().regex(/^\d{2,3}$/),
+        cstPis: z.string().trim().regex(/^\d{2}$/),
+        cstCofins: z.string().trim().regex(/^\d{2}$/),
+      }),
+    )
+    .max(200)
+    .optional(),
+  totais: z
+    .object({
+      frete: z.number().nonnegative().default(0),
+      seguro: z.number().nonnegative().default(0),
+      desconto: z.number().nonnegative().default(0),
+      outrasDespesas: z.number().nonnegative().default(0),
+    })
+    .optional(),
+  pagamentos: z
+    .array(
+      z.object({
+        tipo: z.enum(['DINHEIRO', 'PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'BOLETO', 'TRANSFERENCIA', 'OUTROS']),
+        valor: z.number().positive(),
+        integracaoPagamento: z.enum(['INTEGRADO', 'NAO_INTEGRADO']).default('NAO_INTEGRADO'),
+        cnpjCredenciadora: z.string().trim().transform((value) => somenteDigitos(value)).optional(),
+        bandeiraCartao: z.string().trim().max(30).optional(),
+        autorizacao: z.string().trim().max(40).optional(),
+      }),
+    )
+    .max(20)
+    .optional(),
   observacoes: z.string().trim().optional(),
+}).superRefine((payload, ctx) => {
+  if (payload.clienteDocumento && payload.clienteDocumento.length !== 11 && payload.clienteDocumento.length !== 14) {
+    ctx.addIssue({ code: 'custom', message: 'clienteDocumento deve conter 11 (CPF) ou 14 (CNPJ) digitos.' });
+  }
+
+  if (payload.clienteDocumento?.length === 11 && !validarCpf(payload.clienteDocumento)) {
+    ctx.addIssue({ code: 'custom', message: 'CPF informado no clienteDocumento e invalido.' });
+  }
+
+  if (payload.clienteDocumento?.length === 14 && !validarCnpj(payload.clienteDocumento)) {
+    ctx.addIssue({ code: 'custom', message: 'CNPJ informado no clienteDocumento e invalido.' });
+  }
 });
 
 export class VendasService {
@@ -1286,9 +1431,50 @@ export class VendasService {
       .toString()
       .padStart(12, '0')}`;
 
+    const documentoCliente = payload.clienteDocumento || undefined;
+
+    const destinatario = payload.destinatario
+      ? {
+        tipoPessoa: payload.destinatario.tipoPessoa,
+        nome: payload.destinatario.nome || undefined,
+        razaoSocial: payload.destinatario.razaoSocial || undefined,
+        cpf: payload.destinatario.cpf || undefined,
+        cnpj: payload.destinatario.cnpj || undefined,
+        inscricaoEstadual: payload.destinatario.inscricaoEstadual || undefined,
+        indicadorIe: payload.destinatario.indicadorIe,
+        email: payload.destinatario.email || undefined,
+        telefone: payload.destinatario.telefone || undefined,
+        endereco: payload.destinatario.endereco
+          ? {
+            logradouro: payload.destinatario.endereco.logradouro || undefined,
+            numero: payload.destinatario.endereco.numero || undefined,
+            complemento: payload.destinatario.endereco.complemento || undefined,
+            bairro: payload.destinatario.endereco.bairro || undefined,
+            municipioCodigoIbge: payload.destinatario.endereco.municipioCodigoIbge || undefined,
+            municipioNome: payload.destinatario.endereco.municipioNome || undefined,
+            uf: payload.destinatario.endereco.uf || undefined,
+            cep: payload.destinatario.endereco.cep || undefined,
+          }
+          : undefined,
+      }
+      : undefined;
+
+    const subtotalVenda = Number((venda as any).subtotal || venda.total || 0);
+    const descontoVenda = Number((venda as any).descontoTotal || 0);
+    const freteVenda = Number((venda as any).frete || 0);
+    const totais = {
+      subtotalProdutos: subtotalVenda,
+      desconto: payload.totais?.desconto ?? descontoVenda,
+      frete: payload.totais?.frete ?? freteVenda,
+      seguro: payload.totais?.seguro ?? 0,
+      outrasDespesas: payload.totais?.outrasDespesas ?? 0,
+      valorTotal: Number(venda.total || 0),
+    };
+
     const nfce = {
       numero,
       serie,
+      modeloDocumento: '65',
       status: 'AUTORIZADA',
       protocolo,
       chaveAcesso,
@@ -1296,7 +1482,16 @@ export class VendasService {
       emitidaEm: dataEmissao.toISOString(),
       valorTotal: Number(venda.total || 0),
       cliente: payload.clienteNome || venda.cliente?.nome || 'Consumidor Final',
-      documentoCliente: payload.clienteDocumento || undefined,
+      documentoCliente,
+      identificacao: {
+        naturezaOperacao: payload.naturezaOperacao,
+        consumidorFinal: payload.consumidorFinal,
+        presencaComprador: payload.presencaComprador,
+      },
+      destinatario,
+      itensFiscais: payload.itensFiscais || undefined,
+      totais,
+      pagamentos: payload.pagamentos || undefined,
     };
 
     await prisma.venda.update({
