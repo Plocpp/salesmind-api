@@ -428,6 +428,60 @@ const buildObservacoesNfeCnpj = (form: RecebimentoManualForm) => {
   return [base, blocoNfe].filter(Boolean).join('\n\n');
 };
 
+const validarCamposNfeCnpj = (form: RecebimentoManualForm) => {
+  const emitenteCnpj = normalizeDocument(form.nfeCnpj.emitenteCnpj);
+  const destinatarioCnpj = normalizeDocument(form.nfeCnpj.destinatarioCnpj);
+  const transportadoraCnpj = normalizeDocument(form.nfeCnpj.transportadoraCnpj);
+  const ufVeiculo = String(form.nfeCnpj.ufVeiculo || '').trim().toUpperCase();
+  const placaVeiculo = String(form.nfeCnpj.placaVeiculo || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const modalidadeFrete = String(form.nfeCnpj.modalidadeFrete || '0');
+  const semFrete = modalidadeFrete === '9';
+
+  if (!form.nfeCnpj.cfopPrincipal.trim()) {
+    return 'Informe o CFOP principal na aba NF-e Compras (CNPJ).';
+  }
+
+  if (!form.nfeCnpj.naturezaOperacao.trim()) {
+    return 'Informe a natureza da operação na aba NF-e Compras (CNPJ).';
+  }
+
+  if (emitenteCnpj.length !== 14) {
+    return 'Informe um CNPJ válido do emitente (14 dígitos).';
+  }
+
+  if (!form.nfeCnpj.emitenteIe.trim()) {
+    return 'Informe a Inscrição Estadual do emitente.';
+  }
+
+  if (destinatarioCnpj.length !== 14) {
+    return 'Informe um CNPJ válido do destinatário (14 dígitos).';
+  }
+
+  if (!form.nfeCnpj.destinatarioIe.trim()) {
+    return 'Informe a Inscrição Estadual do destinatário.';
+  }
+
+  if (!semFrete) {
+    if (!form.nfeCnpj.transportadoraNome.trim()) {
+      return 'Informe a transportadora para modalidade de frete com transporte.';
+    }
+
+    if (transportadoraCnpj.length !== 14) {
+      return 'Informe um CNPJ válido da transportadora (14 dígitos).';
+    }
+
+    if (placaVeiculo.length < 7) {
+      return 'Informe a placa do veículo (mínimo 7 caracteres).';
+    }
+
+    if (ufVeiculo.length !== 2) {
+      return 'Informe a UF do veículo com 2 caracteres.';
+    }
+  }
+
+  return '';
+};
+
 const getPedidoSugeridoTheme = (nivel: PedidoXmlSugerido['nivel']) => {
   if (nivel === 'alto') {
     return {
@@ -1066,6 +1120,12 @@ export default function Estoque() {
       return;
     }
 
+    const erroNfeCnpj = validarCamposNfeCnpj(recebimentoManual);
+    if (erroNfeCnpj) {
+      setErro(erroNfeCnpj);
+      return;
+    }
+
     try {
       setLoadingAtalho(true);
       setErro('');
@@ -1351,6 +1411,10 @@ export default function Estoque() {
               <p style={{ margin: '6px 0 10px', color: '#647674', fontSize: 13 }}>
                 Preencha dados fiscais e de transportadora exigidos em operações B2B. Esses dados são anexados ao recebimento da nota.
               </p>
+              <div style={{ marginBottom: 10, padding: 8, borderRadius: 8, background: '#fff6e8', border: '1px solid #ead2a4', color: '#7b5a24', fontSize: 12 }}>
+                Obrigatórios: CFOP, natureza da operação, CNPJ/IE de emitente e destinatário.
+                Se modalidade de frete for diferente de sem frete, informar também transportadora, CNPJ, placa e UF do veículo.
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
                 <input value={recebimentoManual.nfeCnpj.emitenteCnpj} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, emitenteCnpj: event.target.value } }))} placeholder="Emitente CNPJ" style={inputStyle} />
                 <input value={recebimentoManual.nfeCnpj.emitenteIe} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, emitenteIe: event.target.value } }))} placeholder="Emitente IE" style={inputStyle} />
@@ -1964,6 +2028,10 @@ export default function Estoque() {
 
                     <div style={{ marginTop: 10, padding: 10, border: '1px solid #d9e2e1', borderRadius: 8, background: '#f8fbfa' }}>
                       <div style={{ fontWeight: 800, color: '#243332', marginBottom: 8 }}>Aba NF-e Compras (CNPJ)</div>
+                      <div style={{ marginBottom: 10, padding: 8, borderRadius: 8, background: '#fff6e8', border: '1px solid #ead2a4', color: '#7b5a24', fontSize: 12 }}>
+                        Obrigatórios: CFOP, natureza da operação, CNPJ/IE de emitente e destinatário.
+                        Com frete: incluir transportadora, CNPJ, placa e UF do veículo.
+                      </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
                         <input value={recebimentoManual.nfeCnpj.emitenteCnpj} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, emitenteCnpj: event.target.value } }))} placeholder="Emitente CNPJ" style={inputStyle} />
                         <input value={recebimentoManual.nfeCnpj.emitenteIe} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, emitenteIe: event.target.value } }))} placeholder="Emitente IE" style={inputStyle} />
