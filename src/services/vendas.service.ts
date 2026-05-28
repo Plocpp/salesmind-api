@@ -110,6 +110,11 @@ const fecharCaixaSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const atualizarStatusVendaSchema = z.object({
+  acao: z.enum(['CANCELAR', 'ESTORNAR']),
+  motivo: z.string().trim().min(3).max(240).optional(),
+});
+
 const listaPrecoSchema = z.object({
   nome: z.string().min(1),
   tipo: z.enum(['VAREJO', 'ATACADO', 'MARKETPLACE', 'DISTRIBUIDOR', 'PROMOCIONAL', 'CLIENTE']).default('VAREJO'),
@@ -1202,6 +1207,73 @@ export class VendasService {
     };
   }
 
+  async painelComissionamento(periodoDias = 30) {
+    const inicio = new Date();
+    inicio.setDate(inicio.getDate() - periodoDias);
+
+    const [agregado, porUsuario] = await Promise.all([
+      prisma.venda.aggregate({
+        where: {
+          data: { gte: inicio },
+          status: { notIn: ['CANCELADO', 'ESTORNADO'] as any },
+        },
+        _sum: { comissao: true, total: true },
+        _count: { _all: true },
+      }),
+      prisma.venda.groupBy({
+        by: ['usuarioId'],
+        where: {
+          data: { gte: inicio },
+          status: { notIn: ['CANCELADO', 'ESTORNADO'] as any },
+        },
+        _sum: { comissao: true, total: true },
+        _count: { _all: true },
+        orderBy: { _sum: { comissao: 'desc' } },
+        take: 10,
+      }),
+    ]);
+
+    const usuarioIds = porUsuario.map((item) => item.usuarioId);
+    const usuarios = usuarioIds.length > 0
+      ? await prisma.usuario.findMany({ where: { id: { in: usuarioIds } }, select: { id: true, nome: true, email: true } })
+      : [];
+    const usuariosPorId = new Map(usuarios.map((usuario) => [usuario.id, usuario]));
+
+    return {
+      periodoDias,
+      totalComissao: Number(agregado._sum.comissao || 0),
+      totalVendido: Number(agregado._sum.total || 0),
+      quantidadeVendas: Number(agregado._count._all || 0),
+      comissaoMediaPorVenda: Number(agregado._count._all || 0) > 0
+        ? Number((Number(agregado._sum.comissao || 0) / Number(agregado._count._all || 1)).toFixed(2))
+        : 0,
+      porVendedor: porUsuario.map((item) => ({
+        usuarioId: item.usuarioId,
+        nome: usuariosPorId.get(item.usuarioId)?.nome || 'Usuario sem cadastro',
+        email: usuariosPorId.get(item.usuarioId)?.email || null,
+        quantidadeVendas: Number(item._count._all || 0),
+        totalVendido: Number(item._sum.total || 0),
+        totalComissao: Number(item._sum.comissao || 0),
+      })),
+    };
+  }
+
+  async painelInteligencia(periodoDias = 30) {
+    const [dashboard, demonstrativo, ranking] = await Promise.all([
+      this.dashboardVendas(),
+      this.modeloDemonstrativo(periodoDias),
+      this.rankingClientes(),
+    ]);
+
+    return {
+      periodoDias,
+      dashboard,
+      demonstrativo,
+      rankingTopClientes: ranking.slice(0, 10),
+      geradoEm: new Date().toISOString(),
+    };
+  }
+
   private mapOrigemFinanceira(origem: string) {
     const map: Record<string, string> = {
       MERCADO_LIVRE: 'MERCADO_LIVRE',
@@ -1489,6 +1561,81 @@ export class VendasService {
       valor: data.valor,
       vendaId,
       statusAtualizado: totalPago >= venda.total,
+    };
+  }
+
+  async atualizarStatusVenda(vendaId: string, usuarioId: string, data: unknown) {
+    const payload = atualizarStatusVendaSchema.parse(data || {});
+
+    const venda = await prisma.venda.findUnique({
+      where: { id: vendaId },
+      include: { cliente: true },
+    });
+
+    if (!venda) throw new Error('Venda nao encontrada.');
+
+    const statusAtual = String(venda.status || '').toUpperCase();
+    if (['CANCELADO', 'ESTORNADO'].includes(statusAtual)) {
+      throw new Error(`Venda ja esta ${statusAtual.toLowerCase()}.`);
+    }
+
+    const novoStatus = payload.acao === 'ESTORNAR' ? 'ESTORNADO' : 'CANCELADO';
+    const descricaoPadrao = payload.acao === 'ESTORNAR'
+      ? `Estorno de venda - ${venda.cliente?.nome || 'Cliente'}`
+      : `Cancelamento de venda - ${venda.cliente?.nome || 'Cliente'}`;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.venda.update({
+        where: { id: vendaId },
+        data: {
+          status: novoStatus as any,
+          timeline: {
+            create: {
+              status: novoStatus,
+              titulo: payload.acao === 'ESTORNAR' ? 'Venda estornada' : 'Venda cancelada',
+              detalhe: payload.motivo || `${payload.acao === 'ESTORNAR' ? 'Estorno' : 'Cancelamento'} operacional registrado.`,
+              metadata: {
+                acao: payload.acao,
+                motivo: payload.motivo || null,
+                processadoPor: usuarioId,
+              },
+            },
+          },
+        },
+      });
+
+      try {
+        await (tx as any).lancamentoFinanceiro.create({
+          data: {
+            descricao: descricaoPadrao,
+            tipo: 'DESPESA',
+            status: 'CANCELADO',
+            valorBruto: -Number(venda.total || 0),
+            valorLiquido: -Number(venda.total || 0),
+            valorPago: -Number(venda.total || 0),
+            competencia: new Date(),
+            vencimento: new Date(),
+            pagamento: new Date(),
+            origem: payload.acao === 'ESTORNAR' ? 'ESTORNO' : 'CANCELAMENTO',
+            origemReferencia: venda.id,
+            vendaId: venda.id,
+            clienteId: venda.clienteId || undefined,
+            usuarioId,
+            metadata: {
+              motivo: payload.motivo || null,
+              acao: payload.acao,
+            },
+          },
+        });
+      } catch {
+        // Lancamento financeiro pode nao existir em alguns ambientes legados.
+      }
+    });
+
+    return {
+      message: payload.acao === 'ESTORNAR' ? 'Venda estornada com sucesso.' : 'Venda cancelada com sucesso.',
+      vendaId,
+      status: novoStatus,
     };
   }
 

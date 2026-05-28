@@ -51,9 +51,29 @@ export class VendasController {
     return res.json(vendas);
   }
 
+  async atualizarStatusVenda(req: AuthRequest, res: Response) {
+    const userId = requireUser(req);
+    const resultado = await vendasService.atualizarStatusVenda(getParam(req.params.id), userId, req.body);
+    return res.json(resultado);
+  }
+
   async dashboardVendas(req: AuthRequest, res: Response) {
     const dashboard = await vendasService.dashboardVendas();
     return res.json(dashboard);
+  }
+
+  async painelComissionamento(req: AuthRequest, res: Response) {
+    requireUser(req);
+    const periodoDias = req.query.periodoDias ? Number(req.query.periodoDias) : 30;
+    const painel = await vendasService.painelComissionamento(periodoDias);
+    return res.json(painel);
+  }
+
+  async painelInteligencia(req: AuthRequest, res: Response) {
+    requireUser(req);
+    const periodoDias = req.query.periodoDias ? Number(req.query.periodoDias) : 30;
+    const painel = await vendasService.painelInteligencia(periodoDias);
+    return res.json(painel);
   }
 
   async abrirCaixa(req: AuthRequest, res: Response) {

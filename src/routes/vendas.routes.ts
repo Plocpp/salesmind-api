@@ -14,7 +14,10 @@ router.get('/produtos/buscar', authMiddleware, vendasController.buscarProduto);
 
 router.post('/vendas', authMiddleware, vendasController.criarVenda);
 router.get('/vendas', authMiddleware, vendasController.listarVendas);
+router.post('/vendas/:id/status', authMiddleware, vendasController.atualizarStatusVenda);
 router.get('/dashboard', authMiddleware, vendasController.dashboardVendas);
+router.get('/comissionamento/painel', authMiddleware, vendasController.painelComissionamento);
+router.get('/inteligencia/painel', authMiddleware, vendasController.painelInteligencia);
 
 router.post('/caixas', authMiddleware, vendasController.abrirCaixa);
 router.get('/caixas', authMiddleware, vendasController.listarCaixas);
