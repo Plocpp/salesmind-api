@@ -150,6 +150,31 @@ const envioManualSchema = z.object({
   }).optional(),
 });
 
+const atualizarLancamentosDocumentoSchema = z.object({
+  origemReferencia: z.string().min(1),
+  parcelas: z.array(z.object({
+    lancamentoId: z.string().optional(),
+    valorLiquido: z.number().positive(),
+    vencimento: z.coerce.date(),
+    observacoes: z.string().optional(),
+    boleto: z.object({
+      linhaDigitavel: z.string().optional(),
+      codigoBarras: z.string().optional(),
+      nossoNumero: z.string().optional(),
+      banco: z.string().optional(),
+      urlPdf: z.string().url().optional(),
+    }).optional(),
+  })).min(1),
+});
+
+const envioManualLoteSchema = z.object({
+  origemReferencia: z.string().min(1),
+  canal: z.enum(["EMAIL", "WHATSAPP", "SMS", "LINK", "MANUAL"]).default("MANUAL"),
+  destinatario: z.string().min(1),
+  mensagem: z.string().optional(),
+  assunto: z.string().optional(),
+});
+
 export class FinanceiroService {
   async criarLancamento(data: unknown, usuarioId?: string) {
     const lancamento = lancamentoSchema.parse(data);
@@ -310,6 +335,123 @@ export class FinanceiroService {
         message: "Cobranca/documento enviado manualmente com sucesso.",
         lancamentoId: id,
         envio: registroEnvio,
+      };
+    });
+  }
+
+  async atualizarLancamentosPorDocumento(data: unknown, usuarioId?: string) {
+    const payload = atualizarLancamentosDocumentoSchema.parse(data);
+
+    return prisma.$transaction(async (tx: any) => {
+      const lancamentos = await tx.lancamentoFinanceiro.findMany({
+        where: {
+          origemReferencia: payload.origemReferencia,
+          status: { not: "CANCELADO" },
+        },
+        orderBy: { vencimento: "asc" },
+      });
+
+      if (lancamentos.length === 0) {
+        throw new Error("Nenhum lancamento encontrado para a origemReferencia informada");
+      }
+
+      const lancamentosPorId = new Map(lancamentos.map((item: any) => [item.id, item]));
+      const atualizados: any[] = [];
+
+      for (let index = 0; index < payload.parcelas.length; index += 1) {
+        const parcela = payload.parcelas[index];
+        const lancamento = parcela.lancamentoId
+          ? lancamentosPorId.get(parcela.lancamentoId)
+          : lancamentos[index];
+
+        if (!lancamento) {
+          throw new Error(`Lancamento nao encontrado para parcela ${index + 1}`);
+        }
+
+        const metadataAtual = (lancamento.metadata && typeof lancamento.metadata === "object" && !Array.isArray(lancamento.metadata))
+          ? lancamento.metadata
+          : {};
+
+        const atualizado = await tx.lancamentoFinanceiro.update({
+          where: { id: lancamento.id },
+          data: {
+            valorBruto: parcela.valorLiquido,
+            valorLiquido: parcela.valorLiquido,
+            vencimento: parcela.vencimento,
+            ...(parcela.observacoes ? { observacoes: parcela.observacoes } : {}),
+            metadata: {
+              ...(metadataAtual as any),
+              boleto: parcela.boleto || (metadataAtual as any).boleto || null,
+              atualizadoPorDocumentoFiscalEm: new Date().toISOString(),
+            },
+          },
+        });
+
+        await this.auditar(tx, "LancamentoFinanceiro", lancamento.id, "EDICAO", usuarioId, lancamento, atualizado, lancamento.id);
+        atualizados.push(atualizado);
+      }
+
+      return {
+        message: "Parcelas e vencimentos atualizados com sucesso para o documento fiscal.",
+        origemReferencia: payload.origemReferencia,
+        totalAtualizados: atualizados.length,
+        lancamentos: atualizados,
+      };
+    });
+  }
+
+  async enviarCobrancaManualPorDocumento(data: unknown, usuarioId?: string) {
+    const payload = envioManualLoteSchema.parse(data);
+
+    return prisma.$transaction(async (tx: any) => {
+      const lancamentos = await tx.lancamentoFinanceiro.findMany({
+        where: {
+          origemReferencia: payload.origemReferencia,
+          status: { in: ["PENDENTE", "PARCIAL", "VENCIDO"] },
+        },
+      });
+
+      if (lancamentos.length === 0) {
+        throw new Error("Nenhum lancamento pendente encontrado para o documento fiscal informado");
+      }
+
+      const enviados: any[] = [];
+      for (const lancamento of lancamentos) {
+        const metadataAtual = (lancamento.metadata && typeof lancamento.metadata === "object" && !Array.isArray(lancamento.metadata))
+          ? lancamento.metadata
+          : {};
+        const historico = Array.isArray((metadataAtual as any).enviosManuais)
+          ? (metadataAtual as any).enviosManuais
+          : [];
+
+        const envio = {
+          canal: payload.canal,
+          destinatario: payload.destinatario,
+          assunto: payload.assunto || null,
+          mensagem: payload.mensagem || null,
+          enviadoEm: new Date().toISOString(),
+          enviadoPor: usuarioId || null,
+        };
+
+        const atualizado = await tx.lancamentoFinanceiro.update({
+          where: { id: lancamento.id },
+          data: {
+            metadata: {
+              ...(metadataAtual as any),
+              enviosManuais: [...historico, envio],
+            },
+          },
+        });
+
+        await this.auditar(tx, "LancamentoFinanceiro", lancamento.id, "ENVIO_MANUAL", usuarioId, lancamento, atualizado, lancamento.id);
+        enviados.push({ lancamentoId: lancamento.id, envio });
+      }
+
+      return {
+        message: "Cobrancas enviadas manualmente para todas as parcelas pendentes do documento fiscal.",
+        origemReferencia: payload.origemReferencia,
+        totalEnviados: enviados.length,
+        envios: enviados,
       };
     });
   }

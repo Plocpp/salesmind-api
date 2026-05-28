@@ -98,6 +98,17 @@ class EstoqueController {
     return res.status(201).json(recebimento);
   };
 
+  listarNotasFiscaisCompra = async (req: AuthRequest, res: Response) => {
+    requireUser(req);
+    const notas = await estoqueService.listarNotasFiscaisCompra({
+      inicio: this.asString(req.query.inicio),
+      fim: this.asString(req.query.fim),
+      fornecedorId: this.asString(req.query.fornecedorId),
+      statusPedido: this.asString(req.query.statusPedido),
+    });
+    return res.json(notas);
+  };
+
   abrirInventario = async (req: AuthRequest, res: Response) => {
     const usuarioId = requireUser(req);
     const inventario = await estoqueService.abrirInventario(req.body, usuarioId);

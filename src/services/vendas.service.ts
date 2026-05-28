@@ -1664,6 +1664,82 @@ export class VendasService {
     return this.emitirDocumentoFiscalVenda(vendaId, usuarioId, data, '55');
   }
 
+  async listarDocumentosFiscaisVenda(filtros: { modelo?: '55' | '65'; status?: string; inicio?: string; fim?: string; clienteId?: string } = {}) {
+    const vendas = await prisma.venda.findMany({
+      where: {
+        ...(filtros.clienteId ? { clienteId: filtros.clienteId } : {}),
+        ...((filtros.inicio || filtros.fim)
+          ? {
+              data: {
+                ...(filtros.inicio ? { gte: new Date(filtros.inicio) } : {}),
+                ...(filtros.fim ? { lte: new Date(filtros.fim) } : {}),
+              },
+            }
+          : {}),
+      },
+      include: {
+        cliente: true,
+      },
+      orderBy: { data: 'desc' },
+    });
+
+    const documentos = vendas.flatMap((venda) => {
+      const metadata = (venda.metadata && typeof venda.metadata === 'object' && !Array.isArray(venda.metadata))
+        ? venda.metadata as Record<string, any>
+        : {};
+
+      const candidatos = [
+        metadata.nfe ? { modelo: '55', documento: metadata.nfe } : null,
+        metadata.nfce ? { modelo: '65', documento: metadata.nfce } : null,
+      ].filter(Boolean) as Array<{ modelo: '55' | '65'; documento: any }>;
+
+      return candidatos.map((item) => ({
+        vendaId: venda.id,
+        numeroVenda: venda.numero,
+        clienteId: venda.clienteId,
+        cliente: venda.cliente?.nome || null,
+        modelo: item.modelo,
+        numero: String(item.documento?.numero || ''),
+        serie: String(item.documento?.serie || ''),
+        chaveAcesso: item.documento?.chaveAcesso || null,
+        status: String(item.documento?.status || 'DESCONHECIDO'),
+        ambiente: item.documento?.ambiente || null,
+        emitidaEm: item.documento?.emitidaEm || null,
+        valorTotal: Number(item.documento?.valorTotal || venda.total || 0),
+        origemReferenciaFinanceira: `DOCFISCAL:${venda.id}`,
+        documentoFiscal: item.documento,
+      }));
+    });
+
+    const filtrados = documentos.filter((documento) => {
+      if (filtros.modelo && documento.modelo !== filtros.modelo) return false;
+      if (filtros.status && String(documento.status).toUpperCase() !== String(filtros.status).toUpperCase()) return false;
+      return true;
+    });
+
+    const origens = Array.from(new Set(filtrados.map((item) => item.origemReferenciaFinanceira)));
+    const lancamentos = origens.length > 0
+      ? await (prisma as any).lancamentoFinanceiro.findMany({
+          where: {
+            origemReferencia: { in: origens },
+          },
+          orderBy: [{ vencimento: 'asc' }, { createdAt: 'asc' }],
+        })
+      : [];
+
+    const lancamentosPorOrigem = lancamentos.reduce<Record<string, any[]>>((acc, lancamento) => {
+      const chave = String(lancamento.origemReferencia || '');
+      if (!acc[chave]) acc[chave] = [];
+      acc[chave].push(lancamento);
+      return acc;
+    }, {});
+
+    return filtrados.map((documento) => ({
+      ...documento,
+      lancamentosFinanceiros: lancamentosPorOrigem[documento.origemReferenciaFinanceira] || [],
+    }));
+  }
+
   async renovarPacote(id: string, usuarioId: string) {
     const venda = await prisma.venda.findUnique({ 
       where: { id },

@@ -71,6 +71,18 @@ class FinanceiroController {
     return res.json(resultado);
   };
 
+  atualizarLancamentosPorDocumento = async (req: AuthRequest, res: Response) => {
+    const usuarioId = requireUser(req);
+    const resultado = await financeiroService.atualizarLancamentosPorDocumento(req.body, usuarioId);
+    return res.json(resultado);
+  };
+
+  enviarCobrancaManualPorDocumento = async (req: AuthRequest, res: Response) => {
+    const usuarioId = requireUser(req);
+    const resultado = await financeiroService.enviarCobrancaManualPorDocumento(req.body, usuarioId);
+    return res.json(resultado);
+  };
+
   criarConta = async (req: AuthRequest, res: Response) => {
     requireUser(req);
     const conta = await financeiroService.criarConta(req.body);

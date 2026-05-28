@@ -467,6 +467,72 @@ export class EstoqueService {
     });
   }
 
+  async listarNotasFiscaisCompra(filtros: { inicio?: string; fim?: string; fornecedorId?: string; statusPedido?: string } = {}) {
+    const pedidos = await prisma.pedidoCompra.findMany({
+      where: {
+        ...(filtros.fornecedorId ? { fornecedorId: filtros.fornecedorId } : {}),
+        ...(filtros.statusPedido ? { status: filtros.statusPedido as any } : {}),
+      },
+      include: {
+        fornecedor: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const documentos = pedidos.flatMap((pedido: any) => {
+      const metadata = (pedido.metadata && typeof pedido.metadata === "object" && !Array.isArray(pedido.metadata))
+        ? pedido.metadata
+        : {};
+      const notas = Array.isArray((metadata as any).notasEntrada) ? (metadata as any).notasEntrada : [];
+
+      return notas.map((nota: any) => ({
+        pedidoCompraId: pedido.id,
+        numeroPedido: pedido.numero,
+        fornecedorId: pedido.fornecedorId,
+        fornecedor: pedido.fornecedor?.nome || null,
+        numero: String(nota.numero || ""),
+        serie: String(nota.serie || ""),
+        chaveAcesso: nota.chaveAcesso || null,
+        dataEmissao: nota.dataEmissao || null,
+        dataEntrada: nota.dataEntrada || null,
+        valorTotal: Number(nota.valorTotal || 0),
+        valorFrete: Number(nota.valorFrete || 0),
+        valorImpostos: Number(nota.valorImpostos || 0),
+        statusPedido: pedido.status,
+        origemReferenciaFinanceira: `NFE_ENTRADA:${pedido.id}:${nota.numero}`,
+        notaFiscal: nota,
+      }));
+    });
+
+    const filtrados = documentos.filter((documento) => {
+      if (filtros.inicio && documento.dataEntrada && new Date(documento.dataEntrada) < new Date(filtros.inicio)) return false;
+      if (filtros.fim && documento.dataEntrada && new Date(documento.dataEntrada) > new Date(filtros.fim)) return false;
+      return true;
+    });
+
+    const origens = Array.from(new Set(filtrados.map((item) => item.origemReferenciaFinanceira)));
+    const lancamentos = origens.length > 0
+      ? await (prisma as any).lancamentoFinanceiro.findMany({
+          where: {
+            origemReferencia: { in: origens },
+          },
+          orderBy: [{ vencimento: "asc" }, { createdAt: "asc" }],
+        })
+      : [];
+
+    const lancamentosPorOrigem = lancamentos.reduce<Record<string, any[]>>((acc, lancamento) => {
+      const chave = String(lancamento.origemReferencia || "");
+      if (!acc[chave]) acc[chave] = [];
+      acc[chave].push(lancamento);
+      return acc;
+    }, {});
+
+    return filtrados.map((documento) => ({
+      ...documento,
+      lancamentosFinanceiros: lancamentosPorOrigem[documento.origemReferenciaFinanceira] || [],
+    }));
+  }
+
   async abrirInventario(data: unknown, usuarioId?: string) {
     const inventario = inventarioSchema.parse(data);
 

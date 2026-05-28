@@ -214,6 +214,18 @@ export class VendasController {
     return res.json(resultado);
   }
 
+  async listarDocumentosFiscais(req: AuthRequest, res: Response) {
+    requireUser(req);
+    const documentos = await vendasService.listarDocumentosFiscaisVenda({
+      modelo: req.query.modelo as '55' | '65' | undefined,
+      status: req.query.status as string | undefined,
+      inicio: req.query.inicio as string | undefined,
+      fim: req.query.fim as string | undefined,
+      clienteId: req.query.clienteId as string | undefined,
+    });
+    return res.json(documentos);
+  }
+
   async renovarPacote(req: AuthRequest, res: Response) {
     const userId = requireUser(req);
     const resultado = await vendasService.renovarPacote(getParam(req.params.id), userId);

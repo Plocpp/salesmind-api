@@ -11,6 +11,8 @@ router.get("/lancamentos", financeiroController.listarLancamentos);
 router.post("/lancamentos/:id/baixa", financeiroController.baixarLancamento);
 router.patch("/lancamentos/:id", financeiroController.atualizarLancamento);
 router.post("/lancamentos/:id/enviar-manual", financeiroController.enviarCobrancaManual);
+router.patch("/documentos/lancamentos", financeiroController.atualizarLancamentosPorDocumento);
+router.post("/documentos/enviar-manual", financeiroController.enviarCobrancaManualPorDocumento);
 
 router.post("/contas", financeiroController.criarConta);
 router.get("/contas", financeiroController.listarContas);

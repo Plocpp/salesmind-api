@@ -41,6 +41,7 @@ router.put('/formas-recebimento/:id', authMiddleware, vendasController.atualizar
 router.post('/recebimentos/:id/pagamento', authMiddleware, vendasController.registrarPagamento);
 router.post('/vendas/:id/emitir-nfce', authMiddleware, vendasController.emitirNfce);
 router.post('/vendas/:id/emitir-nfe', authMiddleware, vendasController.emitirNfe);
+router.get('/documentos-fiscais', authMiddleware, vendasController.listarDocumentosFiscais);
 router.post('/pacotes/:id/renovar', authMiddleware, vendasController.renovarPacote);
 router.post('/pacotes/:id/cancelar', authMiddleware, vendasController.cancelarPacote);
 router.get('/modelo-demonstrativo', authMiddleware, vendasController.modeloDemonstrativo);
