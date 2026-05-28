@@ -231,6 +231,8 @@ A página `src/frontend/pages/CadastroProdutos.tsx` foi construída para:
 
 - Documentação técnica sênior: `docs/documentacao-senior.md`
 - Boas práticas e convenções: `docs/guia-boas-praticas-senior.md`
+- Versionamento da API (legado x v1): `docs/api-versionamento-v1.md`
+- Arquitetura em blocos reutilizáveis: `docs/arquitetura-blocos-reutilizaveis.md`
 - ADR da hierarquia de usuários: `docs/adr/001-hierarquia-usuarios-permissoes.md`
 - Programa LGPD: `docs/lgpd-programa-adequacao.md`
 - Registro de operações de tratamento (Art. 37): `docs/lgpd-registro-operacoes.md`
