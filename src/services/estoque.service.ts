@@ -1535,7 +1535,27 @@ export class EstoqueService {
 
   private toNumber(value: unknown): number {
     if (value === undefined || value === null || value === "") return 0;
-    const normalized = String(value).replace(/\./g, "").replace(",", ".");
+    const raw = String(value).trim();
+    if (!raw) return 0;
+
+    const commaIndex = raw.lastIndexOf(",");
+    const dotIndex = raw.lastIndexOf(".");
+
+    let normalized = raw;
+    if (commaIndex >= 0 && dotIndex >= 0) {
+      // Se ambos existem, o último separador é o decimal; o outro é milhar.
+      if (commaIndex > dotIndex) {
+        normalized = raw.replace(/\./g, "").replace(/,/g, ".");
+      } else {
+        normalized = raw.replace(/,/g, "");
+      }
+    } else if (commaIndex >= 0) {
+      normalized = raw.replace(/\./g, "").replace(/,/g, ".");
+    } else {
+      normalized = raw;
+    }
+
+    normalized = normalized.replace(/[^0-9.-]/g, "");
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : 0;
   }
