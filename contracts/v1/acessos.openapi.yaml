@@ -1,0 +1,141 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Acessos
+  version: 1.0.0
+  description: Contrato do modulo de acessos, hierarquia e auditoria LGPD.
+servers:
+  - url: /api/v1
+  - url: /
+tags:
+  - name: Acessos
+security:
+  - bearerAuth: []
+paths:
+  /acessos/me:
+    get:
+      tags: [Acessos]
+      summary: Listar acessos do usuario atual
+      responses:
+        '200':
+          description: Acessos atuais
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+  /acessos/hierarquia/perfis:
+    get:
+      tags: [Acessos]
+      summary: Listar perfis de hierarquia
+      responses:
+        '200':
+          description: Perfis
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericArray' }
+  /acessos/hierarquia/funcionarios:
+    get:
+      tags: [Acessos]
+      summary: Listar funcionarios da hierarquia
+      responses:
+        '200':
+          description: Funcionarios
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericArray' }
+    post:
+      tags: [Acessos]
+      summary: Criar funcionario na hierarquia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201':
+          description: Funcionario criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+  /acessos/hierarquia/funcionarios/{userId}/permissoes:
+    put:
+      tags: [Acessos]
+      summary: Atualizar permissoes por funcionario
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200':
+          description: Permissoes atualizadas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+  /acessos:
+    get:
+      tags: [Acessos]
+      summary: Listar acessos
+      responses:
+        '200':
+          description: Lista de acessos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericArray' }
+    post:
+      tags: [Acessos]
+      summary: Criar acesso
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201':
+          description: Acesso criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+  /acessos/{id}/revoke:
+    post:
+      tags: [Acessos]
+      summary: Revogar acesso
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Acesso revogado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+  /acessos/auditoria/lgpd:
+    get:
+      tags: [Acessos]
+      summary: Listar auditoria LGPD
+      responses:
+        '200':
+          description: Auditoria
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericArray' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true
+    GenericArray:
+      type: array
+      items:
+        type: object
+        additionalProperties: true

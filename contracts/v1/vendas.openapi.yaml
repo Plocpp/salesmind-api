@@ -1,0 +1,318 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Vendas
+  version: 1.0.0
+  description: Contrato do modulo de vendas, caixas, orcamentos e fiscal.
+servers:
+  - url: /api/v1
+  - url: /
+tags:
+  - name: Vendas
+security:
+  - bearerAuth: []
+paths:
+  /vendas/clientes:
+    post:
+      tags: [Vendas]
+      summary: Criar cliente para venda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Cliente criado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/clientes/buscar:
+    get:
+      tags: [Vendas]
+      summary: Buscar cliente
+      responses:
+        '200': { description: Resultado da busca, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+  /vendas/clientes/ranking:
+    get:
+      tags: [Vendas]
+      summary: Ranking de clientes
+      responses:
+        '200': { description: Ranking, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+  /vendas/clientes/saldos:
+    get:
+      tags: [Vendas]
+      summary: Saldos de clientes
+      responses:
+        '200': { description: Saldos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+  /vendas/produtos/buscar:
+    get:
+      tags: [Vendas]
+      summary: Buscar produtos para venda
+      responses:
+        '200': { description: Produtos encontrados, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+  /vendas/vendas:
+    get:
+      tags: [Vendas]
+      summary: Listar vendas
+      responses:
+        '200': { description: Vendas, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Vendas]
+      summary: Criar venda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Venda criada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/dashboard:
+    get:
+      tags: [Vendas]
+      summary: Dashboard de vendas
+      responses:
+        '200': { description: Dashboard, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /vendas/caixas:
+    get:
+      tags: [Vendas]
+      summary: Listar caixas
+      responses:
+        '200': { description: Caixas, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Vendas]
+      summary: Abrir caixa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Caixa aberto, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/caixas/movimentos:
+    post:
+      tags: [Vendas]
+      summary: Registrar movimento de caixa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Movimento registrado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/caixas/{id}/resumo:
+    get:
+      tags: [Vendas]
+      summary: Resumo de caixa
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Resumo, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/caixas/{id}/fechar:
+    post:
+      tags: [Vendas]
+      summary: Fechar caixa
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Caixa fechado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/movimentos-caixa:
+    get:
+      tags: [Vendas]
+      summary: Listar movimentos de caixa
+      responses:
+        '200': { description: Movimentos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+
+  /vendas/listas-preco:
+    get:
+      tags: [Vendas]
+      summary: Listar listas de preco
+      responses:
+        '200': { description: Listas, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Vendas]
+      summary: Criar lista de preco
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Lista criada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/listas-preco/{id}:
+    put:
+      tags: [Vendas]
+      summary: Atualizar lista de preco
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Lista atualizada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+    delete:
+      tags: [Vendas]
+      summary: Deletar lista de preco
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Lista deletada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /vendas/orcamentos:
+    get:
+      tags: [Vendas]
+      summary: Listar orcamentos
+      responses:
+        '200': { description: Orcamentos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Vendas]
+      summary: Criar orcamento
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Orcamento criado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/orcamentos/{id}/converter:
+    post:
+      tags: [Vendas]
+      summary: Converter orcamento em venda
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Orcamento convertido, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/orcamentos/{id}/enviar-email:
+    post:
+      tags: [Vendas]
+      summary: Enviar orcamento por email
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Orcamento enviado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/orcamentos/{id}:
+    delete:
+      tags: [Vendas]
+      summary: Deletar orcamento
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Orcamento deletado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /vendas/formas-recebimento:
+    get:
+      tags: [Vendas]
+      summary: Listar formas de recebimento
+      responses:
+        '200': { description: Formas de recebimento, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Vendas]
+      summary: Criar forma de recebimento
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Forma criada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/formas-recebimento/{id}:
+    put:
+      tags: [Vendas]
+      summary: Atualizar forma de recebimento
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Forma atualizada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /vendas/recebimentos/{id}/pagamento:
+    post:
+      tags: [Vendas]
+      summary: Registrar pagamento de recebimento
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Pagamento registrado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /vendas/vendas/{id}/emitir-nfce:
+    post:
+      tags: [Vendas]
+      summary: Emitir NFC-e
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: NFC-e emitida, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/vendas/{id}/emitir-nfe:
+    post:
+      tags: [Vendas]
+      summary: Emitir NF-e
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: NF-e emitida, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/documentos-fiscais:
+    get:
+      tags: [Vendas]
+      summary: Listar documentos fiscais de venda
+      responses:
+        '200': { description: Documentos fiscais, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+
+  /vendas/pacotes/{id}/renovar:
+    post:
+      tags: [Vendas]
+      summary: Renovar pacote
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Pacote renovado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /vendas/pacotes/{id}/cancelar:
+    post:
+      tags: [Vendas]
+      summary: Cancelar pacote
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Pacote cancelado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /vendas/modelo-demonstrativo:
+    get:
+      tags: [Vendas]
+      summary: Obter modelo demonstrativo
+      responses:
+        '200': { description: Modelo demonstrativo, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /vendas/configuracao:
+    get:
+      tags: [Vendas]
+      summary: Obter configuracao de vendas
+      responses:
+        '200': { description: Configuracao, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+    put:
+      tags: [Vendas]
+      summary: Salvar configuracao de vendas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Configuracao salva, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true
+    GenericArray:
+      type: array
+      items:
+        type: object
+        additionalProperties: true

@@ -1,0 +1,98 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Diagnostico
+  version: 1.0.0
+  description: Contrato do modulo de diagnostico e monitoramento.
+servers:
+  - url: /api/v1
+  - url: /
+tags:
+  - name: Diagnostico
+paths:
+  /diagnostico/saude:
+    get:
+      tags: [Diagnostico]
+      summary: Saude geral do sistema
+      security: []
+      responses:
+        '200': { description: Saude do sistema, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /diagnostico/erros:
+    get:
+      tags: [Diagnostico]
+      summary: Listar erros reportados
+      security: []
+      parameters:
+        - in: query
+          name: type
+          schema: { type: string }
+        - in: query
+          name: severity
+          schema: { type: string }
+        - in: query
+          name: resolved
+          schema: { type: boolean }
+      responses:
+        '200': { description: Erros, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /diagnostico/erros/{id}:
+    get:
+      tags: [Diagnostico]
+      summary: Obter detalhe de erro
+      security: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Detalhe do erro, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+        '404': { description: Nao encontrado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /diagnostico/erros/{id}/resolver:
+    post:
+      tags: [Diagnostico]
+      summary: Marcar erro como resolvido
+      security: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Erro resolvido, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /diagnostico/relatorio:
+    get:
+      tags: [Diagnostico]
+      summary: Gerar relatorio de erros
+      security: []
+      responses:
+        '200': { description: Relatorio, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /diagnostico/testar-erro:
+    post:
+      tags: [Diagnostico]
+      summary: Simular erro para testes
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Erro de teste reportado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /diagnostico/migracoes/status:
+    post:
+      tags: [Diagnostico]
+      summary: Verificar status das migracoes
+      security: []
+      responses:
+        '200': { description: Status de migracoes, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /diagnostico/banco/verificar:
+    post:
+      tags: [Diagnostico]
+      summary: Verificar integridade do banco
+      security: []
+      responses:
+        '200': { description: Verificacao do banco, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+components:
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true

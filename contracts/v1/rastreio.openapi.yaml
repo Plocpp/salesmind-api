@@ -1,0 +1,155 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Rastreio
+  version: 1.0.0
+  description: Contrato do modulo de rastreio de transporte.
+servers:
+  - url: /api/v1
+  - url: /
+tags:
+  - name: Rastreio
+paths:
+  /rastreio/publico/sessoes/{sessaoId}:
+    get:
+      tags: [Rastreio]
+      summary: Consultar rastreio publico de sessao
+      security: []
+      parameters:
+        - in: path
+          name: sessaoId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Rastreio publico, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /rastreio/entregadores:
+    get:
+      tags: [Rastreio]
+      summary: Listar entregadores
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Entregadores, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+  /rastreio/dispositivos:
+    get:
+      tags: [Rastreio]
+      summary: Listar dispositivos
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Dispositivos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Rastreio]
+      summary: Criar dispositivo
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Dispositivo criado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /rastreio/dispositivos/{id}/revogar:
+    post:
+      tags: [Rastreio]
+      summary: Revogar dispositivo
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Dispositivo revogado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /rastreio/sessoes/ativas:
+    get:
+      tags: [Rastreio]
+      summary: Listar sessoes ativas
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Sessoes ativas, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+  /rastreio/resumo:
+    get:
+      tags: [Rastreio]
+      summary: Resumo operacional de rastreio
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Resumo operacional, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /rastreio/entregadores/{entregadorId}/ultima-posicao:
+    get:
+      tags: [Rastreio]
+      summary: Obter ultima posicao de entregador
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: entregadorId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Ultima posicao, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /rastreio/sessoes/{sessaoId}/pontos:
+    get:
+      tags: [Rastreio]
+      summary: Listar pontos da sessao
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: sessaoId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Pontos da sessao, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+
+  /rastreio/mobile/sessoes/iniciar:
+    post:
+      tags: [Rastreio]
+      summary: Iniciar sessao mobile
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Sessao iniciada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /rastreio/mobile/sessoes/{sessaoId}/pontos:
+    post:
+      tags: [Rastreio]
+      summary: Registrar ponto mobile
+      security: []
+      parameters:
+        - in: path
+          name: sessaoId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Ponto registrado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /rastreio/mobile/sessoes/{sessaoId}/finalizar:
+    post:
+      tags: [Rastreio]
+      summary: Finalizar sessao mobile
+      security: []
+      parameters:
+        - in: path
+          name: sessaoId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Sessao finalizada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true
+    GenericArray:
+      type: array
+      items:
+        type: object
+        additionalProperties: true

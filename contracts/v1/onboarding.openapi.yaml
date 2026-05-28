@@ -1,0 +1,186 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Onboarding
+  version: 1.0.0
+  description: Contrato do onboarding de pagamento, ativacao e suporte.
+servers:
+  - url: /api/v1
+  - url: /
+tags:
+  - name: Onboarding
+paths:
+  /onboarding/planos:
+    get:
+      tags: [Onboarding]
+      summary: Listar planos
+      security: []
+      responses:
+        '200': { description: Planos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+  /onboarding/preferencias:
+    get:
+      tags: [Onboarding]
+      summary: Obter preferencias
+      security: []
+      responses:
+        '200': { description: Preferencias, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/cadastro:
+    post:
+      tags: [Onboarding]
+      summary: Iniciar cadastro
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Cadastro iniciado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/status/{id}:
+    get:
+      tags: [Onboarding]
+      summary: Consultar status de cadastro
+      security: []
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Status, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/mock-checkout/{id}:
+    get:
+      tags: [Onboarding]
+      summary: Simular checkout
+      security: []
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Checkout simulado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/webhooks/pagamento:
+    post:
+      tags: [Onboarding]
+      summary: Webhook de pagamento
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Webhook processado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/email/teste:
+    post:
+      tags: [Onboarding]
+      summary: Teste de email
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Teste executado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/ativacao/enviar:
+    post:
+      tags: [Onboarding]
+      summary: Enviar codigo de ativacao
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Codigo enviado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/ativacao/confirmar:
+    post:
+      tags: [Onboarding]
+      summary: Confirmar codigo de ativacao
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Ativacao confirmada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/senha/solicitar-reset:
+    post:
+      tags: [Onboarding]
+      summary: Solicitar reset de senha
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Solicitacao registrada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/senha/confirmar-reset:
+    post:
+      tags: [Onboarding]
+      summary: Confirmar reset de senha
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Senha redefinida, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/suporte/assinaturas:
+    get:
+      tags: [Onboarding]
+      summary: Listar assinaturas para suporte
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Assinaturas, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+  /onboarding/suporte/assinaturas/{assinaturaId}:
+    put:
+      tags: [Onboarding]
+      summary: Editar assinatura
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: assinaturaId, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Assinatura editada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/suporte/assinaturas/{assinaturaId}/meio-pagamento:
+    put:
+      tags: [Onboarding]
+      summary: Editar meio de pagamento
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: assinaturaId, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Meio de pagamento atualizado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /onboarding/suporte/clientes/{usuarioId}/login:
+    put:
+      tags: [Onboarding]
+      summary: Editar login do cliente
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: usuarioId, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Login atualizado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true
+    GenericArray:
+      type: array
+      items:
+        type: object
+        additionalProperties: true

@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Estoque
+  version: 1.0.0
+  description: Contrato do modulo de estoque, compras e inventarios.
+servers:
+  - url: /api/v1
+  - url: /
+tags:
+  - name: Estoque
+security:
+  - bearerAuth: []
+paths:
+  /estoque/grupos:
+    get:
+      tags: [Estoque]
+      summary: Listar grupos
+      responses:
+        '200': { description: Grupos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Estoque]
+      summary: Criar grupo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Grupo criado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/depositos:
+    get:
+      tags: [Estoque]
+      summary: Listar depositos
+      responses:
+        '200': { description: Depositos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Estoque]
+      summary: Criar deposito
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Deposito criado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/movimentacoes:
+    post:
+      tags: [Estoque]
+      summary: Registrar movimentacao de estoque
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Movimentacao registrada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/reservas:
+    post:
+      tags: [Estoque]
+      summary: Reservar estoque
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Reserva criada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/reservas/liberar:
+    post:
+      tags: [Estoque]
+      summary: Liberar reserva de estoque
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Reserva liberada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/saldos:
+    get:
+      tags: [Estoque]
+      summary: Listar saldos
+      responses:
+        '200': { description: Saldos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+  /estoque/analise:
+    get:
+      tags: [Estoque]
+      summary: Analise de estoque
+      responses:
+        '200': { description: Analise, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/compras/pedidos:
+    get:
+      tags: [Estoque]
+      summary: Listar pedidos de compra
+      responses:
+        '200': { description: Pedidos de compra, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Estoque]
+      summary: Criar pedido de compra
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Pedido criado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/compras/notas-fiscais/recebimento:
+    post:
+      tags: [Estoque]
+      summary: Receber nota fiscal de compra
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Nota recebida, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/compras/notas-fiscais:
+    get:
+      tags: [Estoque]
+      summary: Listar notas fiscais de compra
+      responses:
+        '200': { description: Notas fiscais de compra, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+  /estoque/inventarios:
+    post:
+      tags: [Estoque]
+      summary: Abrir inventario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Inventario aberto, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true
+    GenericArray:
+      type: array
+      items:
+        type: object
+        additionalProperties: true

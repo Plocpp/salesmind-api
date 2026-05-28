@@ -1,0 +1,110 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Produtos
+  version: 1.0.0
+  description: Contrato do modulo de produtos.
+servers:
+  - url: /api/v1
+  - url: /
+tags:
+  - name: Produtos
+security:
+  - bearerAuth: []
+paths:
+  /produtos:
+    get:
+      tags: [Produtos]
+      summary: Listar produtos
+      responses:
+        '200':
+          description: Produtos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericArray' }
+    post:
+      tags: [Produtos]
+      summary: Criar produto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201':
+          description: Produto criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+  /produtos/admin/dashboard:
+    get:
+      tags: [Produtos]
+      summary: Dashboard administrativo de produtos
+      responses:
+        '200':
+          description: Dashboard
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+  /produtos/{id}:
+    get:
+      tags: [Produtos]
+      summary: Buscar produto por id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Produto
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+    put:
+      tags: [Produtos]
+      summary: Atualizar produto
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200':
+          description: Produto atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+    delete:
+      tags: [Produtos]
+      summary: Deletar produto
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Produto deletado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true
+    GenericArray:
+      type: array
+      items:
+        type: object
+        additionalProperties: true

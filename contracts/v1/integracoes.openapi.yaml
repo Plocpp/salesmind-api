@@ -1,0 +1,111 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Integracoes
+  version: 1.0.0
+  description: Contrato do modulo de integracoes e callbacks OAuth.
+servers:
+  - url: /api/v1
+  - url: /
+tags:
+  - name: Integracoes
+paths:
+  /integracoes/callback/{providerId}:
+    get:
+      tags: [Integracoes]
+      summary: Callback OAuth do provider
+      security: []
+      parameters:
+        - in: path
+          name: providerId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: code
+          schema: { type: string }
+        - in: query
+          name: state
+          schema: { type: string }
+        - in: query
+          name: error
+          schema: { type: string }
+        - in: query
+          name: error_description
+          schema: { type: string }
+        - in: query
+          name: mode
+          schema: { type: string }
+      responses:
+        '200':
+          description: Callback processado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+  /integracoes/status:
+    get:
+      tags: [Integracoes]
+      summary: Status das integracoes
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Status, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /integracoes/providers:
+    get:
+      tags: [Integracoes]
+      summary: Listar providers
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: segment
+          schema: { type: string }
+      responses:
+        '200': { description: Providers, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /integracoes/providers/{providerId}/connect-url:
+    get:
+      tags: [Integracoes]
+      summary: Gerar connect URL
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: providerId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: shopDomain
+          schema: { type: string }
+      responses:
+        '200': { description: URL gerada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /integracoes/providers/{providerId}/test:
+    post:
+      tags: [Integracoes]
+      summary: Testar acesso do provider
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: providerId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Resultado do teste, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /integracoes/accounts:
+    get:
+      tags: [Integracoes]
+      summary: Listar contas integradas
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Contas, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /integracoes/webhooks/templates:
+    get:
+      tags: [Integracoes]
+      summary: Obter templates de webhook
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Templates, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true

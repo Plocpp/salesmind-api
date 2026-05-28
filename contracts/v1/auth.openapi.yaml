@@ -1,0 +1,155 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Auth
+  version: 1.0.0
+  description: Contrato do modulo de autenticacao e perfil.
+servers:
+  - url: /api/v1
+  - url: /
+tags:
+  - name: Auth
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Registrar usuario
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Usuario criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Tokens e dados do usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Novo access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Dados do usuario autenticado
+      responses:
+        '200':
+          description: Perfil do usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+    put:
+      tags: [Auth]
+      summary: Atualizar perfil do usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nome: { type: string }
+                email: { type: string, format: email }
+      responses:
+        '200':
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+  /auth/change-password:
+    put:
+      tags: [Auth]
+      summary: Alterar senha
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [senhaAtual, novaSenha]
+              properties:
+                senhaAtual: { type: string }
+                novaSenha: { type: string }
+      responses:
+        '200':
+          description: Senha alterada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout
+      responses:
+        '200':
+          description: Sessao encerrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [nome, email, senha]
+      properties:
+        nome: { type: string }
+        email: { type: string, format: email }
+        senha: { type: string }
+    LoginRequest:
+      type: object
+      required: [email, senha]
+      properties:
+        email: { type: string, format: email }
+        senha: { type: string }
+    GenericObject:
+      type: object
+      additionalProperties: true

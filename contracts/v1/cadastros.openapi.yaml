@@ -1,0 +1,206 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Cadastros
+  version: 1.0.0
+  description: Contrato do modulo de cadastros (fornecedores, marcas, produtos e clientes).
+servers:
+  - url: /api/v1
+  - url: /
+tags:
+  - name: Cadastros
+security:
+  - bearerAuth: []
+paths:
+  /cadastros/fornecedores:
+    get:
+      tags: [Cadastros]
+      summary: Listar fornecedores
+      responses:
+        '200':
+          description: Fornecedores
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericArray' }
+    post:
+      tags: [Cadastros]
+      summary: Criar fornecedor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201':
+          description: Fornecedor criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+  /cadastros/fornecedores/{id}:
+    get:
+      tags: [Cadastros]
+      summary: Buscar fornecedor por id
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Fornecedor, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+    put:
+      tags: [Cadastros]
+      summary: Atualizar fornecedor
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Fornecedor atualizado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+    delete:
+      tags: [Cadastros]
+      summary: Deletar fornecedor
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Fornecedor deletado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /cadastros/marcas:
+    get:
+      tags: [Cadastros]
+      summary: Listar marcas
+      responses:
+        '200': { description: Marcas, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Cadastros]
+      summary: Criar marca
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Marca criada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /cadastros/marcas/{id}:
+    get:
+      tags: [Cadastros]
+      summary: Buscar marca por id
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Marca, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+    put:
+      tags: [Cadastros]
+      summary: Atualizar marca
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Marca atualizada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+    delete:
+      tags: [Cadastros]
+      summary: Deletar marca
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Marca deletada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /cadastros/produtos:
+    get:
+      tags: [Cadastros]
+      summary: Listar produtos
+      responses:
+        '200': { description: Produtos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Cadastros]
+      summary: Criar produto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Produto criado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /cadastros/produtos/{id}:
+    get:
+      tags: [Cadastros]
+      summary: Buscar produto por id
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Produto, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+    put:
+      tags: [Cadastros]
+      summary: Atualizar produto
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Produto atualizado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+    delete:
+      tags: [Cadastros]
+      summary: Deletar produto
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Produto deletado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /cadastros/clientes:
+    get:
+      tags: [Cadastros]
+      summary: Listar clientes
+      responses:
+        '200': { description: Clientes, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Cadastros]
+      summary: Criar cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Cliente criado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /cadastros/clientes/{id}:
+    get:
+      tags: [Cadastros]
+      summary: Buscar cliente por id
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Cliente, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+    put:
+      tags: [Cadastros]
+      summary: Atualizar cliente
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Cliente atualizado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+    delete:
+      tags: [Cadastros]
+      summary: Deletar cliente
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Cliente deletado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+
+  /cadastros/dashboard/fornecedores:
+    get:
+      tags: [Cadastros]
+      summary: Dashboard de fornecedores
+      responses:
+        '200': { description: Dashboard, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true
+    GenericArray:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
