@@ -125,6 +125,31 @@ const conciliacaoSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const atualizarLancamentoSchema = z.object({
+  descricao: z.string().min(1).optional(),
+  status: statusLancamentoSchema.optional(),
+  valorBruto: z.number().positive().optional(),
+  valorLiquido: z.number().positive().optional(),
+  vencimento: z.coerce.date().optional(),
+  pagamento: z.coerce.date().nullable().optional(),
+  observacoes: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const envioManualSchema = z.object({
+  canal: z.enum(["EMAIL", "WHATSAPP", "SMS", "LINK", "MANUAL"]).default("MANUAL"),
+  destinatario: z.string().min(1),
+  mensagem: z.string().optional(),
+  assunto: z.string().optional(),
+  boleto: z.object({
+    linhaDigitavel: z.string().optional(),
+    codigoBarras: z.string().optional(),
+    nossoNumero: z.string().optional(),
+    banco: z.string().optional(),
+    urlPdf: z.string().url().optional(),
+  }).optional(),
+});
+
 export class FinanceiroService {
   async criarLancamento(data: unknown, usuarioId?: string) {
     const lancamento = lancamentoSchema.parse(data);
@@ -204,6 +229,88 @@ export class FinanceiroService {
 
       await this.auditar(tx, "LancamentoFinanceiro", id, "BAIXA", usuarioId, atual, atualizado, id);
       return atualizado;
+    });
+  }
+
+  async atualizarLancamento(id: string, data: unknown, usuarioId?: string) {
+    const payload = atualizarLancamentoSchema.parse(data);
+
+    return prisma.$transaction(async (tx: any) => {
+      const atual = await tx.lancamentoFinanceiro.findUnique({ where: { id } });
+      if (!atual) {
+        throw new Error("Lancamento financeiro nao encontrado");
+      }
+
+      const valorBruto = payload.valorBruto ?? Number(atual.valorBruto || 0);
+      const valorLiquido = payload.valorLiquido ?? Number(atual.valorLiquido || 0);
+
+      const atualizado = await tx.lancamentoFinanceiro.update({
+        where: { id },
+        data: {
+          ...(payload.descricao ? { descricao: payload.descricao } : {}),
+          ...(payload.status ? { status: payload.status } : {}),
+          ...(payload.vencimento ? { vencimento: payload.vencimento } : {}),
+          ...(payload.pagamento !== undefined ? { pagamento: payload.pagamento || null } : {}),
+          ...(payload.observacoes !== undefined ? { observacoes: payload.observacoes } : {}),
+          valorBruto,
+          valorLiquido,
+          metadata: {
+            ...((atual.metadata && typeof atual.metadata === "object" && !Array.isArray(atual.metadata)) ? atual.metadata : {}),
+            ...(payload.metadata || {}),
+            alteradoManualEm: new Date().toISOString(),
+          },
+        },
+      });
+
+      await this.auditar(tx, "LancamentoFinanceiro", id, "EDICAO", usuarioId, atual, atualizado, id);
+      return atualizado;
+    });
+  }
+
+  async enviarCobrancaManual(id: string, data: unknown, usuarioId?: string) {
+    const payload = envioManualSchema.parse(data);
+
+    return prisma.$transaction(async (tx: any) => {
+      const atual = await tx.lancamentoFinanceiro.findUnique({ where: { id } });
+      if (!atual) {
+        throw new Error("Lancamento financeiro nao encontrado");
+      }
+
+      const metadataAtual = (atual.metadata && typeof atual.metadata === "object" && !Array.isArray(atual.metadata))
+        ? atual.metadata
+        : {};
+
+      const historico = Array.isArray((metadataAtual as any).enviosManuais)
+        ? (metadataAtual as any).enviosManuais
+        : [];
+
+      const registroEnvio = {
+        canal: payload.canal,
+        destinatario: payload.destinatario,
+        assunto: payload.assunto || null,
+        mensagem: payload.mensagem || null,
+        boleto: payload.boleto || null,
+        enviadoEm: new Date().toISOString(),
+        enviadoPor: usuarioId || null,
+      };
+
+      const atualizado = await tx.lancamentoFinanceiro.update({
+        where: { id },
+        data: {
+          metadata: {
+            ...(metadataAtual as any),
+            enviosManuais: [...historico, registroEnvio],
+          },
+        },
+      });
+
+      await this.auditar(tx, "LancamentoFinanceiro", id, "ENVIO_MANUAL", usuarioId, atual, atualizado, id);
+
+      return {
+        message: "Cobranca/documento enviado manualmente com sucesso.",
+        lancamentoId: id,
+        envio: registroEnvio,
+      };
     });
   }
 

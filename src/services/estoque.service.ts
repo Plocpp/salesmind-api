@@ -103,6 +103,36 @@ const inventarioSchema = z.object({
   })).default([]),
 });
 
+const recebimentoNfeCompraSchema = z.object({
+  pedidoCompraId: z.string(),
+  numero: z.string().min(1),
+  serie: z.string().default("1"),
+  chaveAcesso: z.string().min(32).max(60),
+  dataEmissao: z.coerce.date(),
+  dataEntrada: z.coerce.date().default(() => new Date()),
+  valorFrete: z.number().nonnegative().default(0),
+  valorImpostos: z.number().nonnegative().default(0),
+  observacoes: z.string().optional(),
+  itens: z.array(z.object({
+    produtoId: z.string(),
+    quantidadeRecebida: z.number().positive(),
+    custoUnitario: z.number().nonnegative().optional(),
+    depositoDestinoId: z.string().optional(),
+  })).min(1),
+  parcelas: z.array(z.object({
+    numeroParcela: z.number().int().positive().optional(),
+    valor: z.number().positive(),
+    vencimento: z.coerce.date(),
+    boleto: z.object({
+      linhaDigitavel: z.string().optional(),
+      codigoBarras: z.string().optional(),
+      nossoNumero: z.string().optional(),
+      banco: z.string().optional(),
+      urlPdf: z.string().url().optional(),
+    }).optional(),
+  })).default([]),
+});
+
 export class EstoqueService {
   async criarGrupo(data: unknown) {
     return prisma.grupoProduto.create({ data: grupoSchema.parse(data) });
@@ -259,6 +289,181 @@ export class EstoqueService {
       where: status ? { status } : {},
       include: { fornecedor: true, itens: { include: { produto: true } } },
       orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async receberNotaFiscalCompra(data: unknown, usuarioId?: string) {
+    const payload = recebimentoNfeCompraSchema.parse(data);
+
+    return prisma.$transaction(async (tx: any) => {
+      const pedido = await tx.pedidoCompra.findUnique({
+        where: { id: payload.pedidoCompraId },
+        include: { itens: true, fornecedor: true },
+      });
+
+      if (!pedido) {
+        throw new Error("Pedido de compra nao encontrado");
+      }
+
+      if (["CANCELADO", "RECEBIDO"].includes(String(pedido.status || ""))) {
+        throw new Error("Pedido de compra nao pode receber nota fiscal neste status");
+      }
+
+      const itensPedidoPorProduto = new Map((pedido.itens || []).map((item: any) => [item.produtoId, item]));
+
+      let valorProdutos = 0;
+      let totalRecebidoNoLote = 0;
+
+      for (const itemRecebido of payload.itens) {
+        const itemPedido = itensPedidoPorProduto.get(itemRecebido.produtoId);
+        if (!itemPedido) {
+          throw new Error(`Produto ${itemRecebido.produtoId} nao pertence ao pedido de compra`);
+        }
+
+        const pendente = Number(itemPedido.quantidade || 0) - Number(itemPedido.quantidadeRecebida || 0);
+        if (itemRecebido.quantidadeRecebida > pendente) {
+          throw new Error(`Quantidade recebida maior que o pendente para o produto ${itemRecebido.produtoId}`);
+        }
+
+        const custoUnitario = itemRecebido.custoUnitario ?? Number(itemPedido.custoUnitario || 0);
+        const valorTotalItem = Number((custoUnitario * itemRecebido.quantidadeRecebida).toFixed(2));
+        valorProdutos += valorTotalItem;
+        totalRecebidoNoLote += itemRecebido.quantidadeRecebida;
+
+        if (itemRecebido.depositoDestinoId) {
+          await this.garantirSaldo(tx, itemRecebido.produtoId, itemRecebido.depositoDestinoId);
+        }
+
+        await this.alterarFisico(tx, itemRecebido.produtoId, itemRecebido.depositoDestinoId, itemRecebido.quantidadeRecebida);
+
+        await tx.movimentacaoEstoque.create({
+          data: {
+            produtoId: itemRecebido.produtoId,
+            tipo: "ENTRADA_COMPRA",
+            status: "CONCLUIDA",
+            origem: "COMPRA",
+            quantidade: itemRecebido.quantidadeRecebida,
+            custoUnitario,
+            valorTotal: valorTotalItem,
+            origemReferencia: pedido.id,
+            depositoDestinoId: itemRecebido.depositoDestinoId,
+            usuarioId,
+            motivo: `Recebimento NF-e ${payload.numero}/${payload.serie}`,
+            metadata: {
+              pedidoCompraId: pedido.id,
+              notaFiscal: {
+                numero: payload.numero,
+                serie: payload.serie,
+                chaveAcesso: payload.chaveAcesso,
+              },
+            },
+          },
+        });
+
+        await tx.pedidoCompraItem.update({
+          where: { id: itemPedido.id },
+          data: {
+            quantidadeRecebida: {
+              increment: itemRecebido.quantidadeRecebida,
+            },
+          },
+        });
+      }
+
+      const pedidoAtualizado = await tx.pedidoCompra.findUnique({
+        where: { id: pedido.id },
+        include: { itens: true },
+      });
+
+      const recebeuTudo = (pedidoAtualizado?.itens || []).every((item: any) => Number(item.quantidadeRecebida || 0) >= Number(item.quantidade || 0));
+      const novoStatus = recebeuTudo ? "RECEBIDO" : "RECEBIDO_PARCIAL";
+      const valorTotal = Number((valorProdutos + payload.valorFrete + payload.valorImpostos).toFixed(2));
+
+      const metadataAtual = (pedido.metadata && typeof pedido.metadata === "object" && !Array.isArray(pedido.metadata))
+        ? pedido.metadata
+        : {};
+      const notasEntradaHistorico = Array.isArray((metadataAtual as any).notasEntrada)
+        ? (metadataAtual as any).notasEntrada
+        : [];
+
+      const notaEntrada = {
+        numero: payload.numero,
+        serie: payload.serie,
+        chaveAcesso: payload.chaveAcesso,
+        dataEmissao: payload.dataEmissao.toISOString(),
+        dataEntrada: payload.dataEntrada.toISOString(),
+        valorProdutos,
+        valorFrete: payload.valorFrete,
+        valorImpostos: payload.valorImpostos,
+        valorTotal,
+        observacoes: payload.observacoes || null,
+        itens: payload.itens,
+        parcelas: payload.parcelas,
+        recebidaPor: usuarioId || null,
+      };
+
+      const pedidoFinal = await tx.pedidoCompra.update({
+        where: { id: pedido.id },
+        data: {
+          status: novoStatus,
+          dataCompra: pedido.dataCompra || payload.dataEmissao,
+          dataRecebimento: payload.dataEntrada,
+          valorProdutos,
+          valorFrete: payload.valorFrete,
+          valorImpostos: payload.valorImpostos,
+          valorTotal,
+          metadata: {
+            ...(metadataAtual as any),
+            notasEntrada: [...notasEntradaHistorico, notaEntrada],
+            ultimaNotaEntrada: notaEntrada,
+          },
+        },
+        include: { itens: true, fornecedor: true },
+      });
+
+      const parcelas = payload.parcelas.length > 0
+        ? payload.parcelas
+        : [{ numeroParcela: 1, valor: valorTotal, vencimento: payload.dataEntrada }];
+
+      for (let index = 0; index < parcelas.length; index += 1) {
+        const parcela = parcelas[index];
+        await tx.lancamentoFinanceiro.create({
+          data: {
+            descricao: `NF-e compra ${payload.numero}/${payload.serie} - Parcela ${parcela.numeroParcela || index + 1}`,
+            tipo: "DESPESA",
+            status: "PENDENTE",
+            valorBruto: parcela.valor,
+            valorLiquido: parcela.valor,
+            valorPago: 0,
+            competencia: payload.dataEntrada,
+            vencimento: parcela.vencimento,
+            origem: "ERP",
+            origemReferencia: `NFE_ENTRADA:${pedido.id}:${payload.numero}`,
+            empresaId: pedido.empresaId || undefined,
+            fornecedorId: pedido.fornecedorId,
+            usuarioId,
+            metadata: {
+              tipoDocumento: "NFE_ENTRADA",
+              pedidoCompraId: pedido.id,
+              notaFiscal: {
+                numero: payload.numero,
+                serie: payload.serie,
+                chaveAcesso: payload.chaveAcesso,
+              },
+              boleto: parcela.boleto || null,
+            },
+          },
+        });
+      }
+
+      await this.auditar(tx, "PedidoCompra", pedido.id, "COMPRA", usuarioId, pedido, pedidoFinal);
+
+      return {
+        message: "NF-e de compra recebida e vinculada com estoque e financeiro.",
+        pedidoCompra: pedidoFinal,
+        totalRecebidoNoLote,
+        notaEntrada,
+      };
     });
   }
 

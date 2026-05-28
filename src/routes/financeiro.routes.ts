@@ -9,6 +9,8 @@ router.use(authMiddleware);
 router.post("/lancamentos", financeiroController.criarLancamento);
 router.get("/lancamentos", financeiroController.listarLancamentos);
 router.post("/lancamentos/:id/baixa", financeiroController.baixarLancamento);
+router.patch("/lancamentos/:id", financeiroController.atualizarLancamento);
+router.post("/lancamentos/:id/enviar-manual", financeiroController.enviarCobrancaManual);
 
 router.post("/contas", financeiroController.criarConta);
 router.get("/contas", financeiroController.listarContas);

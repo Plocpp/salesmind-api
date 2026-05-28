@@ -49,6 +49,28 @@ class FinanceiroController {
     return res.json(lancamento);
   };
 
+  atualizarLancamento = async (req: AuthRequest, res: Response) => {
+    const usuarioId = requireUser(req);
+    const id = this.asString(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "ID invalido" });
+    }
+
+    const lancamento = await financeiroService.atualizarLancamento(id, req.body, usuarioId);
+    return res.json(lancamento);
+  };
+
+  enviarCobrancaManual = async (req: AuthRequest, res: Response) => {
+    const usuarioId = requireUser(req);
+    const id = this.asString(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "ID invalido" });
+    }
+
+    const resultado = await financeiroService.enviarCobrancaManual(id, req.body, usuarioId);
+    return res.json(resultado);
+  };
+
   criarConta = async (req: AuthRequest, res: Response) => {
     requireUser(req);
     const conta = await financeiroService.criarConta(req.body);

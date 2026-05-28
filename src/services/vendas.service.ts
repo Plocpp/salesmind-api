@@ -252,6 +252,14 @@ const emitirNfceSchema = z.object({
         cnpjCredenciadora: z.string().trim().transform((value) => somenteDigitos(value)).optional(),
         bandeiraCartao: z.string().trim().max(30).optional(),
         autorizacao: z.string().trim().max(40).optional(),
+        vencimento: z.coerce.date().optional(),
+        boleto: z.object({
+          linhaDigitavel: z.string().trim().optional(),
+          codigoBarras: z.string().trim().optional(),
+          nossoNumero: z.string().trim().optional(),
+          banco: z.string().trim().optional(),
+          urlPdf: z.string().trim().url().optional(),
+        }).optional(),
       }),
     )
     .max(20)
@@ -269,6 +277,10 @@ const emitirNfceSchema = z.object({
   if (payload.clienteDocumento?.length === 14 && !validarCnpj(payload.clienteDocumento)) {
     ctx.addIssue({ code: 'custom', message: 'CNPJ informado no clienteDocumento e invalido.' });
   }
+});
+
+const emitirNfeSchema = emitirNfceSchema.extend({
+  finalidadeEmissao: z.enum(['NORMAL', 'COMPLEMENTAR', 'AJUSTE', 'DEVOLUCAO']).default('NORMAL'),
 });
 
 export class VendasService {
@@ -1222,6 +1234,91 @@ export class VendasService {
     return map[origem] || 'VENDA';
   }
 
+  private mapTipoPagamentoFiscalParaTipoFinanceiro(tipo: string) {
+    const map: Record<string, string> = {
+      DINHEIRO: 'DINHEIRO',
+      PIX: 'PIX',
+      CARTAO_CREDITO: 'CREDITO',
+      CARTAO_DEBITO: 'DEBITO',
+      BOLETO: 'BOLETO',
+      TRANSFERENCIA: 'GATEWAY',
+      OUTROS: 'GATEWAY',
+    };
+    return map[tipo] || 'GATEWAY';
+  }
+
+  private async sincronizarFinanceiroDocumentoFiscal(tx: any, params: {
+    venda: any;
+    usuarioId: string;
+    documentoFiscal: Record<string, unknown>;
+    pagamentosFiscais?: Array<any>;
+  }) {
+    const { venda, usuarioId, documentoFiscal, pagamentosFiscais } = params;
+
+    const pagamentos = (pagamentosFiscais && pagamentosFiscais.length > 0)
+      ? pagamentosFiscais
+      : (venda.pagamentos || []).map((pagamento: any) => ({
+          tipo: String(pagamento.forma || 'OUTROS'),
+          valor: Number(pagamento.valor || 0),
+          vencimento: pagamento.vencimento || undefined,
+        }));
+
+    const baseOrigemReferencia = `DOCFISCAL:${venda.id}`;
+
+    await tx.lancamentoFinanceiro.updateMany({
+      where: {
+        vendaId: venda.id,
+        origemReferencia: baseOrigemReferencia,
+      },
+      data: {
+        status: 'CANCELADO',
+        observacoes: 'Substituido por nova sincronizacao de documento fiscal.',
+      },
+    });
+
+    const totalDocumento = Number(venda.total || 0);
+    const totalPagamentos = pagamentos.reduce((soma: number, pagamento: any) => soma + Number(pagamento.valor || 0), 0) || totalDocumento;
+
+    for (let index = 0; index < pagamentos.length; index += 1) {
+      const pagamento = pagamentos[index];
+      const valorOriginal = Number(pagamento.valor || 0);
+      const valorRateado = totalPagamentos > 0
+        ? Number(((valorOriginal / totalPagamentos) * totalDocumento).toFixed(2))
+        : Number((totalDocumento / pagamentos.length).toFixed(2));
+
+      const vencimento = pagamento.vencimento ? new Date(pagamento.vencimento) : new Date();
+      const tipoFinanceiro = this.mapTipoPagamentoFiscalParaTipoFinanceiro(String(pagamento.tipo || 'OUTROS'));
+      const statusFinanceiro = ['DINHEIRO', 'PIX', 'CARTAO_DEBITO'].includes(String(pagamento.tipo || ''))
+        ? 'PAGO'
+        : 'PENDENTE';
+
+      await tx.lancamentoFinanceiro.create({
+        data: {
+          descricao: `Parcela ${index + 1}/${pagamentos.length} - ${String(documentoFiscal.modeloDocumento || '65')} ${String(documentoFiscal.numero || '')}`.trim(),
+          tipo: 'RECEITA',
+          status: statusFinanceiro,
+          valorBruto: valorRateado,
+          valorLiquido: valorRateado,
+          valorPago: statusFinanceiro === 'PAGO' ? valorRateado : 0,
+          competencia: new Date(),
+          vencimento,
+          pagamento: statusFinanceiro === 'PAGO' ? new Date() : undefined,
+          origem: 'VENDA',
+          origemReferencia: baseOrigemReferencia,
+          vendaId: venda.id,
+          clienteId: venda.clienteId || undefined,
+          usuarioId,
+          metadata: {
+            origemDocumentoFiscal: true,
+            documentoFiscal,
+            pagamentoFiscal: pagamento,
+            tipoFinanceiro,
+          },
+        },
+      });
+    }
+  }
+
   async atualizarListaPreco(id: string, data: unknown) {
     const lista = listaPrecoSchema.parse(data);
     return (prisma as any).listaPreco.update({
@@ -1395,12 +1492,14 @@ export class VendasService {
     };
   }
 
-  async emitirNfceVenda(vendaId: string, usuarioId: string, data: unknown) {
-    const payload = emitirNfceSchema.parse(data || {});
+  private async emitirDocumentoFiscalVenda(vendaId: string, usuarioId: string, data: unknown, modelo: '55' | '65') {
+    const payload = modelo === '55'
+      ? emitirNfeSchema.parse(data || {})
+      : emitirNfceSchema.parse(data || {});
 
     const venda = await prisma.venda.findUnique({
       where: { id: vendaId },
-      include: { cliente: true },
+      include: { cliente: true, itens: { include: { produto: true } }, pagamentos: true },
     });
 
     if (!venda) throw new Error('Venda nao encontrada.');
@@ -1413,12 +1512,13 @@ export class VendasService {
       ? venda.metadata as Record<string, unknown>
       : {};
 
-    const nfceExistente = metadataAtual.nfce as Record<string, unknown> | undefined;
-    if (nfceExistente && String(nfceExistente.status || '').toUpperCase() === 'AUTORIZADA') {
+    const chaveDocumento = modelo === '55' ? 'nfe' : 'nfce';
+    const documentoExistente = metadataAtual[chaveDocumento] as Record<string, unknown> | undefined;
+    if (documentoExistente && String(documentoExistente.status || '').toUpperCase() === 'AUTORIZADA') {
       return {
-        message: 'NFC-e ja emitida para esta venda.',
+        message: `${modelo === '55' ? 'NF-e' : 'NFC-e'} ja emitida para esta venda.`,
         vendaId: venda.id,
-        nfce: nfceExistente,
+        documentoFiscal: documentoExistente,
         jaEmitida: true,
       };
     }
@@ -1459,6 +1559,24 @@ export class VendasService {
       }
       : undefined;
 
+    const itensFiscais = (payload.itensFiscais && payload.itensFiscais.length > 0)
+      ? payload.itensFiscais
+      : (venda.itens || []).map((item: any) => ({
+          codigo: String(item.produto?.codigo || item.produto?.sku || item.produtoId),
+          descricao: String(item.produto?.nome || 'Item sem descricao'),
+          ncm: String(item.produto?.ncm || '00000000').padStart(8, '0').slice(0, 8),
+          cest: item.produto?.cest ? String(item.produto.cest).padStart(7, '0').slice(0, 7) : undefined,
+          cfop: String(item.produto?.cfop || '5102').padStart(4, '0').slice(0, 4),
+          unidadeComercial: String(item.produto?.unidadeMedida || 'UN').slice(0, 6),
+          quantidadeComercial: Number(item.quantidade || 0),
+          valorUnitarioComercial: Number(item.precoUnitario || 0),
+          desconto: Number(item.desconto || 0),
+          origemIcms: String(item.produto?.origemFiscal || '0'),
+          cstIcms: String(item.produto?.cst || '102'),
+          cstPis: '01',
+          cstCofins: '01',
+        }));
+
     const subtotalVenda = Number((venda as any).subtotal || venda.total || 0);
     const descontoVenda = Number((venda as any).descontoTotal || 0);
     const freteVenda = Number((venda as any).frete || 0);
@@ -1471,10 +1589,10 @@ export class VendasService {
       valorTotal: Number(venda.total || 0),
     };
 
-    const nfce = {
+    const documentoFiscal = {
       numero,
       serie,
-      modeloDocumento: '65',
+      modeloDocumento: modelo,
       status: 'AUTORIZADA',
       protocolo,
       chaveAcesso,
@@ -1489,39 +1607,61 @@ export class VendasService {
         presencaComprador: payload.presencaComprador,
       },
       destinatario,
-      itensFiscais: payload.itensFiscais || undefined,
+      itensFiscais,
       totais,
       pagamentos: payload.pagamentos || undefined,
+      vinculos: {
+        vendaId: venda.id,
+        numeroVenda: venda.numero,
+        origemVenda: venda.origem,
+      },
     };
 
-    await prisma.venda.update({
-      where: { id: venda.id },
-      data: {
-        metadata: {
-          ...metadataAtual,
-          nfce,
-        },
-        timeline: {
-          create: {
-            status: venda.status,
-            titulo: 'NFC-e emitida',
-            detalhe: `NFC-e ${numero} autorizada em ${payload.ambiente}.`,
-            metadata: {
-              nfce,
-              observacoes: payload.observacoes || undefined,
-              emitidaPor: usuarioId,
+    await prisma.$transaction(async (tx) => {
+      await tx.venda.update({
+        where: { id: venda.id },
+        data: {
+          metadata: {
+            ...metadataAtual,
+            [chaveDocumento]: documentoFiscal,
+          },
+          timeline: {
+            create: {
+              status: venda.status,
+              titulo: `${modelo === '55' ? 'NF-e' : 'NFC-e'} emitida`,
+              detalhe: `${modelo === '55' ? 'NF-e' : 'NFC-e'} ${numero} autorizada em ${payload.ambiente}.`,
+              metadata: {
+                documentoFiscal,
+                observacoes: payload.observacoes || undefined,
+                emitidaPor: usuarioId,
+              },
             },
           },
         },
-      },
+      });
+
+      await this.sincronizarFinanceiroDocumentoFiscal(tx, {
+        venda,
+        usuarioId,
+        documentoFiscal,
+        pagamentosFiscais: payload.pagamentos,
+      });
     });
 
     return {
-      message: 'NFC-e emitida com sucesso.',
+      message: `${modelo === '55' ? 'NF-e' : 'NFC-e'} emitida com sucesso.`,
       vendaId: venda.id,
-      nfce,
+      documentoFiscal,
       jaEmitida: false,
     };
+  }
+
+  async emitirNfceVenda(vendaId: string, usuarioId: string, data: unknown) {
+    return this.emitirDocumentoFiscalVenda(vendaId, usuarioId, data, '65');
+  }
+
+  async emitirNfeVenda(vendaId: string, usuarioId: string, data: unknown) {
+    return this.emitirDocumentoFiscalVenda(vendaId, usuarioId, data, '55');
   }
 
   async renovarPacote(id: string, usuarioId: string) {

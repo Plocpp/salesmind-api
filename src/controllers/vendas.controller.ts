@@ -208,6 +208,12 @@ export class VendasController {
     return res.json(resultado);
   }
 
+  async emitirNfe(req: AuthRequest, res: Response) {
+    const userId = requireUser(req);
+    const resultado = await vendasService.emitirNfeVenda(getParam(req.params.id), userId, req.body);
+    return res.json(resultado);
+  }
+
   async renovarPacote(req: AuthRequest, res: Response) {
     const userId = requireUser(req);
     const resultado = await vendasService.renovarPacote(getParam(req.params.id), userId);

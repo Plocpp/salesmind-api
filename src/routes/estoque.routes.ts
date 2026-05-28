@@ -21,6 +21,7 @@ router.get("/analise", estoqueController.analise);
 
 router.post("/compras/pedidos", estoqueController.criarPedidoCompra);
 router.get("/compras/pedidos", estoqueController.listarPedidosCompra);
+router.post("/compras/notas-fiscais/recebimento", estoqueController.receberNotaFiscalCompra);
 
 router.post("/inventarios", estoqueController.abrirInventario);
 
