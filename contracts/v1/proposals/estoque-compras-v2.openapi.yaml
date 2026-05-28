@@ -1,0 +1,388 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Proposta Estoque e Compras v2
+  version: 2.0.0-draft
+  description: Contrato proposto para remodelacao de estoque e compras orientada a margem, validade e reposicao.
+servers:
+  - url: /api/v1
+    description: Base versionada
+  - url: /
+    description: Base legada
+security:
+  - bearerAuth: []
+tags:
+  - name: Catalogo
+    description: Cadastro e consulta de itens comerciais
+  - name: Compras
+    description: Planejamento, pedido e recebimento de compras
+  - name: Estoque
+    description: Lotes, saldo e validade
+
+paths:
+  /estoque/catalogo/itens:
+    get:
+      tags: [Catalogo]
+      summary: Listar itens do catalogo comercial
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+          description: Busca por nome, codigo interno ou codigo de barras
+        - in: query
+          name: tipo
+          schema: { type: string, enum: [PRODUTO, SERVICO, PACOTE, KIT] }
+        - in: query
+          name: grupoId
+          schema: { type: string }
+        - in: query
+          name: ativo
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Itens encontrados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ItemCatalogo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Catalogo]
+      summary: Criar item no catalogo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarItemCatalogoRequest'
+      responses:
+        '201':
+          description: Item criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemCatalogo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /estoque/catalogo/itens/{id}:
+    patch:
+      tags: [Catalogo]
+      summary: Atualizar item do catalogo
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtualizarItemCatalogoRequest'
+      responses:
+        '200':
+          description: Item atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemCatalogo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /estoque/catalogo/indicadores-validade:
+    get:
+      tags: [Estoque]
+      summary: Indicadores de risco de validade
+      parameters:
+        - in: query
+          name: janelaDias
+          schema: { type: integer, default: 60 }
+      responses:
+        '200':
+          description: Contadores e itens de risco
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndicadoresValidadeResponse'
+
+  /estoque/compras/sugestoes:
+    get:
+      tags: [Compras]
+      summary: Gerar sugestao automatica de compra
+      parameters:
+        - in: query
+          name: coberturaDias
+          schema: { type: integer, default: 30 }
+        - in: query
+          name: incluirItensSemVenda
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Lista de sugestoes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SugestaoCompra'
+
+  /estoque/compras/pedidos:
+    get:
+      tags: [Compras]
+      summary: Listar pedidos de compra
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: fornecedorId
+          schema: { type: string }
+      responses:
+        '200':
+          description: Pedidos de compra
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PedidoCompra'
+    post:
+      tags: [Compras]
+      summary: Criar pedido de compra
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarPedidoCompraRequest'
+      responses:
+        '201':
+          description: Pedido criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PedidoCompra'
+
+  /estoque/compras/pedidos/{id}/recebimentos:
+    post:
+      tags: [Compras]
+      summary: Registrar recebimento de compra por lote
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceberPedidoCompraRequest'
+      responses:
+        '201':
+          description: Recebimento processado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecebimentoCompra'
+
+  /estoque/compras/pedidos/{id}/rastreio:
+    post:
+      tags: [Compras]
+      summary: Vincular pedido a sessao de rastreio de entrega
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VinculoRastreioRequest'
+      responses:
+        '200':
+          description: Vinculo registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VinculoRastreioResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: Requisicao invalida
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Nao autenticado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Recurso nao encontrado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        message: { type: string }
+      required: [message]
+
+    ItemCatalogo:
+      type: object
+      properties:
+        id: { type: string }
+        tipo: { type: string, enum: [PRODUTO, SERVICO, PACOTE, KIT] }
+        nome: { type: string }
+        codigoInterno: { type: string }
+        codigoBarras: { type: string }
+        unidadeVenda: { type: string }
+        grupoId: { type: string }
+        marcaId: { type: string }
+        custoAtual: { type: number }
+        precoVenda: { type: number }
+        markupAtual: { type: number }
+        estoqueAtual: { type: number }
+        validadeMaisProxima: { type: string, format: date, nullable: true }
+        statusValidade: { type: string, enum: [OK, VENCENDO, VENCIDO] }
+        ativo: { type: boolean }
+
+    CriarItemCatalogoRequest:
+      type: object
+      required: [tipo, nome, unidadeVenda, grupoId]
+      properties:
+        tipo: { type: string, enum: [PRODUTO, SERVICO, PACOTE, KIT] }
+        nome: { type: string }
+        codigoInterno: { type: string }
+        codigoBarras: { type: string }
+        unidadeVenda: { type: string }
+        grupoId: { type: string }
+        marcaId: { type: string }
+        custoAtual: { type: number }
+        precoVenda: { type: number }
+        markupAlvo: { type: number }
+
+    AtualizarItemCatalogoRequest:
+      type: object
+      properties:
+        nome: { type: string }
+        unidadeVenda: { type: string }
+        grupoId: { type: string }
+        marcaId: { type: string }
+        custoAtual: { type: number }
+        precoVenda: { type: number }
+        markupAlvo: { type: number }
+        ativo: { type: boolean }
+
+    IndicadoresValidadeResponse:
+      type: object
+      properties:
+        vencidos: { type: integer }
+        vencendo: { type: integer }
+        janelaDias: { type: integer }
+        itensCriticos:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemCatalogo'
+
+    SugestaoCompra:
+      type: object
+      properties:
+        itemId: { type: string }
+        nomeItem: { type: string }
+        estoqueAtual: { type: number }
+        estoqueMinimo: { type: number }
+        coberturaDias: { type: integer }
+        quantidadeSugerida: { type: number }
+        justificativa: { type: string }
+
+    PedidoCompra:
+      type: object
+      properties:
+        id: { type: string }
+        fornecedorId: { type: string }
+        status: { type: string }
+        previsaoEntrega: { type: string, format: date, nullable: true }
+        valorTotal: { type: number }
+        itens:
+          type: array
+          items:
+            $ref: '#/components/schemas/PedidoCompraItem'
+
+    PedidoCompraItem:
+      type: object
+      properties:
+        itemId: { type: string }
+        quantidade: { type: number }
+        custoUnitario: { type: number }
+
+    CriarPedidoCompraRequest:
+      type: object
+      required: [fornecedorId, itens]
+      properties:
+        fornecedorId: { type: string }
+        previsaoEntrega: { type: string, format: date }
+        itens:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PedidoCompraItem'
+
+    ReceberPedidoCompraRequest:
+      type: object
+      required: [itensRecebidos]
+      properties:
+        dataRecebimento: { type: string, format: date }
+        itensRecebidos:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [itemId, quantidade, custoUnitario]
+            properties:
+              itemId: { type: string }
+              quantidade: { type: number }
+              custoUnitario: { type: number }
+              lote: { type: string }
+              validade: { type: string, format: date }
+
+    RecebimentoCompra:
+      type: object
+      properties:
+        pedidoId: { type: string }
+        totalItensRecebidos: { type: number }
+        custoFinal: { type: number }
+        atualizadoFinanceiro: { type: boolean }
+        atualizadoEstoque: { type: boolean }
+
+    VinculoRastreioRequest:
+      type: object
+      required: [sessaoRastreioId]
+      properties:
+        sessaoRastreioId: { type: string }
+        transportadora: { type: string }
+        previsaoEntrega: { type: string, format: date }
+
+    VinculoRastreioResponse:
+      type: object
+      properties:
+        pedidoId: { type: string }
+        sessaoRastreioId: { type: string }
+        status: { type: string }

@@ -7,6 +7,25 @@ const YAML = require("yaml");
 const contractsDir = path.resolve("contracts", "v1");
 const allowedMethods = new Set(["get", "post", "put", "patch", "delete", "options", "head", "trace"]);
 
+function collectOpenApiFiles(dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectOpenApiFiles(fullPath));
+      continue;
+    }
+
+    if (entry.isFile() && entry.name.endsWith(".openapi.yaml")) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
+
 function fail(message) {
   console.error(message);
   process.exit(1);
@@ -74,19 +93,16 @@ function main() {
     fail("Diretorio de contratos nao encontrado: contracts/v1");
   }
 
-  const files = fs
-    .readdirSync(contractsDir)
-    .filter((name) => name.endsWith(".openapi.yaml"))
-    .sort();
+  const files = collectOpenApiFiles(contractsDir).sort();
 
   if (files.length === 0) {
     fail("Nenhum arquivo .openapi.yaml encontrado em contracts/v1");
   }
 
   const allErrors = [];
-  for (const fileName of files) {
-    const filePath = path.join(contractsDir, fileName);
-    console.log(`[contracts:lint] Validando ${path.join("contracts", "v1", fileName).replace(/\\/g, "/")}`);
+  for (const filePath of files) {
+    const relativePath = path.relative(path.resolve("contracts"), filePath).replace(/\\/g, "/");
+    console.log(`[contracts:lint] Validando contracts/${relativePath}`);
     allErrors.push(...validateFile(filePath));
   }
 

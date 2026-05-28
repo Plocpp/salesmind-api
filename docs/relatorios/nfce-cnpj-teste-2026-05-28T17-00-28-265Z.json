@@ -1,0 +1,74 @@
+{
+  "executadoEm": "2026-05-28T17:00:28.257Z",
+  "baseUrl": "https://salesmind-api.onrender.com",
+  "usuario": null,
+  "venda": {
+    "id": "9dc3a032-73ae-4714-be84-58203a494cec",
+    "total": 336.20000000000005,
+    "itens": [
+      {
+        "produtoId": "30a11ca2-ba87-4f69-b9ca-b37f0a71498a",
+        "nome": "Brinquedo Mordedor",
+        "quantidade": 1,
+        "precoUnitario": 19.9
+      },
+      {
+        "produtoId": "586c9c58-5784-4b1a-b8b6-2c32f40296e9",
+        "nome": "Ração Premium para Cães",
+        "quantidade": 2,
+        "precoUnitario": 89.9
+      },
+      {
+        "produtoId": "74e4da05-d174-44f1-bbef-63d6048566c5",
+        "nome": "Shampoo Antípulgas",
+        "quantidade": 3,
+        "precoUnitario": 45.5
+      }
+    ]
+  },
+  "nfce": {
+    "numero": "627179",
+    "serie": "1",
+    "status": "AUTORIZADA",
+    "protocolo": "177998762717933",
+    "chaveAcesso": "2026627179924158541461",
+    "ambiente": "HOMOLOGACAO",
+    "emitidaEm": "2026-05-28T17:00:27.179Z",
+    "valorTotal": 336.2,
+    "cliente": "EMPRESA TESTE NFC-E LTDA",
+    "documentoCliente": "11222333000181"
+  },
+  "validacoes": [
+    {
+      "nome": "Venda criada",
+      "ok": true
+    },
+    {
+      "nome": "NFC-e retornada",
+      "ok": true
+    },
+    {
+      "nome": "Status autorizada",
+      "ok": true,
+      "detalhe": "AUTORIZADA"
+    },
+    {
+      "nome": "Documento CNPJ no payload",
+      "ok": true
+    },
+    {
+      "nome": "Destinatario CNPJ estruturado",
+      "ok": false
+    },
+    {
+      "nome": "Itens fiscais preenchidos",
+      "ok": false,
+      "detalhe": "itens=0"
+    },
+    {
+      "nome": "Valor total coerente",
+      "ok": true,
+      "detalhe": "nfce=336.2 venda=336.20000000000005"
+    }
+  ]
+}

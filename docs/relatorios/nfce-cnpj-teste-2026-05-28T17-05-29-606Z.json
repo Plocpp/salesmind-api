@@ -1,0 +1,156 @@
+{
+  "executadoEm": "2026-05-28T17:05:29.601Z",
+  "baseUrl": "http://localhost:3000",
+  "usuario": null,
+  "venda": {
+    "id": "4a3428dc-2bfb-482f-be10-49b3eda514a8",
+    "total": 535,
+    "itens": [
+      {
+        "produtoId": "6cf7df30-50f1-46cc-831d-205db483dc28",
+        "nome": "Shampoo Antípulgas",
+        "quantidade": 1,
+        "precoUnitario": 45.5
+      },
+      {
+        "produtoId": "82b3e1a7-8de5-4927-b1a1-6a1fd4368c39",
+        "nome": "Brinquedo Mordedor",
+        "quantidade": 2,
+        "precoUnitario": 19.9
+      },
+      {
+        "produtoId": "8832c061-d672-48ff-9724-5a45d67111ee",
+        "nome": "Cama Pet Confortável",
+        "quantidade": 3,
+        "precoUnitario": 149.9
+      }
+    ]
+  },
+  "nfce": {
+    "numero": "929579",
+    "serie": "1",
+    "modeloDocumento": "65",
+    "status": "AUTORIZADA",
+    "protocolo": "177998792957920",
+    "chaveAcesso": "2026929579718103824819",
+    "ambiente": "HOMOLOGACAO",
+    "emitidaEm": "2026-05-28T17:05:29.579Z",
+    "valorTotal": 535,
+    "cliente": "EMPRESA TESTE NFC-E LTDA",
+    "documentoCliente": "11222333000181",
+    "identificacao": {
+      "naturezaOperacao": "VENDA DE MERCADORIA",
+      "consumidorFinal": true,
+      "presencaComprador": "OPERACAO_PRESENCIAL"
+    },
+    "destinatario": {
+      "tipoPessoa": "JURIDICA",
+      "razaoSocial": "EMPRESA TESTE NFC-E LTDA",
+      "cnpj": "11222333000181",
+      "indicadorIe": "CONTRIBUINTE_ISENTO",
+      "email": "fiscal@empresa-teste.local",
+      "telefone": "1133334444",
+      "endereco": {
+        "logradouro": "Rua Fiscal",
+        "numero": "100",
+        "bairro": "Centro",
+        "municipioCodigoIbge": "3550308",
+        "municipioNome": "Sao Paulo",
+        "uf": "SP",
+        "cep": "01001000"
+      }
+    },
+    "itensFiscais": [
+      {
+        "codigo": "SHA001",
+        "descricao": "Shampoo Antípulgas",
+        "ncm": "23091000",
+        "cfop": "5102",
+        "unidadeComercial": "UN",
+        "quantidadeComercial": 1,
+        "valorUnitarioComercial": 45.5,
+        "desconto": 0,
+        "origemIcms": "0",
+        "cstIcms": "102",
+        "cstPis": "49",
+        "cstCofins": "49"
+      },
+      {
+        "codigo": "BRI001",
+        "descricao": "Brinquedo Mordedor",
+        "ncm": "23091000",
+        "cfop": "5102",
+        "unidadeComercial": "UN",
+        "quantidadeComercial": 2,
+        "valorUnitarioComercial": 19.9,
+        "desconto": 0,
+        "origemIcms": "0",
+        "cstIcms": "102",
+        "cstPis": "49",
+        "cstCofins": "49"
+      },
+      {
+        "codigo": "CAM001",
+        "descricao": "Cama Pet Confortável",
+        "ncm": "23091000",
+        "cfop": "5102",
+        "unidadeComercial": "UN",
+        "quantidadeComercial": 3,
+        "valorUnitarioComercial": 149.9,
+        "desconto": 0,
+        "origemIcms": "0",
+        "cstIcms": "102",
+        "cstPis": "49",
+        "cstCofins": "49"
+      }
+    ],
+    "totais": {
+      "subtotalProdutos": 535,
+      "desconto": 0,
+      "frete": 0,
+      "seguro": 0,
+      "outrasDespesas": 0,
+      "valorTotal": 535
+    },
+    "pagamentos": [
+      {
+        "tipo": "PIX",
+        "valor": 535,
+        "integracaoPagamento": "NAO_INTEGRADO"
+      }
+    ]
+  },
+  "validacoes": [
+    {
+      "nome": "Venda criada",
+      "ok": true
+    },
+    {
+      "nome": "NFC-e retornada",
+      "ok": true
+    },
+    {
+      "nome": "Status autorizada",
+      "ok": true,
+      "detalhe": "AUTORIZADA"
+    },
+    {
+      "nome": "Documento CNPJ no payload",
+      "ok": true
+    },
+    {
+      "nome": "Destinatario CNPJ estruturado",
+      "ok": true
+    },
+    {
+      "nome": "Itens fiscais preenchidos",
+      "ok": true,
+      "detalhe": "itens=3"
+    },
+    {
+      "nome": "Valor total coerente",
+      "ok": true,
+      "detalhe": "nfce=535 venda=535"
+    }
+  ]
+}

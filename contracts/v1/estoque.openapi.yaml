@@ -43,6 +43,83 @@ paths:
             schema: { $ref: '#/components/schemas/GenericObject' }
       responses:
         '201': { description: Deposito criado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/catalogo/itens:
+    get:
+      tags: [Estoque]
+      summary: Listar itens do catalogo
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: tipo
+          schema: { type: string, enum: [PRODUTO, SERVICO, PACOTE, KIT] }
+        - in: query
+          name: grupoId
+          schema: { type: string }
+        - in: query
+          name: marcaId
+          schema: { type: string }
+        - in: query
+          name: ativo
+          schema: { type: boolean }
+        - in: query
+          name: statusEstoque
+          schema: { type: string, enum: [RUPTURA, BAIXO, OK] }
+        - in: query
+          name: somenteComValidade
+          schema: { type: boolean }
+      responses:
+        '200': { description: Itens do catalogo, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
+    post:
+      tags: [Estoque]
+      summary: Criar item no catalogo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '201': { description: Item criado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/catalogo/itens/{id}:
+    patch:
+      tags: [Estoque]
+      summary: Atualizar item do catalogo
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenericObject' }
+      responses:
+        '200': { description: Item atualizado, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/catalogo/indicadores-validade:
+    get:
+      tags: [Estoque]
+      summary: Consultar indicadores de validade
+      parameters:
+        - in: query
+          name: janelaDias
+          schema: { type: integer, default: 60 }
+      responses:
+        '200': { description: Indicadores de validade, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/compras/sugestoes:
+    get:
+      tags: [Estoque]
+      summary: Gerar sugestoes de compra
+      parameters:
+        - in: query
+          name: coberturaDias
+          schema: { type: integer, default: 30 }
+        - in: query
+          name: incluirItensSemVenda
+          schema: { type: boolean, default: false }
+      responses:
+        '200': { description: Sugestoes de compra, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
   /estoque/movimentacoes:
     post:
       tags: [Estoque]
@@ -76,10 +153,32 @@ paths:
             schema: { $ref: '#/components/schemas/GenericObject' }
       responses:
         '200': { description: Reserva liberada, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/atalhos-operacionais:
+    get:
+      tags: [Estoque]
+      summary: Listar atalhos operacionais de estoque e compras
+      responses:
+        '200': { description: Atalhos operacionais, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
   /estoque/saldos:
     get:
       tags: [Estoque]
       summary: Listar saldos
+      parameters:
+        - in: query
+          name: produtoId
+          schema: { type: string }
+        - in: query
+          name: depositoId
+          schema: { type: string }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: abaixoMinimo
+          schema: { type: boolean }
+        - in: query
+          name: comReserva
+          schema: { type: boolean }
       responses:
         '200': { description: Saldos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
   /estoque/analise:
@@ -92,6 +191,22 @@ paths:
     get:
       tags: [Estoque]
       summary: Listar pedidos de compra
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: fornecedorId
+          schema: { type: string }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: inicio
+          schema: { type: string, format: date-time }
+        - in: query
+          name: fim
+          schema: { type: string, format: date-time }
       responses:
         '200': { description: Pedidos de compra, content: { application/json: { schema: { $ref: '#/components/schemas/GenericArray' } } } }
     post:
@@ -115,6 +230,42 @@ paths:
             schema: { $ref: '#/components/schemas/GenericObject' }
       responses:
         '201': { description: Nota recebida, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/compras/notas-fiscais/importar-xml:
+    post:
+      tags: [Estoque]
+      summary: Importar NF-e de compra por XML e dar entrada automatica no estoque
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                xml: { type: string }
+                depositoDestinoId: { type: string }
+                empresaId: { type: string }
+                fornecedorFallbackNome: { type: string }
+                marcaPadraoNome: { type: string }
+                criarProdutosNovos: { type: boolean, default: true }
+                atualizarCustoProduto: { type: boolean, default: true }
+              required: [xml]
+      responses:
+        '201': { description: XML processado e nota recebida com sucesso, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
+  /estoque/compras/notas-fiscais/preview-xml:
+    post:
+      tags: [Estoque]
+      summary: Pre-visualizar XML de NF-e de compra antes de importar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                xml: { type: string }
+              required: [xml]
+      responses:
+        '200': { description: Preview da nota fiscal com validacao de fornecedor, marcas e produtos, content: { application/json: { schema: { $ref: '#/components/schemas/GenericObject' } } } }
   /estoque/compras/notas-fiscais:
     get:
       tags: [Estoque]

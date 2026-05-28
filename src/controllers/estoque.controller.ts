@@ -11,6 +11,54 @@ const requireUser = (req: AuthRequest) => {
 };
 
 class EstoqueController {
+  listarCatalogoItens = async (req: AuthRequest, res: Response) => {
+    requireUser(req);
+    const itens = await estoqueService.listarCatalogoItens({
+      q: this.asString(req.query.q),
+      tipo: this.asString(req.query.tipo),
+      grupoId: this.asString(req.query.grupoId),
+      marcaId: this.asString(req.query.marcaId),
+      ativo: this.asBoolean(req.query.ativo),
+      statusEstoque: this.asString(req.query.statusEstoque),
+      somenteComValidade: this.asBoolean(req.query.somenteComValidade),
+    });
+    return res.json(itens);
+  };
+
+  atalhosOperacionais = async (req: AuthRequest, res: Response) => {
+    requireUser(req);
+    const atalhos = await estoqueService.atalhosOperacionais();
+    return res.json(atalhos);
+  };
+
+  criarItemCatalogo = async (req: AuthRequest, res: Response) => {
+    const usuarioId = requireUser(req);
+    const item = await estoqueService.criarItemCatalogo(req.body, usuarioId);
+    return res.status(201).json(item);
+  };
+
+  atualizarItemCatalogo = async (req: AuthRequest, res: Response) => {
+    requireUser(req);
+    const item = await estoqueService.atualizarItemCatalogo(req.params.id, req.body);
+    return res.json(item);
+  };
+
+  indicadoresValidade = async (req: AuthRequest, res: Response) => {
+    requireUser(req);
+    const janelaDias = this.asNumber(req.query.janelaDias) || 60;
+    const indicadores = await estoqueService.indicadoresValidade(janelaDias);
+    return res.json(indicadores);
+  };
+
+  sugestoesCompra = async (req: AuthRequest, res: Response) => {
+    requireUser(req);
+    const sugestoes = await estoqueService.sugestoesCompra({
+      coberturaDias: this.asNumber(req.query.coberturaDias),
+      incluirItensSemVenda: this.asBoolean(req.query.incluirItensSemVenda),
+    });
+    return res.json(sugestoes);
+  };
+
   criarGrupo = async (req: AuthRequest, res: Response) => {
     requireUser(req);
     const grupo = await estoqueService.criarGrupo(req.body);
@@ -70,6 +118,9 @@ class EstoqueController {
     const saldos = await estoqueService.listarSaldos({
       produtoId: this.asString(req.query.produtoId),
       depositoId: this.asString(req.query.depositoId),
+      q: this.asString(req.query.q),
+      abaixoMinimo: this.asBoolean(req.query.abaixoMinimo),
+      comReserva: this.asBoolean(req.query.comReserva),
     });
     return res.json(saldos);
   };
@@ -88,7 +139,13 @@ class EstoqueController {
 
   listarPedidosCompra = async (req: AuthRequest, res: Response) => {
     requireUser(req);
-    const pedidos = await estoqueService.listarPedidosCompra(this.asString(req.query.status));
+    const pedidos = await estoqueService.listarPedidosCompra({
+      status: this.asString(req.query.status),
+      fornecedorId: this.asString(req.query.fornecedorId),
+      q: this.asString(req.query.q),
+      inicio: this.asString(req.query.inicio),
+      fim: this.asString(req.query.fim),
+    });
     return res.json(pedidos);
   };
 
@@ -96,6 +153,18 @@ class EstoqueController {
     const usuarioId = requireUser(req);
     const recebimento = await estoqueService.receberNotaFiscalCompra(req.body, usuarioId);
     return res.status(201).json(recebimento);
+  };
+
+  importarNotaFiscalCompraXml = async (req: AuthRequest, res: Response) => {
+    const usuarioId = requireUser(req);
+    const recebimento = await estoqueService.importarNotaFiscalCompraXml(req.body, usuarioId);
+    return res.status(201).json(recebimento);
+  };
+
+  previewImportacaoNotaFiscalCompraXml = async (req: AuthRequest, res: Response) => {
+    requireUser(req);
+    const preview = await estoqueService.previewImportacaoNotaFiscalCompraXml(req.body);
+    return res.json(preview);
   };
 
   listarNotasFiscaisCompra = async (req: AuthRequest, res: Response) => {
@@ -121,6 +190,21 @@ class EstoqueController {
     }
 
     return Array.isArray(value) ? String(value[0]) : String(value);
+  }
+
+  private asBoolean(value: unknown) {
+    const raw = this.asString(value);
+    if (raw === undefined) return undefined;
+    if (raw.toLowerCase() === "true") return true;
+    if (raw.toLowerCase() === "false") return false;
+    return undefined;
+  }
+
+  private asNumber(value: unknown) {
+    const raw = this.asString(value);
+    if (raw === undefined) return undefined;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : undefined;
   }
 }
 

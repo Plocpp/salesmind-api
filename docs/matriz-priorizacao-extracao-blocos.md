@@ -4,6 +4,10 @@
 
 Definir uma ordem pratica para transformar o backend atual em blocos reutilizaveis entre sistemas padronizados, reduzindo retrabalho e risco operacional.
 
+Documento complementar de benchmark por abas e capacidades:
+
+- [Matriz de abas e capacidades](./matriz-abas-capacidades-referencia-externa.md)
+
 ## Escala usada
 
 - Esforco: Baixo, Medio, Alto

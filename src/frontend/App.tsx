@@ -6,6 +6,9 @@ import Login from './pages/Login';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Diagnostico = lazy(() => import('./pages/Diagnostico'));
 const Vendas = lazy(() => import('./pages/Vendas'));
+const VendasConsulta = lazy(() => import('./pages/VendasConsulta'));
+const VendasDevolucoesEstornos = lazy(() => import('./pages/VendasDevolucoesEstornos'));
+const VendasComissoes = lazy(() => import('./pages/VendasComissoes'));
 const NFCe = lazy(() => import('./pages/NFCe'));
 const Fornecedores = lazy(() => import('./pages/Fornecedores'));
 const Marcas = lazy(() => import('./pages/Marcas'));
@@ -34,13 +37,72 @@ const Placeholder = lazy(() => import('./pages/Placeholder'));
 const placeholderPageTitles: Record<string, string> = {
     clientes: 'Clientes',
     agenda: 'Agenda',
-    comissionamento: 'Comissionamento',
     'km-por-litro': 'Km por Litro',
     'manutencao-veiculo': 'Manutencao Veiculo',
     'peso-carga': 'Peso da Carga',
     log: 'Log de inteligencia',
-    'vendas-consulta': 'Consulta de Vendas',
-    'vendas-devolucoes': 'Devolucoes e Estornos',
+};
+
+const allowedPrivatePages = new Set([
+    'dashboard',
+    'diagnostico',
+    'vendas',
+    'nfce-emitir',
+    'nfce-consultar',
+    'nfce-cancelar',
+    'nfce-historico',
+    'nfce-danfe',
+    'nfce-inutilizar',
+    'nfce-configuracoes',
+    'nfce-status',
+    'fornecedores',
+    'marcas',
+    'cadastro-produtos',
+    'cadastros',
+    'clientes',
+    'estoque',
+    'compras',
+    'financeiro',
+    'financeiro-lancamentos',
+    'financeiro-conciliacao-cartoes',
+    'financeiro-contas-pagar',
+    'financeiro-demonstrativo',
+    'financeiro-fluxo-caixa',
+    'financeiro-contas-cartoes',
+    'financeiro-categorias',
+    'financeiro-formas-pagamento',
+    'km-por-litro',
+    'manutencao-veiculo',
+    'peso-carga',
+    'integracoes-hub',
+    'integracoes-marketplaces',
+    'integracoes-gateways',
+    'integracoes-bancos',
+    'integracoes-webhooks',
+    'usuarios-hierarquia',
+    'rastreio-transporte',
+    'agenda',
+    'comissionamento',
+    'log',
+    'vendas-consulta',
+    'vendas-devolucoes',
+]);
+
+const readPrivatePageFromHash = () => {
+    if (typeof window === 'undefined') return '';
+
+    const hash = window.location.hash || '';
+    if (!hash || hash.startsWith('#/rastreio-publico/')) {
+        return '';
+    }
+
+    const normalized = hash.startsWith('#/') ? hash.slice(2) : hash.slice(1);
+    const page = normalized.split('?')[0].trim();
+    if (!page || !allowedPrivatePages.has(page)) {
+        return '';
+    }
+
+    return page;
 };
 
 function App() {
@@ -78,8 +140,45 @@ function App() {
         if (token) {
             setIsLoggedIn(true);
             setUserRole(role || '');
+
+            const hashPage = readPrivatePageFromHash();
+            if (hashPage) {
+                setCurrentPage(hashPage);
+            }
         }
     }, [publicSessaoId]);
+
+    useEffect(() => {
+        if (!isLoggedIn || publicSessaoId || typeof window === 'undefined') {
+            return;
+        }
+
+        const syncPageFromHash = () => {
+            const hashPage = readPrivatePageFromHash();
+            if (hashPage) {
+                setCurrentPage(hashPage);
+            }
+        };
+
+        window.addEventListener('hashchange', syncPageFromHash);
+        return () => window.removeEventListener('hashchange', syncPageFromHash);
+    }, [isLoggedIn, publicSessaoId]);
+
+    useEffect(() => {
+        if (!isLoggedIn || publicSessaoId || typeof window === 'undefined') {
+            return;
+        }
+
+        if ((currentPage === 'estoque' && window.location.hash.startsWith('#estoque'))
+            || (currentPage === 'compras' && window.location.hash.startsWith('#compras'))) {
+            return;
+        }
+
+        const targetHash = `#${currentPage}`;
+        if (window.location.hash !== targetHash) {
+            window.history.replaceState(null, '', targetHash);
+        }
+    }, [currentPage, isLoggedIn, publicSessaoId]);
 
     const handleLogin = (role?: string) => {
         setIsLoggedIn(true);
@@ -92,6 +191,14 @@ function App() {
         setIsLoggedIn(false);
         setCurrentPage('dashboard');
         setUserRole('');
+
+        if (typeof window !== 'undefined') {
+            window.history.replaceState(null, '', '#dashboard');
+        }
+    };
+
+    const handleNavigate = (page: string) => {
+        setCurrentPage(page);
     };
 
     const renderPage = () => {
@@ -108,11 +215,17 @@ function App() {
 
         switch (currentPage) {
             case 'dashboard':
-                return <Dashboard onLogout={handleLogout} onNavigate={setCurrentPage} />;
+                return <Dashboard onLogout={handleLogout} onNavigate={handleNavigate} />;
             case 'diagnostico':
                 return <Diagnostico />;
             case 'vendas':
                 return <Vendas />;
+            case 'vendas-consulta':
+                return <VendasConsulta />;
+            case 'vendas-devolucoes':
+                return <VendasDevolucoesEstornos />;
+            case 'comissionamento':
+                return <VendasComissoes />;
             case 'nfce-emitir':
             case 'nfce-consultar':
             case 'nfce-cancelar':
@@ -123,17 +236,19 @@ function App() {
             case 'nfce-status':
                 return <NFCe initialModule={nfcePageMap[currentPage] || 'emitir'} />;
             case 'fornecedores':
-                return <Fornecedores onNavigate={setCurrentPage} />;
+                return <Fornecedores onNavigate={handleNavigate} />;
             case 'marcas':
-                return <Marcas onNavigate={setCurrentPage} />;
+                return <Marcas onNavigate={handleNavigate} />;
             case 'cadastro-produtos':
-                return <CadastroProdutos onNavigate={setCurrentPage} />;
+                return <CadastroProdutos onNavigate={handleNavigate} />;
             case 'cadastros':
                 return <Cadastros />;
             case 'clientes':
                 return <Clientes />;
             case 'estoque':
-                return <Estoque />;
+                return <Estoque key="estoque" />;
+            case 'compras':
+                return <Estoque key="compras" />;
             case 'financeiro':
                 return <Financeiro />;
             case 'financeiro-lancamentos':
@@ -206,7 +321,7 @@ function App() {
     return (
         <ErrorBoundary>
             <Layout
-                onNavigate={setCurrentPage}
+                onNavigate={handleNavigate}
                 currentPage={currentPage}
                 onLogout={handleLogout}
                 userRole={userRole}

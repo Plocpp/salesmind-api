@@ -118,12 +118,21 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       icon: Boxes,
       children: [
         { id: 'estoque', label: 'Visao de Estoque' },
+        { id: 'compras', label: 'Compras' },
         { id: 'cadastro-produtos', label: 'Cadastro de Produtos' },
         { id: 'fornecedores', label: 'Fornecedores' },
         { id: 'marcas', label: 'Marcas' },
       ],
     },
   ];
+
+  useEffect(() => {
+    const allModules = [...operationModules, ...managementModules];
+    const activeModule = allModules.find((module) => module.children.some((child) => child.id === currentPage));
+    if (!activeModule) return;
+
+    setOpenModules((current) => (current[activeModule.id] ? current : { ...current, [activeModule.id]: true }));
+  }, [currentPage, userRole]);
 
   const managementModules: MenuModule[] = [
     {
@@ -212,6 +221,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       { id: 'dashboard', label: 'Início', icon: Home },
       { id: 'vendas', label: 'Vendas', icon: ShoppingCart, hidden: userRole !== 'ADMIN' && userRole !== 'VENDEDOR' },
       { id: 'estoque', label: 'Estoque', icon: Boxes },
+      { id: 'compras', label: 'Compras', icon: ClipboardList },
       { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
     ].filter((item) => !item.hidden),
     [userRole]
@@ -347,6 +357,25 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
         <Search size={16} />
         <span style={{ fontSize: 13 }}>Buscar produto, cliente, venda ou lancamento</span>
       </div>
+
+      <button
+        onClick={() => navigateTo('compras')}
+        style={{
+          height: 36,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          border: `1px solid ${currentPage === 'compras' ? colors.active : colors.border}`,
+          background: currentPage === 'compras' ? colors.activeSoft : '#fff',
+          color: currentPage === 'compras' ? colors.active : colors.text,
+          borderRadius: 8,
+          padding: '0 12px',
+          cursor: 'pointer',
+          fontWeight: 700,
+        }}
+      >
+        <ClipboardList size={16} /> Compras
+      </button>
 
       <button
         style={{
@@ -696,7 +725,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
               bottom: 0,
               height: 66,
               display: 'grid',
-              gridTemplateColumns: 'repeat(5, 1fr)',
+              gridTemplateColumns: `repeat(${quickNav.length + 1}, 1fr)`,
               background: '#ffffff',
               borderTop: `1px solid ${colors.border}`,
               zIndex: 30,

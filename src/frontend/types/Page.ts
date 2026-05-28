@@ -13,5 +13,6 @@ export type Page =
   | "peso-carga"
   | "log"
   | "estoque"
+  | "compras"
   | "financeiro"
   | "usuarios-hierarquia";

@@ -1,3 +1,4 @@
+import { XMLParser } from "fast-xml-parser";
 import { z } from "zod";
 import prismaClient from "../database/prisma";
 
@@ -133,7 +134,364 @@ const recebimentoNfeCompraSchema = z.object({
   })).default([]),
 });
 
+const tipoCatalogoSchema = z.enum(["PRODUTO", "SERVICO", "PACOTE", "KIT"]);
+
+const criarItemCatalogoSchema = z.object({
+  tipo: tipoCatalogoSchema,
+  nome: z.string().min(1),
+  codigoInterno: z.string().optional(),
+  codigoBarras: z.string().optional(),
+  unidadeVenda: z.string().min(1),
+  grupoId: z.string().min(1),
+  marcaId: z.string().min(1),
+  custoAtual: z.number().nonnegative().optional(),
+  precoVenda: z.number().nonnegative().optional(),
+  markupAlvo: z.number().optional(),
+  estoqueInicial: z.number().nonnegative().optional(),
+});
+
+const atualizarItemCatalogoSchema = z.object({
+  nome: z.string().min(1).optional(),
+  unidadeVenda: z.string().min(1).optional(),
+  grupoId: z.string().min(1).optional(),
+  marcaId: z.string().min(1).optional(),
+  custoAtual: z.number().nonnegative().optional(),
+  precoVenda: z.number().nonnegative().optional(),
+  markupAlvo: z.number().optional(),
+  codigoInterno: z.string().optional(),
+  codigoBarras: z.string().optional(),
+  ativo: z.boolean().optional(),
+});
+
+const filtrosCatalogoSchema = z.object({
+  q: z.string().optional(),
+  tipo: tipoCatalogoSchema.optional(),
+  grupoId: z.string().optional(),
+  marcaId: z.string().optional(),
+  ativo: z.boolean().optional(),
+  statusEstoque: z.enum(["RUPTURA", "BAIXO", "OK"]).optional(),
+  somenteComValidade: z.boolean().optional(),
+});
+
+const filtrosPedidoCompraSchema = z.object({
+  status: z.string().optional(),
+  fornecedorId: z.string().optional(),
+  q: z.string().optional(),
+  inicio: z.string().optional(),
+  fim: z.string().optional(),
+});
+
+const sugestaoCompraFiltroSchema = z.object({
+  coberturaDias: z.number().int().min(1).max(365).default(30),
+  incluirItensSemVenda: z.boolean().default(false),
+});
+
+const importarNfeCompraXmlSchema = z.object({
+  xml: z.string().min(50),
+  depositoDestinoId: z.string().optional(),
+  empresaId: z.string().optional(),
+  fornecedorFallbackNome: z.string().optional(),
+  marcaPadraoNome: z.string().optional(),
+  criarProdutosNovos: z.boolean().default(true),
+  atualizarCustoProduto: z.boolean().default(true),
+});
+
+const previewNfeCompraXmlSchema = z.object({
+  xml: z.string().min(50),
+});
+
+type XmlCompraItem = {
+  nome: string;
+  codigoInterno?: string;
+  codigoBarras?: string;
+  quantidade: number;
+  custoUnitario: number;
+  valorTotal: number;
+  unidade?: string;
+  ncm?: string;
+  cfop?: string;
+  marcaNome?: string;
+  lote?: string;
+  validade?: Date;
+};
+
+type XmlCompraExtraida = {
+  numero: string;
+  serie: string;
+  chaveAcesso: string;
+  dataEmissao: Date;
+  dataEntrada: Date;
+  valorFrete: number;
+  valorImpostos: number;
+  valorTotal: number;
+  fornecedorNome?: string;
+  fornecedorCnpj?: string;
+  itens: XmlCompraItem[];
+  parcelas: Array<{ numeroParcela: number; valor: number; vencimento: Date }>;
+};
+
+const mapTipoCatalogoParaProduto = (tipo: z.infer<typeof tipoCatalogoSchema>) => {
+  if (tipo === "PRODUTO") return "FISICO";
+  if (tipo === "SERVICO") return "SERVICO";
+  if (tipo === "PACOTE") return "KIT";
+  return "KIT";
+};
+
+const mapTipoProdutoParaCatalogo = (tipo: string) => {
+  if (tipo === "FISICO") return "PRODUTO";
+  if (tipo === "SERVICO") return "SERVICO";
+  if (tipo === "KIT") return "KIT";
+  return "PRODUTO";
+};
+
 export class EstoqueService {
+  async listarCatalogoItens(filtros: unknown) {
+    const parsed = filtrosCatalogoSchema.parse(filtros || {});
+
+    const produtos = await prisma.produto.findMany({
+      where: {
+        ...(parsed.ativo === undefined ? {} : { ativo: parsed.ativo }),
+        ...(parsed.grupoId ? { grupoProdutoId: parsed.grupoId } : {}),
+        ...(parsed.marcaId ? { marcaId: parsed.marcaId } : {}),
+        ...(parsed.tipo ? { tipo: mapTipoCatalogoParaProduto(parsed.tipo) } : {}),
+        ...(parsed.somenteComValidade ? { validade: { not: null } } : {}),
+        ...(parsed.q
+          ? {
+              OR: [
+                { nome: { contains: parsed.q } },
+                { codigo: { contains: parsed.q } },
+                { codigoBarras: { contains: parsed.q } },
+                { sku: { contains: parsed.q } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        marca: true,
+        grupoProduto: true,
+      },
+      orderBy: { nome: "asc" },
+    });
+
+    const itens = produtos.map((produto: any) => this.toCatalogoItem(produto));
+
+    if (!parsed.statusEstoque) {
+      return itens;
+    }
+
+    return itens.filter((item: any) => {
+      const minimo = Number(item.estoqueMinimo || 0);
+      if (parsed.statusEstoque === "RUPTURA") return Number(item.estoqueAtual || 0) <= 0;
+      if (parsed.statusEstoque === "BAIXO") return Number(item.estoqueAtual || 0) > 0 && Number(item.estoqueAtual || 0) <= minimo;
+      return Number(item.estoqueAtual || 0) > minimo;
+    });
+  }
+
+  async atalhosOperacionais() {
+    return {
+      origem: "Referencia publica Simples.Vet + adaptacao operacional SalesMind",
+      atualizadoEm: new Date().toISOString(),
+      atalhos: [
+        {
+          codigo: "EST-AT-01",
+          titulo: "Pesquisar catalogo",
+          rota: "/estoque/catalogo/itens?q=",
+          acaoRapida: "Buscar por nome, codigo interno, codigo de barras ou SKU em um unico campo.",
+        },
+        {
+          codigo: "EST-AT-02",
+          titulo: "Conferir validade critica",
+          rota: "/estoque/catalogo/indicadores-validade?janelaDias=60",
+          acaoRapida: "Listar vencidos e vencendo com janela configuravel para priorizar escoamento.",
+        },
+        {
+          codigo: "EST-AT-03",
+          titulo: "Gerar sugestao de compra",
+          rota: "/estoque/compras/sugestoes?coberturaDias=30",
+          acaoRapida: "Calcular necessidade por giro e estoque minimo para reposicao rapida.",
+        },
+        {
+          codigo: "EST-AT-04",
+          titulo: "Filtrar pedidos de compra",
+          rota: "/estoque/compras/pedidos?status=ABERTO&q=",
+          acaoRapida: "Pesquisar pedidos por numero/fornecedor e filtrar por periodo.",
+        },
+        {
+          codigo: "EST-AT-05",
+          titulo: "Itens em ruptura",
+          rota: "/estoque/catalogo/itens?statusEstoque=RUPTURA",
+          acaoRapida: "Ver rapidamente itens sem disponibilidade para acionar compra.",
+        },
+        {
+          codigo: "EST-AT-06",
+          titulo: "Itens com estoque baixo",
+          rota: "/estoque/catalogo/itens?statusEstoque=BAIXO",
+          acaoRapida: "Listar itens com saldo disponivel ate o estoque minimo para priorizar reposicao.",
+        },
+      ],
+    };
+  }
+
+  async criarItemCatalogo(data: unknown, usuarioId: string) {
+    const payload = criarItemCatalogoSchema.parse(data);
+
+    const criado = await prisma.produto.create({
+      data: {
+        nome: payload.nome,
+        tipo: mapTipoCatalogoParaProduto(payload.tipo),
+        codigo: payload.codigoInterno,
+        codigoBarras: payload.codigoBarras,
+        unidadeMedida: payload.unidadeVenda,
+        grupoProdutoId: payload.grupoId,
+        marcaId: payload.marcaId,
+        custoMedio: payload.custoAtual,
+        preco: payload.precoVenda || 0,
+        markup: payload.markupAlvo,
+        margem: payload.markupAlvo,
+        estoque: Math.round(payload.estoqueInicial || 0),
+        estoqueDisponivel: payload.estoqueInicial || 0,
+        peso: 0,
+        porte: "NAO_APLICA",
+        usuarioId,
+      },
+      include: {
+        marca: true,
+        grupoProduto: true,
+      },
+    });
+
+    return this.toCatalogoItem(criado);
+  }
+
+  async atualizarItemCatalogo(id: string, data: unknown) {
+    const payload = atualizarItemCatalogoSchema.parse(data);
+
+    const existe = await prisma.produto.findUnique({ where: { id } });
+    if (!existe) {
+      throw new Error("Item de catalogo nao encontrado");
+    }
+
+    const atualizado = await prisma.produto.update({
+      where: { id },
+      data: {
+        ...(payload.nome !== undefined ? { nome: payload.nome } : {}),
+        ...(payload.unidadeVenda !== undefined ? { unidadeMedida: payload.unidadeVenda } : {}),
+        ...(payload.grupoId !== undefined ? { grupoProdutoId: payload.grupoId } : {}),
+        ...(payload.marcaId !== undefined ? { marcaId: payload.marcaId } : {}),
+        ...(payload.custoAtual !== undefined ? { custoMedio: payload.custoAtual } : {}),
+        ...(payload.precoVenda !== undefined ? { preco: payload.precoVenda } : {}),
+        ...(payload.markupAlvo !== undefined ? { markup: payload.markupAlvo, margem: payload.markupAlvo } : {}),
+        ...(payload.codigoInterno !== undefined ? { codigo: payload.codigoInterno } : {}),
+        ...(payload.codigoBarras !== undefined ? { codigoBarras: payload.codigoBarras } : {}),
+        ...(payload.ativo !== undefined ? { ativo: payload.ativo } : {}),
+      },
+      include: {
+        marca: true,
+        grupoProduto: true,
+      },
+    });
+
+    return this.toCatalogoItem(atualizado);
+  }
+
+  async indicadoresValidade(janelaDias = 60) {
+    const hoje = new Date();
+    const limite = new Date(hoje);
+    limite.setDate(limite.getDate() + janelaDias);
+
+    const produtos = await prisma.produto.findMany({
+      where: {
+        ativo: true,
+        validade: { not: null },
+      },
+      include: {
+        marca: true,
+        grupoProduto: true,
+      },
+      orderBy: { validade: "asc" },
+    });
+
+    const itensCriticos = produtos.filter((produto: any) => {
+      const validade = produto.validade ? new Date(produto.validade) : null;
+      if (!validade) return false;
+      return validade <= limite;
+    }).map((produto: any) => this.toCatalogoItem(produto, janelaDias));
+
+    const vencidos = itensCriticos.filter((item: any) => item.statusValidade === "VENCIDO").length;
+    const vencendo = itensCriticos.filter((item: any) => item.statusValidade === "VENCENDO").length;
+
+    return {
+      vencidos,
+      vencendo,
+      janelaDias,
+      itensCriticos,
+    };
+  }
+
+  async sugestoesCompra(filtros: unknown) {
+    const parsed = sugestaoCompraFiltroSchema.parse(filtros || {});
+    const inicioJanela = new Date();
+    inicioJanela.setDate(inicioJanela.getDate() - 30);
+
+    const produtos = await prisma.produto.findMany({
+      where: {
+        ativo: true,
+        tipo: { in: ["FISICO", "KIT"] },
+      },
+      orderBy: { nome: "asc" },
+    });
+
+    if (produtos.length === 0) {
+      return [];
+    }
+
+    const vendas30Dias = await prisma.itemVenda.findMany({
+      where: {
+        produtoId: { in: produtos.map((produto: any) => produto.id) },
+        venda: {
+          data: { gte: inicioJanela },
+          status: { notIn: ["CANCELADO", "ESTORNADO"] },
+        },
+      },
+      select: {
+        produtoId: true,
+        quantidade: true,
+      },
+    });
+
+    const vendasPorProduto = vendas30Dias.reduce<Record<string, number>>((acc, item: any) => {
+      const atual = acc[item.produtoId] || 0;
+      acc[item.produtoId] = atual + Number(item.quantidade || 0);
+      return acc;
+    }, {});
+
+    const sugestoes = produtos.map((produto: any) => {
+      const vendido30Dias = Number(vendasPorProduto[produto.id] || 0);
+      const consumoMedioDiario = vendido30Dias / 30;
+      const coberturaNecessaria = consumoMedioDiario * parsed.coberturaDias;
+      const estoqueAtual = Number(produto.estoqueDisponivel || produto.estoque || 0);
+      const estoqueMinimo = Number(produto.estoqueMinimo || 0);
+      const alvo = Math.max(estoqueMinimo, coberturaNecessaria);
+      const quantidadeSugerida = Math.max(0, Number((alvo - estoqueAtual).toFixed(2)));
+
+      return {
+        itemId: produto.id,
+        nomeItem: produto.nome,
+        estoqueAtual,
+        estoqueMinimo,
+        coberturaDias: parsed.coberturaDias,
+        quantidadeSugerida,
+        justificativa: `Consumo medio 30d: ${consumoMedioDiario.toFixed(2)}/dia; alvo ${alvo.toFixed(2)}; estoque atual ${estoqueAtual.toFixed(2)}.`,
+      };
+    });
+
+    return sugestoes.filter((item) => {
+      if (item.quantidadeSugerida > 0) return true;
+      if (!parsed.incluirItensSemVenda) return false;
+      return item.estoqueAtual <= item.estoqueMinimo;
+    });
+  }
+
   async criarGrupo(data: unknown) {
     return prisma.grupoProduto.create({ data: grupoSchema.parse(data) });
   }
@@ -210,15 +568,34 @@ export class EstoqueService {
     }, usuarioId);
   }
 
-  async listarSaldos(filtros: { produtoId?: string; depositoId?: string }) {
-    return prisma.produtoEstoque.findMany({
+  async listarSaldos(filtros: { produtoId?: string; depositoId?: string; q?: string; abaixoMinimo?: boolean; comReserva?: boolean }) {
+    const saldos = await prisma.produtoEstoque.findMany({
       where: {
         ...(filtros.produtoId ? { produtoId: filtros.produtoId } : {}),
         ...(filtros.depositoId ? { depositoId: filtros.depositoId } : {}),
+        ...(filtros.comReserva ? { estoqueReservado: { gt: 0 } } : {}),
+        ...(filtros.q
+          ? {
+              produto: {
+                OR: [
+                  { nome: { contains: filtros.q } },
+                  { codigo: { contains: filtros.q } },
+                  { codigoBarras: { contains: filtros.q } },
+                  { sku: { contains: filtros.q } },
+                ],
+              },
+            }
+          : {}),
       },
       include: { produto: true, deposito: true },
       orderBy: { updatedAt: "desc" },
     });
+
+    if (!filtros.abaixoMinimo) {
+      return saldos;
+    }
+
+    return saldos.filter((saldo: any) => Number(saldo.estoqueDisponivel || 0) <= Number(saldo.produto?.estoqueMinimo || 0));
   }
 
   async analise(empresaId?: string) {
@@ -284,9 +661,30 @@ export class EstoqueService {
     });
   }
 
-  async listarPedidosCompra(status?: string) {
+  async listarPedidosCompra(filtros: unknown = {}) {
+    const parsed = filtrosPedidoCompraSchema.parse(filtros || {});
+
     return prisma.pedidoCompra.findMany({
-      where: status ? { status } : {},
+      where: {
+        ...(parsed.status ? { status: parsed.status as any } : {}),
+        ...(parsed.fornecedorId ? { fornecedorId: parsed.fornecedorId } : {}),
+        ...(parsed.inicio || parsed.fim
+          ? {
+              createdAt: {
+                ...(parsed.inicio ? { gte: new Date(parsed.inicio) } : {}),
+                ...(parsed.fim ? { lte: new Date(parsed.fim) } : {}),
+              },
+            }
+          : {}),
+        ...(parsed.q
+          ? {
+              OR: [
+                { numero: { contains: parsed.q } },
+                { fornecedor: { nome: { contains: parsed.q } } },
+              ],
+            }
+          : {}),
+      },
       include: { fornecedor: true, itens: { include: { produto: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -465,6 +863,209 @@ export class EstoqueService {
         notaEntrada,
       };
     });
+  }
+
+  async importarNotaFiscalCompraXml(data: unknown, usuarioId: string) {
+    const payload = importarNfeCompraXmlSchema.parse(data);
+    const extraida = this.extrairCompraDeXml(payload.xml);
+
+    if (extraida.itens.length === 0) {
+      throw new Error("Nenhum item de produto foi encontrado no XML da NF-e");
+    }
+
+    const empresaAtiva = payload.empresaId
+      ? { id: payload.empresaId }
+      : await prisma.empresa.findFirst({ where: { ativo: true }, select: { id: true }, orderBy: { createdAt: "asc" } });
+
+    const fornecedorResultado = await this.obterOuCriarFornecedorXml(extraida, payload.fornecedorFallbackNome);
+    const cacheMarcas = new Map<string, { id: string; created: boolean }>();
+
+    let marcasCriadas = 0;
+    let produtosCriados = 0;
+    let produtosAtualizados = 0;
+
+    const itensPedido = [] as Array<{
+      produtoId: string;
+      quantidade: number;
+      custoUnitario: number;
+      ncm?: string;
+      cfop?: string;
+      lote?: string;
+      validade?: Date;
+    }>;
+
+    for (const itemXml of extraida.itens) {
+      const marcaNome = this.normalizarTexto(itemXml.marcaNome)
+        || this.normalizarTexto(payload.marcaPadraoNome)
+        || this.normalizarTexto(fornecedorResultado.fornecedor.nome)
+        || "Sem marca";
+
+      const marcaResultado = await this.obterOuCriarMarcaXml(marcaNome, fornecedorResultado.fornecedor.id, cacheMarcas);
+      if (marcaResultado.created) marcasCriadas += 1;
+
+      const produtoResultado = await this.obterOuCriarProdutoViaXml(itemXml, {
+        usuarioId,
+        marcaId: marcaResultado.marca.id,
+        criarProdutosNovos: payload.criarProdutosNovos,
+        atualizarCustoProduto: payload.atualizarCustoProduto,
+      });
+
+      if (produtoResultado.created) produtosCriados += 1;
+      if (produtoResultado.updated) produtosAtualizados += 1;
+
+      itensPedido.push({
+        produtoId: produtoResultado.produto.id,
+        quantidade: itemXml.quantidade,
+        custoUnitario: itemXml.custoUnitario,
+        ncm: itemXml.ncm,
+        cfop: itemXml.cfop,
+        lote: itemXml.lote,
+        validade: itemXml.validade,
+      });
+    }
+
+    const pedido = await this.criarPedidoCompra({
+      numero: extraida.numero,
+      fornecedorId: fornecedorResultado.fornecedor.id,
+      empresaId: empresaAtiva?.id,
+      previsao: extraida.dataEntrada,
+      valorFrete: extraida.valorFrete,
+      valorImpostos: extraida.valorImpostos,
+      observacoes: `Importacao XML NF-e ${extraida.numero}/${extraida.serie}`,
+      itens: itensPedido,
+    });
+
+    const recebimento = await this.receberNotaFiscalCompra({
+      pedidoCompraId: pedido.id,
+      numero: extraida.numero,
+      serie: extraida.serie,
+      chaveAcesso: extraida.chaveAcesso,
+      dataEmissao: extraida.dataEmissao,
+      dataEntrada: extraida.dataEntrada,
+      valorFrete: extraida.valorFrete,
+      valorImpostos: extraida.valorImpostos,
+      observacoes: `Importacao XML NF-e ${extraida.numero}/${extraida.serie}`,
+      itens: itensPedido.map((item) => ({
+        produtoId: item.produtoId,
+        quantidadeRecebida: item.quantidade,
+        custoUnitario: item.custoUnitario,
+        depositoDestinoId: payload.depositoDestinoId,
+      })),
+      parcelas: extraida.parcelas,
+    }, usuarioId);
+
+    return {
+      message: "XML importado com sucesso. NF-e vinculada ao estoque e financeiro.",
+      notaFiscal: {
+        numero: extraida.numero,
+        serie: extraida.serie,
+        chaveAcesso: extraida.chaveAcesso,
+        dataEmissao: extraida.dataEmissao,
+        fornecedor: fornecedorResultado.fornecedor.nome,
+        valorTotal: extraida.valorTotal,
+      },
+      pedidoCompraId: pedido.id,
+      resumo: {
+        itensNota: extraida.itens.length,
+        fornecedorCriado: fornecedorResultado.created,
+        marcasCriadas,
+        produtosCriados,
+        produtosAtualizados,
+      },
+      recebimento,
+    };
+  }
+
+  async previewImportacaoNotaFiscalCompraXml(data: unknown) {
+    const payload = previewNfeCompraXmlSchema.parse(data);
+    const extraida = this.extrairCompraDeXml(payload.xml);
+
+    const fornecedorCnpj = extraida.fornecedorCnpj;
+    const fornecedorNome = extraida.fornecedorNome;
+
+    const fornecedor = fornecedorCnpj
+      ? await prisma.fornecedor.findUnique({ where: { cnpj: fornecedorCnpj } })
+      : (fornecedorNome ? await prisma.fornecedor.findFirst({ where: { nome: fornecedorNome } }) : null);
+
+    const codigosBarras = Array.from(new Set(extraida.itens.map((item) => item.codigoBarras).filter(Boolean))) as string[];
+    const codigosInternos = Array.from(new Set(extraida.itens.map((item) => item.codigoInterno).filter(Boolean))) as string[];
+    const nomesProdutos = Array.from(new Set(extraida.itens.map((item) => item.nome)));
+    const marcasXml = Array.from(new Set(extraida.itens.map((item) => this.normalizarTexto(item.marcaNome)).filter(Boolean))) as string[];
+
+    const produtos = await prisma.produto.findMany({
+      where: {
+        OR: [
+          ...(codigosBarras.length > 0 ? [{ codigoBarras: { in: codigosBarras } }] : []),
+          ...(codigosInternos.length > 0 ? [{ codigo: { in: codigosInternos } }] : []),
+          ...(nomesProdutos.length > 0 ? [{ nome: { in: nomesProdutos } }] : []),
+        ],
+      },
+      select: {
+        id: true,
+        nome: true,
+        codigo: true,
+        codigoBarras: true,
+      },
+    });
+
+    const marcas = marcasXml.length > 0
+      ? await prisma.marca.findMany({ where: { nome: { in: marcasXml } }, select: { id: true, nome: true } })
+      : [];
+
+    const produtoPorCodigoBarras = new Map(produtos.filter((p: any) => p.codigoBarras).map((p: any) => [String(p.codigoBarras), p]));
+    const produtoPorCodigoInterno = new Map(produtos.filter((p: any) => p.codigo).map((p: any) => [String(p.codigo), p]));
+    const produtoPorNome = new Map(produtos.map((p: any) => [String(p.nome), p]));
+
+    const itens = extraida.itens.map((item) => {
+      const produtoEncontrado = (item.codigoBarras ? produtoPorCodigoBarras.get(item.codigoBarras) : undefined)
+        || (item.codigoInterno ? produtoPorCodigoInterno.get(item.codigoInterno) : undefined)
+        || produtoPorNome.get(item.nome);
+
+      const marcaEncontrada = marcas.find((marca: any) => marca.nome === this.normalizarTexto(item.marcaNome));
+
+      return {
+        nome: item.nome,
+        codigoInterno: item.codigoInterno || null,
+        codigoBarras: item.codigoBarras || null,
+        quantidade: item.quantidade,
+        custoUnitario: item.custoUnitario,
+        valorTotal: item.valorTotal,
+        unidade: item.unidade || null,
+        ncm: item.ncm || null,
+        cfop: item.cfop || null,
+        marcaNome: item.marcaNome || null,
+        validade: item.validade ? item.validade.toISOString().slice(0, 10) : null,
+        produtoEncontradoId: produtoEncontrado?.id || null,
+        produtoEncontradoNome: produtoEncontrado?.nome || null,
+        marcaEncontradaId: marcaEncontrada?.id || null,
+      };
+    });
+
+    const itensComProduto = itens.filter((item) => item.produtoEncontradoId).length;
+
+    return {
+      notaFiscal: {
+        numero: extraida.numero,
+        serie: extraida.serie,
+        chaveAcesso: extraida.chaveAcesso,
+        dataEmissao: extraida.dataEmissao,
+        fornecedorNome: extraida.fornecedorNome || null,
+        fornecedorCnpj: extraida.fornecedorCnpj || null,
+        valorTotal: extraida.valorTotal,
+        valorFrete: extraida.valorFrete,
+        valorImpostos: extraida.valorImpostos,
+      },
+      fornecedorEncontrado: fornecedor
+        ? { id: fornecedor.id, nome: fornecedor.nome, cnpj: fornecedor.cnpj || null }
+        : null,
+      resumo: {
+        itensNota: itens.length,
+        itensComProdutoEncontrado: itensComProduto,
+        itensSemProdutoEncontrado: itens.length - itensComProduto,
+        marcasEncontradas: marcas.length,
+      },
+      itens,
+    };
   }
 
   async listarNotasFiscaisCompra(filtros: { inicio?: string; fim?: string; fornecedorId?: string; statusPedido?: string } = {}) {
@@ -658,6 +1259,335 @@ export class EstoqueService {
     await tx.estoqueAuditoria.create({
       data: { entidade, entidadeId, acao, usuarioId, antes: antes || undefined, depois: depois || undefined },
     });
+  }
+
+  private toCatalogoItem(produto: any, janelaDias = 60) {
+    const validadeMaisProxima = produto.validade ? new Date(produto.validade) : null;
+    const statusValidade = this.getStatusValidade(validadeMaisProxima, janelaDias);
+
+    return {
+      id: produto.id,
+      tipo: mapTipoProdutoParaCatalogo(String(produto.tipo || "FISICO")),
+      nome: produto.nome,
+      codigoInterno: produto.codigo || produto.sku || null,
+      codigoBarras: produto.codigoBarras || null,
+      unidadeVenda: produto.unidadeMedida,
+      grupoId: produto.grupoProdutoId || null,
+      grupo: produto.grupoProduto?.nome || null,
+      marcaId: produto.marcaId,
+      marca: produto.marca?.nome || null,
+      custoAtual: Number(produto.custoMedio || 0),
+      precoVenda: Number(produto.preco || 0),
+      markupAtual: Number(produto.markup || 0),
+      estoqueAtual: Number(produto.estoqueDisponivel || produto.estoque || 0),
+      estoqueMinimo: Number(produto.estoqueMinimo || 0),
+      validadeMaisProxima: validadeMaisProxima ? validadeMaisProxima.toISOString().slice(0, 10) : null,
+      statusValidade,
+      ativo: Boolean(produto.ativo),
+    };
+  }
+
+  private getStatusValidade(validade: Date | null, janelaDias: number) {
+    if (!validade) return "OK";
+
+    const hoje = new Date();
+    const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const dataValidade = new Date(validade.getFullYear(), validade.getMonth(), validade.getDate());
+    const janela = new Date(inicioHoje);
+    janela.setDate(janela.getDate() + janelaDias);
+
+    if (dataValidade < inicioHoje) return "VENCIDO";
+    if (dataValidade <= janela) return "VENCENDO";
+    return "OK";
+  }
+
+  private extrairCompraDeXml(xml: string): XmlCompraExtraida {
+    const parser = new XMLParser({
+      ignoreAttributes: false,
+      trimValues: true,
+      parseTagValue: false,
+    });
+
+    const parsed = parser.parse(xml);
+    const nfeProc = parsed?.nfeProc || parsed;
+    const nfe = nfeProc?.NFe || parsed?.NFe || nfeProc;
+    const infNFe = nfe?.infNFe;
+    const protNFe = nfeProc?.protNFe;
+
+    if (!infNFe) {
+      throw new Error("XML de NF-e invalido: bloco infNFe nao encontrado");
+    }
+
+    const ide = infNFe.ide || {};
+    const emit = infNFe.emit || {};
+    const total = infNFe.total?.ICMSTot || {};
+    const cobr = infNFe.cobr || {};
+
+    const numero = String(ide.nNF || "").trim();
+    const serie = String(ide.serie || "1").trim() || "1";
+    const chaveAcessoRaw = String(protNFe?.infProt?.chNFe || infNFe?.["@_Id"] || infNFe?.Id || "").trim();
+    const chaveAcesso = chaveAcessoRaw.replace(/^NFe/i, "");
+
+    if (!numero) {
+      throw new Error("XML invalido: numero da NF-e (nNF) nao encontrado");
+    }
+
+    if (chaveAcesso.length < 32) {
+      throw new Error("XML invalido: chave de acesso da NF-e nao encontrada");
+    }
+
+    const dets = this.toArray<any>(infNFe.det);
+    const itens = dets.map((det: any) => {
+      const prod = det?.prod || {};
+      const rastro = this.toArray<any>(det?.rastro || prod?.rastro)[0] || {};
+
+      const nome = this.normalizarTexto(prod.xProd);
+      const quantidade = this.toNumber(prod.qCom ?? prod.qTrib);
+      const custoUnitario = this.toNumber(prod.vUnCom ?? prod.vUnTrib);
+      const valorTotal = this.toNumber(prod.vProd);
+
+      if (!nome) {
+        throw new Error("XML invalido: item sem nome (xProd)");
+      }
+
+      if (quantidade <= 0) {
+        throw new Error(`Quantidade invalida no item ${nome}`);
+      }
+
+      return {
+        nome,
+        codigoInterno: this.normalizarCodigo(prod.cProd),
+        codigoBarras: this.normalizarCodigoBarras(prod.cEAN || prod.cEANTrib),
+        quantidade,
+        custoUnitario: custoUnitario > 0 ? custoUnitario : Number((valorTotal / quantidade).toFixed(4)),
+        valorTotal,
+        unidade: this.normalizarTexto(prod.uCom),
+        ncm: this.normalizarTexto(prod.NCM),
+        cfop: this.normalizarTexto(prod.CFOP),
+        marcaNome: this.normalizarTexto(prod.xMarca),
+        lote: this.normalizarTexto(rastro.nLote),
+        validade: this.toDate(rastro.dVal),
+      } as XmlCompraItem;
+    });
+
+    const parcelas = this.toArray<any>(cobr.dup)
+      .map((dup: any, index: number) => {
+        const valor = this.toNumber(dup?.vDup);
+        const vencimento = this.toDate(dup?.dVenc);
+        if (valor <= 0 || !vencimento) return null;
+        return {
+          numeroParcela: Number(dup?.nDup || index + 1),
+          valor,
+          vencimento,
+        };
+      })
+      .filter(Boolean) as Array<{ numeroParcela: number; valor: number; vencimento: Date }>;
+
+    return {
+      numero,
+      serie,
+      chaveAcesso,
+      dataEmissao: this.toDate(ide?.dhEmi || ide?.dEmi) || new Date(),
+      dataEntrada: new Date(),
+      valorFrete: this.toNumber(total?.vFrete),
+      valorImpostos: this.toNumber(total?.vIPI) + this.toNumber(total?.vII) + this.toNumber(total?.vST),
+      valorTotal: this.toNumber(total?.vNF),
+      fornecedorNome: this.normalizarTexto(emit?.xNome),
+      fornecedorCnpj: this.onlyDigits(emit?.CNPJ),
+      itens,
+      parcelas,
+    };
+  }
+
+  private async obterOuCriarFornecedorXml(extraida: XmlCompraExtraida, fallbackNome?: string) {
+    const nome = extraida.fornecedorNome || this.normalizarTexto(fallbackNome) || "Fornecedor XML";
+    const cnpj = extraida.fornecedorCnpj;
+
+    if (cnpj) {
+      const existentePorCnpj = await prisma.fornecedor.findUnique({ where: { cnpj } });
+      if (existentePorCnpj) {
+        return { fornecedor: existentePorCnpj, created: false };
+      }
+    }
+
+    const existentePorNome = await prisma.fornecedor.findFirst({ where: { nome } });
+    if (existentePorNome) {
+      return { fornecedor: existentePorNome, created: false };
+    }
+
+    const criado = await prisma.fornecedor.create({
+      data: {
+        nome,
+        cnpj: cnpj || undefined,
+      },
+    });
+
+    return { fornecedor: criado, created: true };
+  }
+
+  private async obterOuCriarMarcaXml(nomeMarca: string, fornecedorId: string, cache: Map<string, { id: string; created: boolean }>) {
+    const chave = nomeMarca.toLowerCase();
+    const doCache = cache.get(chave);
+    if (doCache) {
+      return {
+        marca: { id: doCache.id },
+        created: doCache.created,
+      };
+    }
+
+    const existente = await prisma.marca.findFirst({ where: { nome: nomeMarca } });
+    if (existente) {
+      cache.set(chave, { id: existente.id, created: false });
+      return { marca: existente, created: false };
+    }
+
+    const criada = await prisma.marca.create({
+      data: {
+        nome: nomeMarca,
+        fornecedorId,
+      },
+    });
+
+    cache.set(chave, { id: criada.id, created: true });
+    return { marca: criada, created: true };
+  }
+
+  private async obterOuCriarProdutoViaXml(
+    item: XmlCompraItem,
+    options: { usuarioId: string; marcaId: string; criarProdutosNovos: boolean; atualizarCustoProduto: boolean },
+  ) {
+    const { usuarioId, marcaId, criarProdutosNovos, atualizarCustoProduto } = options;
+
+    let produto = null as any;
+
+    if (item.codigoBarras) {
+      produto = await prisma.produto.findFirst({ where: { codigoBarras: item.codigoBarras } });
+    }
+
+    if (!produto && item.codigoInterno) {
+      produto = await prisma.produto.findFirst({ where: { codigo: item.codigoInterno } });
+    }
+
+    if (!produto) {
+      produto = await prisma.produto.findFirst({ where: { nome: item.nome } });
+    }
+
+    if (produto) {
+      let updated = false;
+      if (atualizarCustoProduto) {
+        produto = await prisma.produto.update({
+          where: { id: produto.id },
+          data: {
+            custoMedio: item.custoUnitario,
+            ...(item.validade ? { validade: item.validade } : {}),
+            ...(item.ncm ? { ncm: item.ncm } : {}),
+            ...(item.cfop ? { cfop: item.cfop } : {}),
+            ...(item.codigoInterno && !produto.codigo ? { codigo: item.codigoInterno } : {}),
+            ...(item.codigoBarras && !produto.codigoBarras ? { codigoBarras: item.codigoBarras } : {}),
+          },
+        });
+        updated = true;
+      }
+
+      return {
+        produto,
+        created: false,
+        updated,
+      };
+    }
+
+    if (!criarProdutosNovos) {
+      throw new Error(`Produto nao encontrado no catalogo: ${item.nome}`);
+    }
+
+    const criado = await prisma.produto.create({
+      data: {
+        nome: item.nome,
+        peso: 0,
+        porte: "NAO_APLICA",
+        preco: item.custoUnitario,
+        estoque: 0,
+        tipo: "FISICO",
+        codigo: item.codigoInterno,
+        codigoBarras: item.codigoBarras,
+        unidadeMedida: item.unidade || "UN",
+        custoMedio: item.custoUnitario,
+        estoqueDisponivel: 0,
+        ncm: item.ncm,
+        cfop: item.cfop,
+        validade: item.validade,
+        usuarioId,
+        marcaId,
+      },
+    });
+
+    return {
+      produto: criado,
+      created: true,
+      updated: false,
+    };
+  }
+
+  private toArray<T>(value: T | T[] | undefined): T[] {
+    if (value === undefined || value === null) return [];
+    return Array.isArray(value) ? value : [value];
+  }
+
+  private toNumber(value: unknown): number {
+    if (value === undefined || value === null || value === "") return 0;
+    const normalized = String(value).replace(/\./g, "").replace(",", ".");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private toDate(value: unknown): Date | undefined {
+    if (!value) return undefined;
+    const raw = String(value).trim();
+    if (!raw) return undefined;
+
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+      const parsed = new Date(raw);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+      const [dia, mes, ano] = raw.split("/");
+      const parsed = new Date(`${ano}-${mes}-${dia}T00:00:00`);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    return undefined;
+  }
+
+  private normalizarTexto(value: unknown): string | undefined {
+    if (value === undefined || value === null) return undefined;
+    const normalized = String(value).trim();
+    return normalized || undefined;
+  }
+
+  private normalizarCodigo(value: unknown): string | undefined {
+    const normalized = this.normalizarTexto(value);
+    if (!normalized) return undefined;
+    return normalized.slice(0, 100);
+  }
+
+  private normalizarCodigoBarras(value: unknown): string | undefined {
+    const normalized = this.normalizarTexto(value);
+    if (!normalized) return undefined;
+
+    const upper = normalized.toUpperCase();
+    if (upper === "SEM GTIN" || upper === "SEMGTIN" || upper === "0") {
+      return undefined;
+    }
+
+    return normalized.slice(0, 60);
+  }
+
+  private onlyDigits(value: unknown): string | undefined {
+    const raw = this.normalizarTexto(value);
+    if (!raw) return undefined;
+    const digits = raw.replace(/\D/g, "");
+    return digits || undefined;
   }
 }
 
