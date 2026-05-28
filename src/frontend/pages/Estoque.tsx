@@ -97,6 +97,19 @@ type RecebimentoManualForm = {
   vencimento: string;
   observacoes: string;
   depositoDestinoId: string;
+  nfeCnpj: {
+    emitenteCnpj: string;
+    emitenteIe: string;
+    destinatarioCnpj: string;
+    destinatarioIe: string;
+    naturezaOperacao: string;
+    cfopPrincipal: string;
+    transportadoraNome: string;
+    transportadoraCnpj: string;
+    modalidadeFrete: string;
+    placaVeiculo: string;
+    ufVeiculo: string;
+  };
   itens: Array<{
     itemId: string;
     produtoId: string;
@@ -315,6 +328,19 @@ const buildRecebimentoManualForm = (pedido?: PedidoCompraItem | null): Recebimen
     vencimento: hoje,
     observacoes: '',
     depositoDestinoId: '',
+    nfeCnpj: {
+      emitenteCnpj: '',
+      emitenteIe: '',
+      destinatarioCnpj: '',
+      destinatarioIe: '',
+      naturezaOperacao: '',
+      cfopPrincipal: '',
+      transportadoraNome: '',
+      transportadoraCnpj: '',
+      modalidadeFrete: '0',
+      placaVeiculo: '',
+      ufVeiculo: '',
+    },
     itens: (pedido?.itens || []).map((item) => {
       const quantidade = Number(item.quantidade || 0);
       const quantidadeRecebida = Number(item.quantidadeRecebida || 0);
@@ -338,6 +364,7 @@ const applyXmlToRecebimentoForm = (
   xmlCompra: string,
 ) => {
   const xmlData = extractRecebimentoDataFromXml(xmlCompra);
+  const fornecedorDocumentoXml = extractFornecedorDocumentoFromXml(xmlCompra);
   const previewItems = previewXml?.itens || [];
 
   return {
@@ -349,6 +376,10 @@ const applyXmlToRecebimentoForm = (
     valorFrete: xmlData?.valorFrete || form.valorFrete,
     valorImpostos: xmlData?.valorImpostos || form.valorImpostos,
     observacoes: xmlData?.observacoes || form.observacoes,
+    nfeCnpj: {
+      ...form.nfeCnpj,
+      emitenteCnpj: fornecedorDocumentoXml || form.nfeCnpj.emitenteCnpj,
+    },
     itens: form.itens.map((item) => {
       const match = previewItems.find((previewItem) => {
         if (previewItem.produtoEncontradoId && previewItem.produtoEncontradoId === item.produtoId) {
@@ -371,6 +402,30 @@ const applyXmlToRecebimentoForm = (
       };
     }),
   };
+};
+
+const buildObservacoesNfeCnpj = (form: RecebimentoManualForm) => {
+  const base = form.observacoes.trim();
+  const detalhes = [
+    form.nfeCnpj.emitenteCnpj ? `Emitente CNPJ: ${form.nfeCnpj.emitenteCnpj}` : '',
+    form.nfeCnpj.emitenteIe ? `Emitente IE: ${form.nfeCnpj.emitenteIe}` : '',
+    form.nfeCnpj.destinatarioCnpj ? `Destinatario CNPJ: ${form.nfeCnpj.destinatarioCnpj}` : '',
+    form.nfeCnpj.destinatarioIe ? `Destinatario IE: ${form.nfeCnpj.destinatarioIe}` : '',
+    form.nfeCnpj.naturezaOperacao ? `Natureza operacao: ${form.nfeCnpj.naturezaOperacao}` : '',
+    form.nfeCnpj.cfopPrincipal ? `CFOP principal: ${form.nfeCnpj.cfopPrincipal}` : '',
+    form.nfeCnpj.transportadoraNome ? `Transportadora: ${form.nfeCnpj.transportadoraNome}` : '',
+    form.nfeCnpj.transportadoraCnpj ? `Transportadora CNPJ: ${form.nfeCnpj.transportadoraCnpj}` : '',
+    form.nfeCnpj.modalidadeFrete ? `Modalidade frete: ${form.nfeCnpj.modalidadeFrete}` : '',
+    form.nfeCnpj.placaVeiculo ? `Placa veiculo: ${form.nfeCnpj.placaVeiculo}` : '',
+    form.nfeCnpj.ufVeiculo ? `UF veiculo: ${form.nfeCnpj.ufVeiculo}` : '',
+  ].filter(Boolean);
+
+  if (detalhes.length === 0) {
+    return base || undefined;
+  }
+
+  const blocoNfe = `[NFE-CNPJ]\n${detalhes.join('\n')}`;
+  return [base, blocoNfe].filter(Boolean).join('\n\n');
 };
 
 const getPedidoSugeridoTheme = (nivel: PedidoXmlSugerido['nivel']) => {
@@ -1030,7 +1085,7 @@ export default function Estoque() {
         dataEntrada: recebimentoManual.dataEntrada,
         valorFrete,
         valorImpostos,
-        observacoes: recebimentoManual.observacoes.trim() || undefined,
+        observacoes: buildObservacoesNfeCnpj(recebimentoManual),
         itens: itensRecebidos.map((item) => ({
           ...item,
           depositoDestinoId: recebimentoManual.depositoDestinoId || undefined,
@@ -1164,6 +1219,12 @@ export default function Estoque() {
                     >
                       Importar XML
                     </button>
+                    <button
+                      onClick={() => document.getElementById('compras-nfe-cnpj')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                      style={{ height: 36, display: 'inline-flex', alignItems: 'center', border: '1px solid #d9e2e1', background: '#f8fbfa', color: '#54736b', borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      Aba NF-e CNPJ
+                    </button>
                   </div>
                 </div>
 
@@ -1285,6 +1346,31 @@ export default function Estoque() {
           </div>
 
           <section id="compras-xml" style={{ ...card, padding: 16 }}>
+            <section id="compras-nfe-cnpj" style={{ marginBottom: 12, padding: 12, border: '1px solid #d9e2e1', borderRadius: 8, background: '#f8fbfa' }}>
+              <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>NF-e Compras (CNPJ)</h3>
+              <p style={{ margin: '6px 0 10px', color: '#647674', fontSize: 13 }}>
+                Preencha dados fiscais e de transportadora exigidos em operações B2B. Esses dados são anexados ao recebimento da nota.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+                <input value={recebimentoManual.nfeCnpj.emitenteCnpj} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, emitenteCnpj: event.target.value } }))} placeholder="Emitente CNPJ" style={inputStyle} />
+                <input value={recebimentoManual.nfeCnpj.emitenteIe} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, emitenteIe: event.target.value } }))} placeholder="Emitente IE" style={inputStyle} />
+                <input value={recebimentoManual.nfeCnpj.destinatarioCnpj} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, destinatarioCnpj: event.target.value } }))} placeholder="Destinatário CNPJ" style={inputStyle} />
+                <input value={recebimentoManual.nfeCnpj.destinatarioIe} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, destinatarioIe: event.target.value } }))} placeholder="Destinatário IE" style={inputStyle} />
+                <input value={recebimentoManual.nfeCnpj.naturezaOperacao} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, naturezaOperacao: event.target.value } }))} placeholder="Natureza da operação" style={inputStyle} />
+                <input value={recebimentoManual.nfeCnpj.cfopPrincipal} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, cfopPrincipal: event.target.value } }))} placeholder="CFOP principal" style={inputStyle} />
+                <input value={recebimentoManual.nfeCnpj.transportadoraNome} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, transportadoraNome: event.target.value } }))} placeholder="Transportadora" style={inputStyle} />
+                <input value={recebimentoManual.nfeCnpj.transportadoraCnpj} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, transportadoraCnpj: event.target.value } }))} placeholder="Transportadora CNPJ" style={inputStyle} />
+                <select value={recebimentoManual.nfeCnpj.modalidadeFrete} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, modalidadeFrete: event.target.value } }))} style={{ ...inputStyle, background: '#fff' }}>
+                  <option value="0">Frete por conta do emitente (0)</option>
+                  <option value="1">Frete por conta do destinatário (1)</option>
+                  <option value="2">Frete por terceiros (2)</option>
+                  <option value="9">Sem frete (9)</option>
+                </select>
+                <input value={recebimentoManual.nfeCnpj.placaVeiculo} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, placaVeiculo: event.target.value } }))} placeholder="Placa veículo" style={inputStyle} />
+                <input value={recebimentoManual.nfeCnpj.ufVeiculo} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, ufVeiculo: event.target.value.toUpperCase() } }))} placeholder="UF veículo" style={inputStyle} maxLength={2} />
+              </div>
+            </section>
+
             <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>Importar NF-e de compra (XML)</h3>
             <p style={{ margin: '6px 0 10px', color: '#647674', fontSize: 13 }}>
               Absorve fornecedor, marca, validade e quantidade por item, cria produtos faltantes e da entrada no estoque automaticamente.
@@ -1874,6 +1960,28 @@ export default function Estoque() {
 
                     <div style={{ marginTop: 10 }}>
                       <input value={recebimentoManual.chaveAcesso} onChange={(event) => setRecebimentoManual((current) => ({ ...current, chaveAcesso: event.target.value }))} placeholder="Chave de acesso da NF-e" style={{ ...inputStyle, width: '100%' }} />
+                    </div>
+
+                    <div style={{ marginTop: 10, padding: 10, border: '1px solid #d9e2e1', borderRadius: 8, background: '#f8fbfa' }}>
+                      <div style={{ fontWeight: 800, color: '#243332', marginBottom: 8 }}>Aba NF-e Compras (CNPJ)</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+                        <input value={recebimentoManual.nfeCnpj.emitenteCnpj} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, emitenteCnpj: event.target.value } }))} placeholder="Emitente CNPJ" style={inputStyle} />
+                        <input value={recebimentoManual.nfeCnpj.emitenteIe} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, emitenteIe: event.target.value } }))} placeholder="Emitente IE" style={inputStyle} />
+                        <input value={recebimentoManual.nfeCnpj.destinatarioCnpj} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, destinatarioCnpj: event.target.value } }))} placeholder="Destinatário CNPJ" style={inputStyle} />
+                        <input value={recebimentoManual.nfeCnpj.destinatarioIe} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, destinatarioIe: event.target.value } }))} placeholder="Destinatário IE" style={inputStyle} />
+                        <input value={recebimentoManual.nfeCnpj.naturezaOperacao} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, naturezaOperacao: event.target.value } }))} placeholder="Natureza da operação" style={inputStyle} />
+                        <input value={recebimentoManual.nfeCnpj.cfopPrincipal} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, cfopPrincipal: event.target.value } }))} placeholder="CFOP principal" style={inputStyle} />
+                        <input value={recebimentoManual.nfeCnpj.transportadoraNome} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, transportadoraNome: event.target.value } }))} placeholder="Transportadora" style={inputStyle} />
+                        <input value={recebimentoManual.nfeCnpj.transportadoraCnpj} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, transportadoraCnpj: event.target.value } }))} placeholder="Transportadora CNPJ" style={inputStyle} />
+                        <select value={recebimentoManual.nfeCnpj.modalidadeFrete} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, modalidadeFrete: event.target.value } }))} style={{ ...inputStyle, background: '#fff' }}>
+                          <option value="0">Frete por conta do emitente (0)</option>
+                          <option value="1">Frete por conta do destinatário (1)</option>
+                          <option value="2">Frete por terceiros (2)</option>
+                          <option value="9">Sem frete (9)</option>
+                        </select>
+                        <input value={recebimentoManual.nfeCnpj.placaVeiculo} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, placaVeiculo: event.target.value } }))} placeholder="Placa veículo" style={inputStyle} />
+                        <input value={recebimentoManual.nfeCnpj.ufVeiculo} onChange={(event) => setRecebimentoManual((current) => ({ ...current, nfeCnpj: { ...current.nfeCnpj, ufVeiculo: event.target.value.toUpperCase() } }))} placeholder="UF veículo" style={inputStyle} maxLength={2} />
+                      </div>
                     </div>
 
                     <div style={{ marginTop: 10 }}>
