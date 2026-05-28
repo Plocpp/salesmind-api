@@ -1,0 +1,471 @@
+openapi: 3.0.3
+info:
+  title: SalesMind API - Financeiro Lancamentos
+  version: 1.0.0
+  description: |
+    Contrato piloto do bloco reutilizavel financeiro-lancamentos.
+    Inclui operacoes de listagem, criacao, baixa, edicao e envio manual
+    individual e em lote por documento fiscal.
+servers:
+  - url: /api/v1
+    description: Base versionada recomendada
+  - url: /
+    description: Base legada (compatibilidade)
+tags:
+  - name: Financeiro Lancamentos
+    description: Operacoes do contas a pagar e contas a receber
+security:
+  - bearerAuth: []
+paths:
+  /financeiro/lancamentos:
+    get:
+      tags: [Financeiro Lancamentos]
+      summary: Listar lancamentos financeiros
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/StatusLancamento' }
+        - in: query
+          name: tipo
+          schema: { $ref: '#/components/schemas/TipoLancamento' }
+        - in: query
+          name: origem
+          schema: { $ref: '#/components/schemas/OrigemLancamento' }
+        - in: query
+          name: empresaId
+          schema: { type: string }
+        - in: query
+          name: inicio
+          schema: { type: string, format: date-time }
+        - in: query
+          name: fim
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Lista de lancamentos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LancamentoFinanceiro'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Financeiro Lancamentos]
+      summary: Criar lancamento financeiro
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarLancamentoRequest'
+      responses:
+        '201':
+          description: Lancamento criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LancamentoFinanceiro'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /financeiro/lancamentos/{id}/baixa:
+    post:
+      tags: [Financeiro Lancamentos]
+      summary: Baixar lancamento (total ou parcial)
+      parameters:
+        - $ref: '#/components/parameters/LancamentoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BaixarLancamentoRequest'
+      responses:
+        '200':
+          description: Lancamento atualizado apos baixa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LancamentoFinanceiro'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /financeiro/lancamentos/{id}:
+    patch:
+      tags: [Financeiro Lancamentos]
+      summary: Atualizar lancamento
+      parameters:
+        - $ref: '#/components/parameters/LancamentoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtualizarLancamentoRequest'
+      responses:
+        '200':
+          description: Lancamento atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LancamentoFinanceiro'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /financeiro/lancamentos/{id}/enviar-manual:
+    post:
+      tags: [Financeiro Lancamentos]
+      summary: Registrar envio manual de cobranca ou documento
+      parameters:
+        - $ref: '#/components/parameters/LancamentoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnviarCobrancaManualRequest'
+      responses:
+        '200':
+          description: Envio manual registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnviarCobrancaManualResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /financeiro/documentos/lancamentos:
+    patch:
+      tags: [Financeiro Lancamentos]
+      summary: Atualizar parcelas por origemReferencia de documento fiscal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtualizarLancamentosPorDocumentoRequest'
+      responses:
+        '200':
+          description: Parcelas atualizadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AtualizarLancamentosPorDocumentoResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /financeiro/documentos/enviar-manual:
+    post:
+      tags: [Financeiro Lancamentos]
+      summary: Enviar cobranca manual em lote por documento fiscal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnviarCobrancaManualPorDocumentoRequest'
+      responses:
+        '200':
+          description: Envio em lote realizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnviarCobrancaManualPorDocumentoResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    LancamentoId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Requisicao invalida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Nao autenticado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Recurso nao encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
+    TipoLancamento:
+      type: string
+      enum:
+        - RECEITA
+        - DESPESA
+        - TRANSFERENCIA
+        - AJUSTE
+        - ESTORNO
+        - TAXA
+        - COMISSAO
+        - IMPOSTO
+        - JUROS
+        - MULTA
+
+    OrigemLancamento:
+      type: string
+      enum:
+        - MERCADO_LIVRE
+        - SHOPEE
+        - AMAZON
+        - MAGAZINE_LUIZA
+        - BLING
+        - PDV
+        - ERP
+        - MANUAL
+        - API
+        - VENDA
+        - GATEWAY
+        - BANCO
+
+    StatusLancamento:
+      type: string
+      enum:
+        - PENDENTE
+        - PAGO
+        - PARCIAL
+        - CANCELADO
+        - VENCIDO
+        - ESTORNADO
+        - CONCILIADO
+
+    BoletoInfo:
+      type: object
+      properties:
+        linhaDigitavel: { type: string }
+        codigoBarras: { type: string }
+        nossoNumero: { type: string }
+        banco: { type: string }
+        urlPdf: { type: string, format: uri }
+
+    LancamentoFinanceiro:
+      type: object
+      properties:
+        id: { type: string }
+        descricao: { type: string }
+        tipo: { $ref: '#/components/schemas/TipoLancamento' }
+        status: { $ref: '#/components/schemas/StatusLancamento' }
+        valorBruto: { type: number }
+        valorLiquido: { type: number }
+        valorPago: { type: number }
+        competencia: { type: string, format: date-time }
+        vencimento: { type: string, format: date-time }
+        pagamento: { type: string, format: date-time, nullable: true }
+        origem: { $ref: '#/components/schemas/OrigemLancamento' }
+        origemReferencia: { type: string, nullable: true }
+        centroCusto: { type: string, nullable: true }
+        observacoes: { type: string, nullable: true }
+        empresaId: { type: string, nullable: true }
+        categoriaId: { type: string, nullable: true }
+        contaFinanceiraId: { type: string, nullable: true }
+        formaPagamentoId: { type: string, nullable: true }
+        vendaId: { type: string, nullable: true }
+        clienteId: { type: string, nullable: true }
+        fornecedorId: { type: string, nullable: true }
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CriarLancamentoRequest:
+      type: object
+      required:
+        - descricao
+        - tipo
+        - valorBruto
+        - valorLiquido
+        - competencia
+        - vencimento
+      properties:
+        descricao: { type: string }
+        tipo: { $ref: '#/components/schemas/TipoLancamento' }
+        status: { $ref: '#/components/schemas/StatusLancamento' }
+        valorBruto: { type: number, minimum: 0.01 }
+        valorLiquido: { type: number, minimum: 0.01 }
+        competencia: { type: string, format: date-time }
+        vencimento: { type: string, format: date-time }
+        pagamento: { type: string, format: date-time }
+        origem: { $ref: '#/components/schemas/OrigemLancamento' }
+        origemReferencia: { type: string }
+        centroCusto: { type: string }
+        observacoes: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+        empresaId: { type: string }
+        categoriaId: { type: string }
+        contaFinanceiraId: { type: string }
+        formaPagamentoId: { type: string }
+        vendaId: { type: string }
+        clienteId: { type: string }
+        fornecedorId: { type: string }
+        parentId: { type: string }
+        recorrenciaId: { type: string }
+
+    BaixarLancamentoRequest:
+      type: object
+      required: [valorPago]
+      properties:
+        valorPago: { type: number, minimum: 0.01 }
+        pagamento: { type: string, format: date-time }
+
+    AtualizarLancamentoRequest:
+      type: object
+      properties:
+        descricao: { type: string }
+        status: { $ref: '#/components/schemas/StatusLancamento' }
+        valorBruto: { type: number, minimum: 0.01 }
+        valorLiquido: { type: number, minimum: 0.01 }
+        vencimento: { type: string, format: date-time }
+        pagamento: { type: string, format: date-time, nullable: true }
+        observacoes: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+
+    EnviarCobrancaManualRequest:
+      type: object
+      required:
+        - destinatario
+      properties:
+        canal:
+          type: string
+          enum: [EMAIL, WHATSAPP, SMS, LINK, MANUAL]
+        destinatario: { type: string }
+        mensagem: { type: string }
+        assunto: { type: string }
+        boleto:
+          $ref: '#/components/schemas/BoletoInfo'
+
+    EnviarCobrancaManualResponse:
+      type: object
+      properties:
+        message: { type: string }
+        lancamentoId: { type: string }
+        envio:
+          type: object
+          properties:
+            canal: { type: string }
+            destinatario: { type: string }
+            assunto: { type: string, nullable: true }
+            mensagem: { type: string, nullable: true }
+            boleto:
+              allOf:
+                - $ref: '#/components/schemas/BoletoInfo'
+              nullable: true
+            enviadoEm: { type: string, format: date-time }
+            enviadoPor: { type: string, nullable: true }
+
+    AtualizarLancamentosPorDocumentoRequest:
+      type: object
+      required:
+        - origemReferencia
+        - parcelas
+      properties:
+        origemReferencia: { type: string }
+        parcelas:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - valorLiquido
+              - vencimento
+            properties:
+              lancamentoId: { type: string }
+              valorLiquido: { type: number, minimum: 0.01 }
+              vencimento: { type: string, format: date-time }
+              observacoes: { type: string }
+              boleto:
+                $ref: '#/components/schemas/BoletoInfo'
+
+    AtualizarLancamentosPorDocumentoResponse:
+      type: object
+      properties:
+        message: { type: string }
+        origemReferencia: { type: string }
+        totalAtualizados: { type: integer }
+        lancamentos:
+          type: array
+          items:
+            $ref: '#/components/schemas/LancamentoFinanceiro'
+
+    EnviarCobrancaManualPorDocumentoRequest:
+      type: object
+      required:
+        - origemReferencia
+        - destinatario
+      properties:
+        origemReferencia: { type: string }
+        canal:
+          type: string
+          enum: [EMAIL, WHATSAPP, SMS, LINK, MANUAL]
+        destinatario: { type: string }
+        mensagem: { type: string }
+        assunto: { type: string }
+
+    EnviarCobrancaManualPorDocumentoResponse:
+      type: object
+      properties:
+        message: { type: string }
+        origemReferencia: { type: string }
+        totalEnviados: { type: integer }
+        envios:
+          type: array
+          items:
+            type: object
+            properties:
+              lancamentoId: { type: string }
+              destinatario: { type: string }
+              canal: { type: string }
+              enviadoEm: { type: string, format: date-time }
