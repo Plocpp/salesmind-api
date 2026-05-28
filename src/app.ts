@@ -84,16 +84,16 @@ app.use(
   })
 );
 
-app.use(
-  "/auth",
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: Number(process.env.RATE_LIMIT_MAX_AUTH || 60),
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { success: false, message: "Muitas tentativas de autenticacao. Aguarde e tente novamente." },
-  })
-);
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_MAX_AUTH || 60),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Muitas tentativas de autenticacao. Aguarde e tente novamente." },
+});
+
+app.use("/auth", authLimiter);
+app.use("/api/v1/auth", authLimiter);
 
 app.use(
   "/rastreio/mobile",
@@ -118,11 +118,28 @@ app.use("/integracoes", integracoesRoutes);
 app.use("/onboarding", onboardingPagamentoRoutes);
 app.use("/rastreio", rastreioTransporteRoutes);
 
+// Alias versionado para padrao enterprise sem quebrar clientes legados.
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/acessos", acessosRoutes);
+app.use("/api/v1/produtos", produtoRoutes);
+app.use("/api/v1/vendas", vendasRoutes);
+app.use("/api/v1/cadastros", fornecedoresRoutes);
+app.use("/api/v1/financeiro", financeiroRoutes);
+app.use("/api/v1/estoque", estoqueRoutes);
+app.use("/api/v1/integracoes", integracoesRoutes);
+app.use("/api/v1/onboarding", onboardingPagamentoRoutes);
+app.use("/api/v1/rastreio", rastreioTransporteRoutes);
+
 // Rotas de diagnóstico (sem autenticação para acesso em emergências)
 app.use("/diagnostico", diagnosticoRoutes);
+app.use("/api/v1/diagnostico", diagnosticoRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
+  res.json({ success: true, status: "OK", timestamp: new Date().toISOString() });
+});
+
+app.get("/api/v1/health", (req, res) => {
   res.json({ success: true, status: "OK", timestamp: new Date().toISOString() });
 });
 
