@@ -225,6 +225,19 @@ const normalizeText = (value?: string | null) => String(value || '')
 
 const normalizeDocument = (value?: string | null) => String(value || '').replace(/\D/g, '');
 
+const normalizeLegacyMoney = (value?: number | null) => {
+  let parsed = Number(value || 0);
+  if (!Number.isFinite(parsed)) return 0;
+
+  let guard = 0;
+  while (parsed > 1_000_000_000 && guard < 12) {
+    parsed /= 10;
+    guard += 1;
+  }
+
+  return Number(parsed.toFixed(2));
+};
+
 const xmlNodeText = (doc: Document, names: string[]) => {
   const allNodes = Array.from(doc.getElementsByTagName('*'));
   const target = allNodes.find((node) => {
@@ -654,8 +667,27 @@ export default function Estoque() {
         api.get(`/estoque/compras/notas-fiscais${notaParams.toString() ? `?${notaParams.toString()}` : ''}`, token),
       ]);
 
-      const pedidosLista = Array.isArray(pedidos) ? pedidos : [];
-      const notasLista = Array.isArray(notas) ? notas : [];
+      const pedidosLista = (Array.isArray(pedidos) ? pedidos : []).map((pedido) => ({
+        ...pedido,
+        valorProdutos: normalizeLegacyMoney(pedido?.valorProdutos),
+        valorFrete: normalizeLegacyMoney((pedido as any)?.valorFrete),
+        valorImpostos: normalizeLegacyMoney((pedido as any)?.valorImpostos),
+        valorTotal: normalizeLegacyMoney(pedido?.valorTotal),
+        itens: Array.isArray(pedido?.itens)
+          ? pedido.itens.map((item: any) => ({
+              ...item,
+              custoUnitario: normalizeLegacyMoney(item?.custoUnitario),
+              valorTotal: normalizeLegacyMoney(item?.valorTotal),
+            }))
+          : pedido?.itens,
+      }));
+
+      const notasLista = (Array.isArray(notas) ? notas : []).map((nota) => ({
+        ...nota,
+        valorTotal: normalizeLegacyMoney(nota?.valorTotal),
+        valorFrete: normalizeLegacyMoney(nota?.valorFrete),
+        valorImpostos: normalizeLegacyMoney(nota?.valorImpostos),
+      }));
       const numeroNota = filtros.numeroNota.trim().toLowerCase();
       const notasFiltradas = numeroNota
         ? notasLista.filter((nota) => String(nota.numero || '').toLowerCase().includes(numeroNota))
