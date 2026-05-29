@@ -774,7 +774,7 @@ export class EstoqueService {
         lancamentosCancelados = Number(updateResult?.count || 0);
       }
 
-      await this.auditar(tx, "PedidoCompra", pedido.id, "CANCELAMENTO", usuarioId, pedido, pedidoCancelado);
+      await this.auditar(tx, "PedidoCompra", pedido.id, "EDICAO", usuarioId, pedido, pedidoCancelado);
 
       return {
         message: "Pedido de compra e nota(s) de entrada cancelados com sucesso.",
