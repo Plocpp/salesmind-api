@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
+import AlertHost from './components/AlertHost';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -301,6 +302,7 @@ function App() {
     if (publicSessaoId) {
         return (
             <ErrorBoundary>
+                <AlertHost />
                 <Suspense
                     fallback={
                         <div style={{ padding: 24, color: '#334155' }}>
@@ -315,11 +317,17 @@ function App() {
     }
 
     if (!isLoggedIn) {
-        return <Login onLogin={handleLogin} />;
+        return (
+            <>
+                <AlertHost />
+                <Login onLogin={handleLogin} />
+            </>
+        );
     }
 
     return (
         <ErrorBoundary>
+            <AlertHost />
             <Layout
                 onNavigate={handleNavigate}
                 currentPage={currentPage}

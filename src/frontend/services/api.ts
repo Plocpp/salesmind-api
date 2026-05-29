@@ -8,7 +8,17 @@ const API_BASE_URL = (() => {
   if (envBase) return envBase.replace(/\/$/, '');
 
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-    return window.location.origin.replace(/\/$/, '');
+    const { origin, hostname } = window.location;
+
+    if (hostname === 'salesmind-app.onrender.com') {
+      return 'https://salesmind-api.onrender.com';
+    }
+
+    if (hostname === 'salesmind-api.onrender.com') {
+      return origin.replace(/\/$/, '');
+    }
+
+    return origin.replace(/\/$/, '');
   }
 
   return 'http://localhost:3000';
