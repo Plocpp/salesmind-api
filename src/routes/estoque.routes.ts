@@ -28,6 +28,7 @@ router.get("/analise", estoqueController.analise);
 
 router.post("/compras/pedidos", estoqueController.criarPedidoCompra);
 router.get("/compras/pedidos", estoqueController.listarPedidosCompra);
+router.post("/compras/pedidos/:id/status", estoqueController.cancelarPedidoCompra);
 router.post("/compras/notas-fiscais/preview-xml", estoqueController.previewImportacaoNotaFiscalCompraXml);
 router.post("/compras/notas-fiscais/importar-xml", estoqueController.importarNotaFiscalCompraXml);
 router.post("/compras/notas-fiscais/recebimento", estoqueController.receberNotaFiscalCompra);

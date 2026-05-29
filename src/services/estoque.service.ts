@@ -181,6 +181,13 @@ const filtrosPedidoCompraSchema = z.object({
   fim: z.string().optional(),
 });
 
+const cancelarPedidoCompraSchema = z.object({
+  acao: z.enum(["CANCELAR"]).default("CANCELAR"),
+  motivo: z.string().trim().min(3).max(240).optional(),
+  cancelarNotas: z.boolean().default(true),
+  cancelarLancamentos: z.boolean().default(true),
+});
+
 const sugestaoCompraFiltroSchema = z.object({
   coberturaDias: z.number().int().min(1).max(365).default(30),
   incluirItensSemVenda: z.boolean().default(false),
@@ -687,6 +694,94 @@ export class EstoqueService {
       },
       include: { fornecedor: true, itens: { include: { produto: true } } },
       orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async cancelarPedidoCompra(id: string, data: unknown, usuarioId?: string) {
+    const payload = cancelarPedidoCompraSchema.parse(data || {});
+
+    return prisma.$transaction(async (tx: any) => {
+      const pedido = await tx.pedidoCompra.findUnique({
+        where: { id },
+        include: { itens: true, fornecedor: true },
+      });
+
+      if (!pedido) {
+        throw new Error("Pedido de compra nao encontrado");
+      }
+
+      const metadataAtual = (pedido.metadata && typeof pedido.metadata === "object" && !Array.isArray(pedido.metadata))
+        ? pedido.metadata
+        : {};
+
+      const notasEntradaHistorico = Array.isArray((metadataAtual as any).notasEntrada)
+        ? (metadataAtual as any).notasEntrada
+        : [];
+
+      const agoraIso = new Date().toISOString();
+
+      const notasCanceladas = payload.cancelarNotas
+        ? notasEntradaHistorico.map((nota: any) => ({
+            ...nota,
+            status: "CANCELADA",
+            canceladaEm: agoraIso,
+            canceladaPor: usuarioId || null,
+            motivoCancelamento: payload.motivo || null,
+          }))
+        : notasEntradaHistorico;
+
+      const pedidoCancelado = await tx.pedidoCompra.update({
+        where: { id: pedido.id },
+        data: {
+          status: "CANCELADO",
+          metadata: {
+            ...(metadataAtual as any),
+            notasEntrada: notasCanceladas,
+            cancelamento: {
+              acao: payload.acao,
+              motivo: payload.motivo || null,
+              canceladoEm: agoraIso,
+              canceladoPor: usuarioId || null,
+              cancelarNotas: payload.cancelarNotas,
+              cancelarLancamentos: payload.cancelarLancamentos,
+              observacao: "Cancelamento administrativo. Nao estorna estoque automaticamente.",
+            },
+          },
+        },
+        include: { itens: true, fornecedor: true },
+      });
+
+      let lancamentosCancelados = 0;
+      if (payload.cancelarLancamentos) {
+        const updateResult = await (tx as any).lancamentoFinanceiro.updateMany({
+          where: {
+            origemReferencia: {
+              startsWith: `NFE_ENTRADA:${pedido.id}:`,
+            },
+            status: { not: "CANCELADO" },
+          },
+          data: {
+            status: "CANCELADO",
+            metadata: {
+              tipoCancelamento: "COMPRA_NFE",
+              pedidoCompraId: pedido.id,
+              canceladoEm: agoraIso,
+              canceladoPor: usuarioId || null,
+              motivo: payload.motivo || null,
+            },
+          },
+        });
+        lancamentosCancelados = Number(updateResult?.count || 0);
+      }
+
+      await this.auditar(tx, "PedidoCompra", pedido.id, "CANCELAMENTO", usuarioId, pedido, pedidoCancelado);
+
+      return {
+        message: "Pedido de compra e nota(s) de entrada cancelados com sucesso.",
+        pedidoCompra: pedidoCancelado,
+        lancamentosFinanceirosCancelados: lancamentosCancelados,
+        notasEntradaCanceladas: payload.cancelarNotas ? notasEntradaHistorico.length : 0,
+      };
     });
   }
 

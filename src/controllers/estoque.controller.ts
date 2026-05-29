@@ -149,6 +149,12 @@ class EstoqueController {
     return res.json(pedidos);
   };
 
+  cancelarPedidoCompra = async (req: AuthRequest, res: Response) => {
+    const usuarioId = requireUser(req);
+    const pedido = await estoqueService.cancelarPedidoCompra(req.params.id, req.body, usuarioId);
+    return res.json(pedido);
+  };
+
   receberNotaFiscalCompra = async (req: AuthRequest, res: Response) => {
     const usuarioId = requireUser(req);
     const recebimento = await estoqueService.receberNotaFiscalCompra(req.body, usuarioId);
