@@ -40,6 +40,7 @@ const colors = {
 };
 
 const MOBILE_BREAKPOINT = 920;
+const MOBILE_USER_AGENT_REGEX = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
 
 type MenuChild = {
   id: string;
@@ -71,16 +72,31 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
   useEffect(() => {
     const mediaQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
 
-    const update = () => setIsMobile(mediaQuery.matches);
+    const update = () => {
+      const byWidth = mediaQuery.matches;
+      const byDevice = MOBILE_USER_AGENT_REGEX.test(window.navigator.userAgent || '') && window.innerWidth <= 1024;
+      setIsMobile(byWidth || byDevice);
+    };
     update();
+
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
 
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener('change', update);
-      return () => mediaQuery.removeEventListener('change', update);
+      return () => {
+        mediaQuery.removeEventListener('change', update);
+        window.removeEventListener('resize', update);
+        window.removeEventListener('orientationchange', update);
+      };
     }
 
     mediaQuery.addListener(update);
-    return () => mediaQuery.removeListener(update);
+    return () => {
+      mediaQuery.removeListener(update);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
+    };
   }, []);
 
   useEffect(() => {
@@ -707,10 +723,11 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
           style={{
             flex: 1,
             overflowY: 'auto',
-            overflowX: 'hidden',
-            padding: isMobile ? 16 : 22,
+            overflowX: isMobile ? 'auto' : 'hidden',
+            padding: isMobile ? '14px 12px' : 22,
             paddingBottom: isMobile ? 96 : 22,
             boxSizing: 'border-box',
+            WebkitOverflowScrolling: 'touch',
           }}
         >
           {children}
