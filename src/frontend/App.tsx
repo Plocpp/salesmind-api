@@ -63,6 +63,7 @@ const allowedPrivatePages = new Set([
     'clientes',
     'estoque',
     'compras',
+    'novos-pedidos',
     'financeiro',
     'financeiro-lancamentos',
     'financeiro-conciliacao-cartoes',
@@ -250,6 +251,8 @@ function App() {
                 return <Estoque key="estoque" />;
             case 'compras':
                 return <Estoque key="compras" />;
+            case 'novos-pedidos':
+                return <Estoque key="novos-pedidos" />;
             case 'financeiro':
                 return <Financeiro />;
             case 'financeiro-lancamentos':

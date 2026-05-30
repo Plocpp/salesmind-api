@@ -134,7 +134,8 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       icon: Boxes,
       children: [
         { id: 'estoque', label: 'Visao de Estoque' },
-        { id: 'compras', label: 'Compras' },
+        { id: 'compras', label: 'Compras (XML)' },
+        { id: 'novos-pedidos', label: 'Novos Pedidos' },
         { id: 'cadastro-produtos', label: 'Cadastro de Produtos' },
         { id: 'fornecedores', label: 'Fornecedores' },
         { id: 'marcas', label: 'Marcas' },
@@ -237,7 +238,8 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       { id: 'dashboard', label: 'Início', icon: Home },
       { id: 'vendas', label: 'Vendas', icon: ShoppingCart, hidden: userRole !== 'ADMIN' && userRole !== 'VENDEDOR' },
       { id: 'estoque', label: 'Estoque', icon: Boxes },
-      { id: 'compras', label: 'Compras', icon: ClipboardList },
+      { id: 'compras', label: 'Compras XML', icon: ClipboardList },
+      { id: 'novos-pedidos', label: 'Novos Pedidos', icon: ClipboardList },
       { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
     ].filter((item) => !item.hidden),
     [userRole]

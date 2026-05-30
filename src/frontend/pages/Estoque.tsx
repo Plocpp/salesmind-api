@@ -210,9 +210,11 @@ const card = {
   boxShadow: '0 8px 24px rgba(36, 51, 50, 0.05)',
 };
 
-const getRouteBaseFromHash = (): 'estoque' | 'compras' => {
+const getRouteBaseFromHash = (): 'estoque' | 'compras' | 'novos-pedidos' => {
   if (typeof window === 'undefined') return 'estoque';
-  return window.location.hash.startsWith('#compras') ? 'compras' : 'estoque';
+  if (window.location.hash.startsWith('#novos-pedidos')) return 'novos-pedidos';
+  if (window.location.hash.startsWith('#compras')) return 'compras';
+  return 'estoque';
 };
 
 const todayInputValue = () => new Date().toISOString().slice(0, 10);
@@ -524,7 +526,9 @@ const getPedidoSugeridoTheme = (nivel: PedidoXmlSugerido['nivel']) => {
 
 export default function Estoque() {
   const routeBase = getRouteBaseFromHash();
-  const isComprasView = routeBase === 'compras';
+  const isComprasXmlView = routeBase === 'compras';
+  const isNovosPedidosView = routeBase === 'novos-pedidos';
+  const isComprasModuleView = isComprasXmlView || isNovosPedidosView;
   const [analise, setAnalise] = useState<AnaliseEstoque | null>(null);
   const [catalogo, setCatalogo] = useState<CatalogoItem[]>([]);
   const [atalhos, setAtalhos] = useState<AtalhoOperacional[]>([]);
@@ -790,7 +794,7 @@ export default function Estoque() {
       const [dataAnalise] = await Promise.all([
         api.get('/estoque/analise', token),
         carregarAtalhos(),
-        carregarCatalogo({}, isComprasView ? 'Central de compras' : 'Catalogo completo'),
+        carregarCatalogo({}, isComprasModuleView ? 'Central de compras' : 'Catalogo completo'),
       ]);
       setAnalise(dataAnalise);
 
@@ -799,7 +803,7 @@ export default function Estoque() {
       }
       if (hashState.atalho) {
         await aplicarAtalho(hashState.atalho, { persistirHash: false, buscaForcada: hashState.q });
-      } else if (isComprasView) {
+      } else if (isComprasModuleView) {
         await Promise.all([
           carregarFornecedoresFiltro(),
           carregarDepositos(),
@@ -824,7 +828,7 @@ export default function Estoque() {
   const totalNotasCompra = useMemo(() => notasCompra.reduce((acc, item) => acc + Number(item.valorTotal || 0), 0), [notasCompra]);
   const pedidosPendentes = useMemo(() => pedidosCompra.filter((item) => String(item.status || '') === 'ABERTO').length, [pedidosCompra]);
   const pedidoSugeridoXml = useMemo<PedidoXmlSugerido | null>(() => {
-    if (!isComprasView || !previewXml?.itens?.length || pedidosCompra.length === 0) {
+    if (!isComprasXmlView || !previewXml?.itens?.length || pedidosCompra.length === 0) {
       return null;
     }
 
@@ -987,7 +991,7 @@ export default function Estoque() {
     }
 
     return melhor && melhor.score >= 45 ? melhor : null;
-  }, [isComprasView, previewXml, pedidosCompra, xmlCompra]);
+  }, [isComprasXmlView, previewXml, pedidosCompra, xmlCompra]);
 
   const aplicarFiltroFornecedorCompra = async (fornecedorId?: string | null) => {
     if (!fornecedorId) return;
@@ -1090,7 +1094,7 @@ export default function Estoque() {
   }, [pedidoSugeridoXml]);
 
   useEffect(() => {
-    if (!pedidoSugeridoXml || !isComprasView) {
+    if (!pedidoSugeridoXml || !isComprasXmlView) {
       return;
     }
 
@@ -1106,7 +1110,7 @@ export default function Estoque() {
     setRecebimentoManual(applyXmlToRecebimentoForm(buildRecebimentoManualForm(pedidoSugeridoXml.pedido), previewXml, xmlCompra));
     setUltimoPedidoSugeridoAbertoId(pedidoSugeridoXml.pedido.id);
     setSucesso(`Pedido ${pedidoSugeridoXml.pedido.numero || pedidoSugeridoXml.pedido.id.slice(0, 8)} sugerido automaticamente com base no XML carregado.`);
-  }, [pedidoSugeridoXml, pedidoDetalhe, isComprasView, ultimoPedidoSugeridoAbertoId, previewXml, xmlCompra]);
+  }, [pedidoSugeridoXml, pedidoDetalhe, isComprasXmlView, ultimoPedidoSugeridoAbertoId, previewXml, xmlCompra]);
 
   const preencherRecebimentoComXml = () => {
     if (!pedidoDetalhe) return;
@@ -1194,7 +1198,7 @@ export default function Estoque() {
       await Promise.all([
         carregarCentralCompras(compraFiltros, { exibirLoading: false }),
         carregarSugestoesCompra(),
-        carregarCatalogo({}, isComprasView ? 'Central de compras' : 'Catalogo completo'),
+        carregarCatalogo({}, isComprasModuleView ? 'Central de compras' : 'Catalogo completo'),
         api.get('/estoque/analise', token).then((data) => setAnalise(data)),
       ]);
     } catch (error) {
@@ -1254,10 +1258,12 @@ export default function Estoque() {
     <div style={{ display: 'grid', gap: 18 }}>
       <section style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 26, color: '#243332' }}>{isComprasView ? 'Compras' : 'Estoque e servicos'}</h1>
+          <h1 style={{ margin: 0, fontSize: 26, color: '#243332' }}>{isComprasXmlView ? 'Compras (XML)' : isNovosPedidosView ? 'Novos Pedidos' : 'Estoque e servicos'}</h1>
           <p style={{ margin: '6px 0 0', color: '#647674', maxWidth: 720 }}>
-            {isComprasView
-              ? 'Central de compras, pedidos em aberto, sugestoes de reposicao e recebimento de NF-e por XML.'
+            {isComprasXmlView
+              ? 'Central de recebimento de NF-e por XML: importar, editar dados recebidos e armazenar notas.'
+              : isNovosPedidosView
+              ? 'Central de criação e acompanhamento de novos pedidos de compra.'
               : 'Controle operacional de produtos, reservas, rupturas, compras e saldos por deposito.'}
           </p>
         </div>
@@ -1272,7 +1278,7 @@ export default function Estoque() {
 
       {!loading && (
         <>
-          {isComprasView && (
+          {isComprasModuleView && (
             <section style={{ ...card, padding: 16 }}>
               <div style={{ marginBottom: 10, padding: 10, borderRadius: 8, border: '1px solid #d9e2e1', background: '#f8fbfa' }}>
                 <div style={{ fontWeight: 800, color: '#243332', marginBottom: 6 }}>Passo a passo de compras por XML</div>
@@ -1285,8 +1291,12 @@ export default function Estoque() {
               <div style={{ display: 'grid', gap: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <div>
-                    <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>Filtro operacional de compras</h3>
-                    <p style={{ margin: '4px 0 0', color: '#647674', fontSize: 13 }}>Filtre por pedido, NF, periodo, fornecedor e status para reproduzir a central de compras.</p>
+                    <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>{isComprasXmlView ? 'Filtro operacional de XML e notas' : 'Filtro operacional de pedidos e notas'}</h3>
+                    <p style={{ margin: '4px 0 0', color: '#647674', fontSize: 13 }}>
+                      {isComprasXmlView
+                        ? 'Filtre NFs recebidas por XML, fornecedor e periodo para edição e armazenamento.'
+                        : 'Filtre pedidos e notas por fornecedor, periodo e status para operação de novos pedidos.'}
+                    </p>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button
@@ -1305,18 +1315,22 @@ export default function Estoque() {
                     >
                       Limpar filtros
                     </button>
-                    <button
-                      onClick={() => document.getElementById('compras-xml')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                      style={{ height: 36, display: 'inline-flex', alignItems: 'center', border: '1px solid #d9e2e1', background: '#f8fbfa', color: '#54736b', borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 700 }}
-                    >
-                      Importar XML
-                    </button>
-                    <button
-                      onClick={() => document.getElementById('compras-nfe-cnpj')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                      style={{ height: 36, display: 'inline-flex', alignItems: 'center', border: '1px solid #d9e2e1', background: '#f8fbfa', color: '#54736b', borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 700 }}
-                    >
-                      Aba NF-e CNPJ
-                    </button>
+                    {isComprasXmlView && (
+                      <button
+                        onClick={() => document.getElementById('compras-xml')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                        style={{ height: 36, display: 'inline-flex', alignItems: 'center', border: '1px solid #d9e2e1', background: '#f8fbfa', color: '#54736b', borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 700 }}
+                      >
+                        Importar XML
+                      </button>
+                    )}
+                    {isComprasXmlView && (
+                      <button
+                        onClick={() => document.getElementById('compras-nfe-cnpj')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                        style={{ height: 36, display: 'inline-flex', alignItems: 'center', border: '1px solid #d9e2e1', background: '#f8fbfa', color: '#54736b', borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 700 }}
+                      >
+                        Aba NF-e CNPJ
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1371,7 +1385,7 @@ export default function Estoque() {
             </section>
           )}
 
-          {isComprasView && (
+          {isComprasModuleView && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
               <Kpi icon={ShoppingCart} label="Pedidos listados" value={pedidosCompra.length} tone="#9a6a2f" />
               <Kpi icon={ClipboardCheck} label="Pedidos pendentes" value={pedidosPendentes} tone="#a64b4b" />
@@ -1383,9 +1397,9 @@ export default function Estoque() {
           <section style={{ ...card, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>{isComprasView ? 'Atalhos de compras' : 'Atalhos de estoque e compras'}</h3>
+                <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>{isComprasModuleView ? 'Atalhos de compras' : 'Atalhos de estoque e compras'}</h3>
                 <p style={{ margin: '4px 0 0', color: '#647674', fontSize: 13 }}>
-                  {isComprasView
+                  {isComprasModuleView
                     ? 'Abra rapidamente sugestoes, pedidos e recebimento fiscal sem sair da central de compras.'
                     : 'Acesse pesquisas e operacoes mais usadas com um clique.'}
                 </p>
@@ -1437,6 +1451,7 @@ export default function Estoque() {
             <Kpi icon={PackagePlus} label="Estoque baixo" value={analise?.baixoEstoque.length ?? 0} tone="#9a6a2f" />
           </div>
 
+          {isComprasXmlView && (
           <section id="compras-xml" style={{ ...card, padding: 16 }}>
             <section id="compras-nfe-cnpj" style={{ marginBottom: 12, padding: 12, border: '1px solid #d9e2e1', borderRadius: 8, background: '#f8fbfa' }}>
               <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>NF-e Compras (CNPJ)</h3>
@@ -1627,8 +1642,9 @@ export default function Estoque() {
               </div>
             )}
           </section>
+          )}
 
-          {isComprasView && (
+          {isComprasModuleView && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
               <section style={{ ...card, overflow: 'hidden' }}>
                 <div style={{ padding: 16, borderBottom: '1px solid #d9e2e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -1684,7 +1700,7 @@ export default function Estoque() {
 
               <section style={{ ...card, overflow: 'hidden' }}>
                 <div style={{ padding: 16, borderBottom: '1px solid #d9e2e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                  <strong>Pedidos de compra</strong>
+                  <strong>{isNovosPedidosView ? 'Novos pedidos de compra' : 'Pedidos de compra'}</strong>
                   <span style={{ fontSize: 12, color: '#647674' }}>{pedidosCompra.length} resultado(s)</span>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
@@ -1753,7 +1769,7 @@ export default function Estoque() {
 
           <section style={{ ...card, overflow: 'hidden' }}>
             <div style={{ padding: 16, borderBottom: '1px solid #d9e2e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <strong>{isComprasView ? 'Catalogo de apoio para compras' : 'Resultado rapido do catalogo'}</strong>
+              <strong>{isComprasModuleView ? 'Catalogo de apoio para compras' : 'Resultado rapido do catalogo'}</strong>
               <span style={{ fontSize: 12, color: '#647674' }}>{filtroAtivo}</span>
             </div>
             <div style={{ overflowX: 'auto' }}>
@@ -1797,6 +1813,7 @@ export default function Estoque() {
             </div>
           </section>
 
+          {isNovosPedidosView && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
             <section style={{ ...card, padding: 16 }}>
               <h3 style={{ margin: 0, fontSize: 15, color: '#243332', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1826,6 +1843,7 @@ export default function Estoque() {
               </div>
             </section>
           </div>
+          )}
 
           {loadingAtalho && <div style={{ ...card, padding: 12, color: '#647674' }}>Aplicando atalho operacional...</div>}
 
