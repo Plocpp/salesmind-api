@@ -1,4 +1,7 @@
 {
     "CodeGPT.apiKey": "OpenAI",
-    "geminicodeassist.outlines.automaticOutlineGeneration": true
+    "geminicodeassist.outlines.automaticOutlineGeneration": true,
+    "explorer.excludeGitIgnore": true,
+    "explorer.decorations.badges": false,
+    "explorer.decorations.colors": false
 }

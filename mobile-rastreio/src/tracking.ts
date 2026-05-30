@@ -148,7 +148,7 @@ async function iniciarWatcherLocal(token: string, sessaoId: string) {
       timeInterval: 12000,
       distanceInterval: 10,
     },
-    async (location) => {
+    async (location: { coords: { latitude: number; longitude: number; accuracy: number | null; speed: number | null } }) => {
       try {
         const nota = await obterNotaAtiva();
         await enviarOuEnfileirar(token, sessaoId, {
