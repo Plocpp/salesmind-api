@@ -125,6 +125,30 @@ type FornecedorFiltro = {
   nome: string;
 };
 
+type GrupoCadastro = {
+  id: string;
+  nome: string;
+};
+
+type MarcaCadastro = {
+  id: string;
+  nome: string;
+};
+
+type CadastroRapidoProdutoForm = {
+  tipo: 'PRODUTO' | 'SERVICO' | 'PACOTE' | 'KIT';
+  nome: string;
+  codigoInterno: string;
+  codigoBarras: string;
+  unidadeVenda: string;
+  grupoId: string;
+  marcaId: string;
+  custoAtual: string;
+  precoVenda: string;
+  markupAlvo: string;
+  estoqueInicial: string;
+};
+
 type NotaFiscalCompra = {
   pedidoCompraId: string;
   numeroPedido?: string | null;
@@ -233,10 +257,10 @@ type PedidoXmlSugerido = {
 };
 
 const card = {
-  background: '#fff',
+  background: 'linear-gradient(180deg, #ffffff 0%, #fbfdfd 100%)',
   border: '1px solid #d9e2e1',
-  borderRadius: 8,
-  boxShadow: '0 8px 24px rgba(36, 51, 50, 0.05)',
+  borderRadius: 12,
+  boxShadow: '0 12px 32px rgba(36, 51, 50, 0.06)',
 };
 
 const getRouteBaseFromHash = (): 'estoque' | 'compras' | 'novos-pedidos' => {
@@ -412,6 +436,20 @@ const buildRecebimentoManualForm = (pedido?: PedidoCompraItem | null): Recebimen
   };
 };
 
+const buildCadastroRapidoProdutoForm = (): CadastroRapidoProdutoForm => ({
+  tipo: 'PRODUTO',
+  nome: '',
+  codigoInterno: '',
+  codigoBarras: '',
+  unidadeVenda: 'UN',
+  grupoId: '',
+  marcaId: '',
+  custoAtual: '0',
+  precoVenda: '0',
+  markupAlvo: '',
+  estoqueInicial: '0',
+});
+
 const applyXmlToRecebimentoForm = (
   form: RecebimentoManualForm,
   previewXml: PreviewXmlCompra | null,
@@ -576,6 +614,8 @@ export default function Estoque() {
   const [pedidosCompra, setPedidosCompra] = useState<PedidoCompraItem[]>([]);
   const [notasCompra, setNotasCompra] = useState<NotaFiscalCompra[]>([]);
   const [fornecedoresFiltro, setFornecedoresFiltro] = useState<FornecedorFiltro[]>([]);
+  const [gruposCadastro, setGruposCadastro] = useState<GrupoCadastro[]>([]);
+  const [marcasCadastro, setMarcasCadastro] = useState<MarcaCadastro[]>([]);
   const [depositos, setDepositos] = useState<DepositoOption[]>([]);
   const [pedidoDetalhe, setPedidoDetalhe] = useState<PedidoCompraItem | null>(null);
   const [notaDetalhe, setNotaDetalhe] = useState<NotaFiscalCompra | null>(null);
@@ -612,6 +652,9 @@ export default function Estoque() {
   const [ultimoPedidoSugeridoAbertoId, setUltimoPedidoSugeridoAbertoId] = useState('');
   const [confirmacaoRiscoRecebimento, setConfirmacaoRiscoRecebimento] = useState(false);
   const [mostrarSomenteRiscoAlto, setMostrarSomenteRiscoAlto] = useState(false);
+  const [atalhosCascataAberto, setAtalhosCascataAberto] = useState<string | null>('pesquisa');
+  const [cadastroRapidoAberto, setCadastroRapidoAberto] = useState(false);
+  const [cadastroRapidoProduto, setCadastroRapidoProduto] = useState<CadastroRapidoProdutoForm>(buildCadastroRapidoProdutoForm());
 
   const token = localStorage.getItem('token');
 
@@ -681,6 +724,20 @@ export default function Estoque() {
   const carregarDepositos = async () => {
     const data = await api.get('/estoque/depositos', token);
     setDepositos(Array.isArray(data) ? data.map((item: any) => ({ id: String(item.id), nome: String(item.nome || 'Deposito') })) : []);
+  };
+
+  const carregarBasesCadastroRapido = async () => {
+    const [gruposData, marcasData] = await Promise.all([
+      api.get('/estoque/grupos', token),
+      api.get('/cadastros/marcas', token),
+    ]);
+
+    setGruposCadastro(Array.isArray(gruposData)
+      ? gruposData.map((item: any) => ({ id: String(item.id), nome: String(item.nome || 'Grupo') }))
+      : []);
+    setMarcasCadastro(Array.isArray(marcasData)
+      ? marcasData.map((item: any) => ({ id: String(item.id), nome: String(item.nome || 'Marca') }))
+      : []);
   };
 
   const carregarCentralCompras = async (filtros: CompraFiltros, options: { exibirLoading?: boolean } = {}) => {
@@ -845,6 +902,7 @@ export default function Estoque() {
         api.get('/estoque/analise', token),
         carregarAtalhos(),
         carregarCatalogo({}, isComprasModuleView ? 'Central de compras' : 'Catalogo completo'),
+        carregarBasesCadastroRapido(),
       ]);
       setAnalise(dataAnalise);
 
@@ -2167,8 +2225,99 @@ export default function Estoque() {
     }
   };
 
+  const atalhosAgrupados = useMemo(() => {
+    const grupos = [
+      {
+        id: 'pesquisa',
+        titulo: 'Pesquisa e catálogo',
+        descricao: 'Buscas rápidas e visão de cadastro.',
+        codigos: ['EST-AT-01', 'EST-AT-02'],
+      },
+      {
+        id: 'compras',
+        titulo: 'Compras e reposição',
+        descricao: 'Sugestões e pedidos operacionais.',
+        codigos: ['EST-AT-03', 'EST-AT-04'],
+      },
+      {
+        id: 'estoque',
+        titulo: 'Riscos de estoque',
+        descricao: 'Itens em ruptura e baixo estoque.',
+        codigos: ['EST-AT-05', 'EST-AT-06'],
+      },
+    ];
+
+    return grupos.map((grupo) => ({
+      ...grupo,
+      atalhos: grupo.codigos
+        .map((codigo) => atalhos.find((atalho) => atalho.codigo === codigo))
+        .filter(Boolean) as AtalhoOperacional[],
+    }));
+  }, [atalhos]);
+
+  const atualizarCadastroRapidoProduto = (field: keyof CadastroRapidoProdutoForm, value: string) => {
+    setCadastroRapidoProduto((current) => ({ ...current, [field]: value }));
+  };
+
+  const cadastrarProdutoRapido = async () => {
+    const nome = cadastroRapidoProduto.nome.trim();
+    if (!nome) {
+      setErro('Informe o nome do produto/serviço no cadastro rápido.');
+      return;
+    }
+
+    if (!cadastroRapidoProduto.grupoId) {
+      setErro('Selecione o grupo no cadastro rápido para continuar.');
+      return;
+    }
+
+    if (!cadastroRapidoProduto.marcaId) {
+      setErro('Selecione a marca no cadastro rápido para continuar.');
+      return;
+    }
+
+    const toNumber = (value: string, fallback = 0) => {
+      const parsed = Number(String(value || '').replace(',', '.'));
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+
+    try {
+      setLoadingAtalho(true);
+      setErro('');
+      setSucesso('');
+
+      await api.post('/estoque/catalogo/itens', {
+        tipo: cadastroRapidoProduto.tipo,
+        nome,
+        codigoInterno: cadastroRapidoProduto.codigoInterno.trim() || undefined,
+        codigoBarras: cadastroRapidoProduto.codigoBarras.trim() || undefined,
+        unidadeVenda: cadastroRapidoProduto.unidadeVenda.trim() || 'UN',
+        grupoId: cadastroRapidoProduto.grupoId,
+        marcaId: cadastroRapidoProduto.marcaId,
+        custoAtual: toNumber(cadastroRapidoProduto.custoAtual, 0),
+        precoVenda: toNumber(cadastroRapidoProduto.precoVenda, 0),
+        markupAlvo: cadastroRapidoProduto.markupAlvo.trim() ? toNumber(cadastroRapidoProduto.markupAlvo, 0) : undefined,
+        estoqueInicial: toNumber(cadastroRapidoProduto.estoqueInicial, 0),
+      }, token);
+
+      await Promise.all([
+        carregarCatalogo({}, isComprasModuleView ? 'Central de compras' : 'Catalogo completo'),
+        api.get('/estoque/analise', token).then((data) => setAnalise(data)),
+      ]);
+
+      setSucesso(`Cadastro rápido concluído: ${nome}.`);
+      setCadastroRapidoProduto(buildCadastroRapidoProdutoForm());
+      setCadastroRapidoAberto(false);
+    } catch (error) {
+      console.error(error);
+      setErro('Falha ao cadastrar produto/serviço manualmente. Revise os dados e tente novamente.');
+    } finally {
+      setLoadingAtalho(false);
+    }
+  };
+
   return (
-    <div style={{ display: 'grid', gap: 18 }}>
+    <div style={{ display: 'grid', gap: 18, padding: 8, background: 'radial-gradient(circle at top right, #f0f7f6 0%, #f7fbfb 42%, #ffffff 100%)', borderRadius: 14 }}>
       <section style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 26, color: '#243332' }}>{isComprasXmlView ? 'Compras (XML)' : isNovosPedidosView ? 'Novos Pedidos' : 'Estoque e servicos'}</h1>
@@ -2310,7 +2459,7 @@ export default function Estoque() {
           <section style={{ ...card, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>Produtos e serviços (visão operacional)</h3>
+                <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>Estoque e serviços (visão operacional)</h3>
                 <p style={{ margin: '4px 0 0', color: '#647674', fontSize: 13 }}>
                   Painel inspirado na aba do SimplesVet para priorizar validade, estoque mínimo e qualidade do cadastro.
                 </p>
@@ -2362,6 +2511,71 @@ export default function Estoque() {
           </section>
 
           <section style={{ ...card, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>Cadastro manual rápido de produto/serviço</h3>
+                <p style={{ margin: '4px 0 0', color: '#647674', fontSize: 13 }}>
+                  Adicione itens manualmente sem sair da central de estoque e serviços para apoiar o atendimento ao cliente.
+                </p>
+              </div>
+              <button
+                onClick={() => setCadastroRapidoAberto((current) => !current)}
+                style={{ ...secondaryActionButtonStyle, height: 36 }}
+              >
+                {cadastroRapidoAberto ? 'Fechar cadastro rápido' : 'Adicionar produto/serviço'}
+              </button>
+            </div>
+
+            {cadastroRapidoAberto && (
+              <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+                  <select value={cadastroRapidoProduto.tipo} onChange={(event) => atualizarCadastroRapidoProduto('tipo', event.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+                    <option value="PRODUTO">Produto</option>
+                    <option value="SERVICO">Serviço</option>
+                    <option value="PACOTE">Pacote</option>
+                    <option value="KIT">Kit</option>
+                  </select>
+                  <input value={cadastroRapidoProduto.nome} onChange={(event) => atualizarCadastroRapidoProduto('nome', event.target.value)} placeholder="Nome" style={inputStyle} />
+                  <input value={cadastroRapidoProduto.codigoInterno} onChange={(event) => atualizarCadastroRapidoProduto('codigoInterno', event.target.value)} placeholder="Código interno" style={inputStyle} />
+                  <input value={cadastroRapidoProduto.codigoBarras} onChange={(event) => atualizarCadastroRapidoProduto('codigoBarras', event.target.value)} placeholder="Código de barras" style={inputStyle} />
+                  <input value={cadastroRapidoProduto.unidadeVenda} onChange={(event) => atualizarCadastroRapidoProduto('unidadeVenda', event.target.value.toUpperCase())} placeholder="Unidade de venda" style={inputStyle} />
+                  <select value={cadastroRapidoProduto.grupoId} onChange={(event) => atualizarCadastroRapidoProduto('grupoId', event.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+                    <option value="">Grupo (obrigatório)</option>
+                    {gruposCadastro.map((grupo) => (
+                      <option key={grupo.id} value={grupo.id}>{grupo.nome}</option>
+                    ))}
+                  </select>
+                  <select value={cadastroRapidoProduto.marcaId} onChange={(event) => atualizarCadastroRapidoProduto('marcaId', event.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+                    <option value="">Marca (obrigatória)</option>
+                    {marcasCadastro.map((marca) => (
+                      <option key={marca.id} value={marca.id}>{marca.nome}</option>
+                    ))}
+                  </select>
+                  <input value={cadastroRapidoProduto.custoAtual} onChange={(event) => atualizarCadastroRapidoProduto('custoAtual', event.target.value)} placeholder="Custo" style={inputStyle} />
+                  <input value={cadastroRapidoProduto.precoVenda} onChange={(event) => atualizarCadastroRapidoProduto('precoVenda', event.target.value)} placeholder="Preço de venda" style={inputStyle} />
+                  <input value={cadastroRapidoProduto.markupAlvo} onChange={(event) => atualizarCadastroRapidoProduto('markupAlvo', event.target.value)} placeholder="Markup alvo (%)" style={inputStyle} />
+                  <input value={cadastroRapidoProduto.estoqueInicial} onChange={(event) => atualizarCadastroRapidoProduto('estoqueInicial', event.target.value)} placeholder="Estoque inicial" style={inputStyle} />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setCadastroRapidoProduto(buildCadastroRapidoProdutoForm())}
+                    style={secondaryActionButtonStyle}
+                  >
+                    Limpar
+                  </button>
+                  <button
+                    onClick={cadastrarProdutoRapido}
+                    style={{ ...actionButtonStyle, height: 36 }}
+                  >
+                    Cadastrar manualmente
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section style={{ ...card, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>{isComprasModuleView ? 'Atalhos de compras' : 'Atalhos de estoque e compras'}</h3>
@@ -2397,16 +2611,35 @@ export default function Estoque() {
               </div>
             </div>
 
-            <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {atalhos.map((atalho) => (
-                <button
-                  key={atalho.codigo}
-                  onClick={() => aplicarAtalho(atalho.codigo)}
-                  style={{ border: '1px solid #d4dfdd', background: '#f8fbfa', color: '#2f6f73', borderRadius: 999, padding: '7px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
-                  title={atalho.acaoRapida}
-                >
-                  {atalho.titulo}
-                </button>
+            <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+              {atalhosAgrupados.map((grupo) => (
+                <div key={grupo.id} style={{ border: '1px solid #d9e2e1', borderRadius: 10, background: '#f8fbfa' }}>
+                  <button
+                    onClick={() => setAtalhosCascataAberto((current) => current === grupo.id ? null : grupo.id)}
+                    style={{ width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#2f6f73', fontWeight: 800, fontSize: 13 }}
+                  >
+                    <span>{grupo.titulo}</span>
+                    <span style={{ color: '#7b8a88', fontSize: 12 }}>{grupo.atalhos.length} opções</span>
+                  </button>
+
+                  {atalhosCascataAberto === grupo.id && (
+                    <div style={{ borderTop: '1px solid #d9e2e1', padding: 10, display: 'grid', gap: 8 }}>
+                      <div style={{ color: '#647674', fontSize: 12 }}>{grupo.descricao}</div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {grupo.atalhos.map((atalho) => (
+                          <button
+                            key={atalho.codigo}
+                            onClick={() => aplicarAtalho(atalho.codigo)}
+                            style={{ border: '1px solid #d4dfdd', background: '#fff', color: '#2f6f73', borderRadius: 999, padding: '7px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+                            title={atalho.acaoRapida}
+                          >
+                            {atalho.titulo}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </section>
