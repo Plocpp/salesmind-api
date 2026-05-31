@@ -1492,6 +1492,33 @@ export default function Vendas() {
     return items.filter(item => (item.status || '').toUpperCase() === filtroStatus);
   };
 
+  const moduleMeta = useMemo(() => {
+    const allItems = menuGroups.flatMap((group) =>
+      group.items.map((item) => ({ groupLabel: group.label, ...item }))
+    );
+
+    return allItems.find((item) => item.id === active) || null;
+  }, [active]);
+
+  const activeMenuGroup = useMemo(
+    () => menuGroups.find((group) => group.items.some((item) => item.id === active)) || null,
+    [active]
+  );
+
+  const totalModules = useMemo(
+    () => menuGroups.reduce((acc, group) => acc + group.items.length, 0),
+    []
+  );
+
+  const kpiDeckStyle = useMemo<React.CSSProperties>(
+    () => ({
+      display: 'grid',
+      gridTemplateColumns: isMobileViewport ? 'repeat(auto-fit, minmax(150px, 1fr))' : 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: 14,
+    }),
+    [isMobileViewport]
+  );
+
   const renderModule = () => {
     if (active === 'ponto-venda') {
       if (produtos.length === 0) {
@@ -3114,10 +3141,41 @@ export default function Vendas() {
 
   return (
     <div style={{ display: 'grid', gap: 18 }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', position: 'relative', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 26, color: '#243332' }}>Modulo de Vendas</h1>
-          <p style={{ margin: '6px 0 0', color: '#647674' }}>Estrutura comercial integrada a caixa, recebimentos, orcamentos e marketplace.</p>
+      <header
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobileViewport ? '1fr' : '1.1fr auto',
+          gap: 16,
+          alignItems: 'start',
+          position: 'relative',
+          background: 'linear-gradient(140deg, #f5fbfa 0%, #eef5f4 58%, #e8f0ef 100%)',
+          border: '1px solid #d5e3e0',
+          borderRadius: 14,
+          padding: isMobileViewport ? 14 : 18,
+          overflow: 'visible',
+        }}
+      >
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content', borderRadius: 999, border: '1px solid #c4d7d3', background: '#ffffffd9', color: '#2f6f73', fontSize: 11, fontWeight: 800, letterSpacing: '.04em', padding: '4px 10px', textTransform: 'uppercase' }}>
+            {moduleMeta?.groupLabel || 'Operação diária'}
+          </div>
+          <h1 style={{ margin: 0, fontSize: isMobileViewport ? 23 : 29, color: '#1f3533', lineHeight: 1.12 }}>Modulo de Vendas</h1>
+          <p style={{ margin: 0, color: '#4d6763', maxWidth: 760, lineHeight: 1.45 }}>
+            {active === 'ponto-venda'
+              ? 'Fechamento agil com controle de caixa, validacao de pagamento e atalhos para escalar o atendimento.'
+              : 'Estrutura comercial integrada a caixa, recebimentos, orcamentos e marketplace com leitura operacional unificada.'}
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ border: '1px solid #cfe0dc', background: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, color: '#375d58', fontWeight: 700 }}>
+              Modulo ativo: {moduleMeta?.label || 'Ponto de venda'}
+            </div>
+            <div style={{ border: '1px solid #cfe0dc', background: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, color: '#375d58', fontWeight: 700 }}>
+              Grupo: {activeMenuGroup?.label || 'Operacao diaria'}
+            </div>
+            <div style={{ border: '1px solid #cfe0dc', background: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, color: '#375d58', fontWeight: 700 }}>
+              Modulos: {totalModules}
+            </div>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <button
@@ -3138,13 +3196,15 @@ export default function Vendas() {
           <div
             style={{
               position: 'absolute',
-              top: '100%',
+              top: isMobileViewport ? undefined : '100%',
+              bottom: isMobileViewport ? '100%' : undefined,
               right: 0,
-              marginTop: 8,
-              background: 'white',
+              marginTop: isMobileViewport ? 0 : 8,
+              marginBottom: isMobileViewport ? 8 : 0,
+              background: '#ffffff',
               border: '1px solid #d9e2e1',
-              borderRadius: 8,
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+              borderRadius: 10,
+              boxShadow: '0 12px 28px rgba(28, 52, 50, 0.16)',
               zIndex: 1000,
               minWidth: isMobileViewport ? 220 : 280,
               width: isMobileViewport ? 'min(92vw, 340px)' : undefined,
@@ -3217,7 +3277,7 @@ export default function Vendas() {
       )}
 
       {active !== 'ponto-venda' && (
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+        <section style={kpiDeckStyle}>
           <Kpi label="Receita" value={money(kpis.receita)} icon={Banknote} color="#2f6f73" />
           <Kpi label="Lucro" value={money(kpis.lucro)} icon={BarChart3} color="#54736b" />
           <Kpi label="Pedidos abertos" value={kpis.pedidosAbertos} icon={Receipt} color="#9a6a2f" />

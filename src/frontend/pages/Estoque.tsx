@@ -27,6 +27,7 @@ type AnaliseEstoque = {
 
 type CatalogoItem = {
   id: string;
+  tipo?: 'PRODUTO' | 'SERVICO' | 'PACOTE' | 'KIT' | string;
   nome: string;
   codigoInterno?: string | null;
   codigoBarras?: string | null;
@@ -263,10 +264,11 @@ const card = {
   boxShadow: '0 12px 32px rgba(36, 51, 50, 0.06)',
 };
 
-const getRouteBaseFromHash = (): 'estoque' | 'compras' | 'novos-pedidos' => {
+const getRouteBaseFromHash = (): 'estoque' | 'servicos' | 'compras' | 'novos-pedidos' => {
   if (typeof window === 'undefined') return 'estoque';
   if (window.location.hash.startsWith('#novos-pedidos')) return 'novos-pedidos';
   if (window.location.hash.startsWith('#compras')) return 'compras';
+  if (window.location.hash.startsWith('#servicos')) return 'servicos';
   return 'estoque';
 };
 
@@ -603,9 +605,17 @@ const getPedidoSugeridoTheme = (nivel: PedidoXmlSugerido['nivel']) => {
 
 export default function Estoque() {
   const routeBase = getRouteBaseFromHash();
+  const isServicosView = routeBase === 'servicos';
+  const isEstoqueView = routeBase === 'estoque';
   const isComprasXmlView = routeBase === 'compras';
   const isNovosPedidosView = routeBase === 'novos-pedidos';
   const isComprasModuleView = isComprasXmlView || isNovosPedidosView;
+  const catalogoDefaultParams = isServicosView ? { tipo: 'SERVICO' } : {};
+  const catalogoDefaultLabel = isComprasModuleView
+    ? 'Central de compras'
+    : isServicosView
+      ? 'Serviços'
+      : 'Estoque (produtos)';
   const [analise, setAnalise] = useState<AnaliseEstoque | null>(null);
   const [catalogo, setCatalogo] = useState<CatalogoItem[]>([]);
   const [atalhos, setAtalhos] = useState<AtalhoOperacional[]>([]);
@@ -901,7 +911,7 @@ export default function Estoque() {
       const [dataAnalise] = await Promise.all([
         api.get('/estoque/analise', token),
         carregarAtalhos(),
-        carregarCatalogo({}, isComprasModuleView ? 'Central de compras' : 'Catalogo completo'),
+        carregarCatalogo(catalogoDefaultParams, catalogoDefaultLabel),
         carregarBasesCadastroRapido(),
       ]);
       setAnalise(dataAnalise);
@@ -935,33 +945,52 @@ export default function Estoque() {
   const saldoTotal = useMemo(() => itens.reduce((total, item) => total + item.disponivel, 0), [itens]);
   const totalNotasCompra = useMemo(() => notasCompra.reduce((acc, item) => acc + Number(item.valorTotal || 0), 0), [notasCompra]);
   const pedidosPendentes = useMemo(() => pedidosCompra.filter((item) => String(item.status || '') === 'ABERTO').length, [pedidosCompra]);
-  const indicadoresProdutosServicos = useMemo(() => {
-    const vencidos = catalogo.filter((item) => isValidadeVencida(item.statusValidade)).length;
-    const vencendo60 = catalogo.filter((item) => isValidadeVencendo60(item.statusValidade)).length;
-    const semGrupo = catalogo.filter((item) => !String(item.grupo || '').trim()).length;
-    const baixoEstoque = catalogo.filter((item) => Number(item.estoqueAtual || 0) <= Number(item.estoqueMinimo || 0)).length;
-
-    return { vencidos, vencendo60, semGrupo, baixoEstoque };
-  }, [catalogo]);
-  const catalogoProdutosServicos = useMemo(() => {
-    if (filtroProdutosServicos === 'VENCIDOS') {
-      return catalogo.filter((item) => isValidadeVencida(item.statusValidade));
+  const catalogoPorContexto = useMemo(() => {
+    if (isServicosView) {
+      return catalogo.filter((item) => String(item.tipo || '').toUpperCase() === 'SERVICO');
     }
 
-    if (filtroProdutosServicos === 'VENCENDO_60') {
-      return catalogo.filter((item) => isValidadeVencendo60(item.statusValidade));
-    }
-
-    if (filtroProdutosServicos === 'SEM_GRUPO') {
-      return catalogo.filter((item) => !String(item.grupo || '').trim());
-    }
-
-    if (filtroProdutosServicos === 'BAIXO_ESTOQUE') {
-      return catalogo.filter((item) => Number(item.estoqueAtual || 0) <= Number(item.estoqueMinimo || 0));
+    if (isEstoqueView) {
+      return catalogo.filter((item) => String(item.tipo || '').toUpperCase() !== 'SERVICO');
     }
 
     return catalogo;
-  }, [catalogo, filtroProdutosServicos]);
+  }, [catalogo, isServicosView, isEstoqueView]);
+
+  const indicadoresProdutosServicos = useMemo(() => {
+    const vencidos = catalogoPorContexto.filter((item) => isValidadeVencida(item.statusValidade)).length;
+    const vencendo60 = catalogoPorContexto.filter((item) => isValidadeVencendo60(item.statusValidade)).length;
+    const semGrupo = catalogoPorContexto.filter((item) => !String(item.grupo || '').trim()).length;
+    const baixoEstoque = catalogoPorContexto.filter((item) => Number(item.estoqueAtual || 0) <= Number(item.estoqueMinimo || 0)).length;
+
+    return { vencidos, vencendo60, semGrupo, baixoEstoque };
+  }, [catalogoPorContexto]);
+  const catalogoProdutosServicos = useMemo(() => {
+    if (filtroProdutosServicos === 'VENCIDOS') {
+      return catalogoPorContexto.filter((item) => isValidadeVencida(item.statusValidade));
+
+      useEffect(() => {
+        setCadastroRapidoProduto((current) => ({
+          ...current,
+          tipo: isServicosView ? 'SERVICO' : 'PRODUTO',
+        }));
+      }, [isServicosView]);
+    }
+
+    if (filtroProdutosServicos === 'VENCENDO_60') {
+      return catalogoPorContexto.filter((item) => isValidadeVencendo60(item.statusValidade));
+    }
+
+    if (filtroProdutosServicos === 'SEM_GRUPO') {
+      return catalogoPorContexto.filter((item) => !String(item.grupo || '').trim());
+    }
+
+    if (filtroProdutosServicos === 'BAIXO_ESTOQUE') {
+      return catalogoPorContexto.filter((item) => Number(item.estoqueAtual || 0) <= Number(item.estoqueMinimo || 0));
+    }
+
+    return catalogoPorContexto;
+  }, [catalogoPorContexto, filtroProdutosServicos]);
   const insightsIaOperacionais = useMemo(() => {
     const insights: Array<{
       id: string;
@@ -2301,7 +2330,7 @@ export default function Estoque() {
       }, token);
 
       await Promise.all([
-        carregarCatalogo({}, isComprasModuleView ? 'Central de compras' : 'Catalogo completo'),
+        carregarCatalogo(catalogoDefaultParams, catalogoDefaultLabel),
         api.get('/estoque/analise', token).then((data) => setAnalise(data)),
       ]);
 
@@ -2320,13 +2349,23 @@ export default function Estoque() {
     <div style={{ display: 'grid', gap: 18, padding: 8, background: 'radial-gradient(circle at top right, #f0f7f6 0%, #f7fbfb 42%, #ffffff 100%)', borderRadius: 14 }}>
       <section style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 26, color: '#243332' }}>{isComprasXmlView ? 'Compras (XML)' : isNovosPedidosView ? 'Novos Pedidos' : 'Estoque e servicos'}</h1>
+          <h1 style={{ margin: 0, fontSize: 26, color: '#243332' }}>
+            {isComprasXmlView
+              ? 'Compras (XML)'
+              : isNovosPedidosView
+                ? 'Novos Pedidos'
+                : isServicosView
+                  ? 'Serviços'
+                  : 'Estoque'}
+          </h1>
           <p style={{ margin: '6px 0 0', color: '#647674', maxWidth: 720 }}>
             {isComprasXmlView
               ? 'Central de recebimento de NF-e por XML: importar, editar dados recebidos e armazenar notas.'
               : isNovosPedidosView
-              ? 'Central de criação e acompanhamento de novos pedidos de compra.'
-              : 'Controle operacional de produtos, reservas, rupturas, compras e saldos por deposito.'}
+                ? 'Central de criação e acompanhamento de novos pedidos de compra.'
+                : isServicosView
+                  ? 'Gestão operacional de serviços, padronização de cadastro e suporte ao atendimento.'
+                  : 'Controle operacional de produtos, reservas, rupturas, compras e saldos por deposito.'}
           </p>
         </div>
         <button onClick={carregar} style={{ height: 38, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #c7d5d2', background: '#fff', color: '#2f6f73', borderRadius: 8, padding: '0 14px', cursor: 'pointer', fontWeight: 700 }}>
@@ -2459,7 +2498,9 @@ export default function Estoque() {
           <section style={{ ...card, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>Estoque e serviços (visão operacional)</h3>
+                <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>
+                  {isServicosView ? 'Serviços (visão operacional)' : 'Estoque (visão operacional)'}
+                </h3>
                 <p style={{ margin: '4px 0 0', color: '#647674', fontSize: 13 }}>
                   Painel inspirado na aba do SimplesVet para priorizar validade, estoque mínimo e qualidade do cadastro.
                 </p>
@@ -2515,7 +2556,9 @@ export default function Estoque() {
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>Cadastro manual rápido de produto/serviço</h3>
                 <p style={{ margin: '4px 0 0', color: '#647674', fontSize: 13 }}>
-                  Adicione itens manualmente sem sair da central de estoque e serviços para apoiar o atendimento ao cliente.
+                  {isServicosView
+                    ? 'Adicione serviços manualmente sem sair da central para apoiar o atendimento ao cliente.'
+                    : 'Adicione produtos manualmente sem sair da central de estoque para apoiar o atendimento ao cliente.'}
                 </p>
               </div>
               <button
@@ -2578,7 +2621,9 @@ export default function Estoque() {
           <section style={{ ...card, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>{isComprasModuleView ? 'Atalhos de compras' : 'Atalhos de estoque e compras'}</h3>
+                <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>
+                  {isComprasModuleView ? 'Atalhos de compras' : isServicosView ? 'Atalhos de serviços e compras' : 'Atalhos de estoque e compras'}
+                </h3>
                 <p style={{ margin: '4px 0 0', color: '#647674', fontSize: 13 }}>
                   {isComprasModuleView
                     ? 'Abra rapidamente sugestoes, pedidos e recebimento fiscal sem sair da central de compras.'

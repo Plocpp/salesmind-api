@@ -62,6 +62,7 @@ const allowedPrivatePages = new Set([
     'cadastros',
     'clientes',
     'estoque',
+    'servicos',
     'compras',
     'novos-pedidos',
     'financeiro',
@@ -172,6 +173,7 @@ function App() {
         }
 
         if ((currentPage === 'estoque' && window.location.hash.startsWith('#estoque'))
+            || (currentPage === 'servicos' && window.location.hash.startsWith('#servicos'))
             || (currentPage === 'compras' && window.location.hash.startsWith('#compras'))) {
             return;
         }
@@ -249,6 +251,8 @@ function App() {
                 return <Clientes />;
             case 'estoque':
                 return <Estoque key="estoque" />;
+            case 'servicos':
+                return <Estoque key="servicos" />;
             case 'compras':
                 return <Estoque key="compras" />;
             case 'novos-pedidos':

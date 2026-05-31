@@ -133,7 +133,8 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       label: 'Estoque e serviços',
       icon: Boxes,
       children: [
-        { id: 'estoque', label: 'Produtos e Serviços' },
+        { id: 'estoque', label: 'Estoque (produtos)' },
+        { id: 'servicos', label: 'Serviços' },
         { id: 'compras', label: 'Compras (XML)' },
         { id: 'novos-pedidos', label: 'Novos Pedidos' },
         { id: 'cadastro-produtos', label: 'Cadastro de Produtos' },
@@ -238,6 +239,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       { id: 'dashboard', label: 'Início', icon: Home },
       { id: 'vendas', label: 'Vendas', icon: ShoppingCart, hidden: userRole !== 'ADMIN' && userRole !== 'VENDEDOR' },
       { id: 'estoque', label: 'Estoque', icon: Boxes },
+      { id: 'servicos', label: 'Serviços', icon: Boxes },
       { id: 'compras', label: 'Compras XML', icon: ClipboardList },
       { id: 'novos-pedidos', label: 'Novos Pedidos', icon: ClipboardList },
       { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
