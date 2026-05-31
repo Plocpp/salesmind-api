@@ -71,6 +71,29 @@ const movimentacaoSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const auditoriaIaItemSchema = z.object({
+  ordem: z.number().int().positive(),
+  produto: z.string(),
+  produtoRef: z.string(),
+  quantidade: z.number().nonnegative(),
+  custoUnitario: z.number().nonnegative(),
+  score: z.number().min(0).max(100),
+  nivel: z.enum(['alto', 'medio', 'baixo']),
+  motivos: z.array(z.string()).max(10),
+});
+
+const auditoriaIaSchema = z.object({
+  marker: z.literal('IA_AUDITORIA_V1'),
+  contexto: z.enum(['WIZARD', 'RAPIDO']),
+  timestamp: z.string().min(10),
+  confiancaPedidoRapido: z.object({
+    score: z.number().min(0).max(100),
+    nivel: z.enum(['alto', 'medio', 'baixo']),
+  }),
+  fornecedorRecomendado: z.string(),
+  itens: z.array(auditoriaIaItemSchema).max(20),
+});
+
 const pedidoCompraSchema = z.object({
   numero: z.string().optional(),
   fornecedorId: z.string(),
@@ -79,6 +102,9 @@ const pedidoCompraSchema = z.object({
   valorFrete: z.number().nonnegative().default(0),
   valorImpostos: z.number().nonnegative().default(0),
   observacoes: z.string().optional(),
+  metadata: z.object({
+    iaAuditoria: auditoriaIaSchema,
+  }).passthrough().optional(),
   itens: z.array(z.object({
     produtoId: z.string(),
     quantidade: z.number().positive(),
@@ -657,6 +683,7 @@ export class EstoqueService {
         valorProdutos,
         valorTotal,
         observacoes: pedido.observacoes,
+        metadata: pedido.metadata,
         itens: {
           create: pedido.itens.map((item) => ({
             ...item,
@@ -695,6 +722,46 @@ export class EstoqueService {
       include: { fornecedor: true, itens: { include: { produto: true } } },
       orderBy: { createdAt: "desc" },
     });
+  }
+
+  async obterAuditoriaIaPedidoCompra(id: string) {
+    const pedido = await prisma.pedidoCompra.findUnique({
+      where: { id },
+      include: { fornecedor: true, itens: { include: { produto: true } } },
+    });
+
+    if (!pedido) {
+      throw new Error("Pedido de compra nao encontrado");
+    }
+
+    const metadata = pedido.metadata as any;
+    const auditoriaMetadata = metadata?.iaAuditoria || null;
+
+    let auditoriaObservacoes: any = null;
+    if (typeof pedido.observacoes === "string" && pedido.observacoes.includes("[IA-AUDITORIA-JSON]")) {
+      const marker = "[IA-AUDITORIA-JSON]";
+      const index = pedido.observacoes.indexOf(marker);
+      if (index >= 0) {
+        const jsonRaw = pedido.observacoes.slice(index + marker.length).trim();
+        try {
+          auditoriaObservacoes = JSON.parse(jsonRaw);
+        } catch {
+          auditoriaObservacoes = null;
+        }
+      }
+    }
+
+    return {
+      pedidoId: pedido.id,
+      numero: pedido.numero,
+      status: pedido.status,
+      fornecedor: pedido.fornecedor?.nome || null,
+      createdAt: pedido.createdAt,
+      updatedAt: pedido.updatedAt,
+      iaAuditoria: auditoriaMetadata || auditoriaObservacoes,
+      fonte: auditoriaMetadata ? "metadata" : auditoriaObservacoes ? "observacoes" : "indisponivel",
+      disponivel: Boolean(auditoriaMetadata || auditoriaObservacoes),
+    };
   }
 
   async cancelarPedidoCompra(id: string, data: unknown, usuarioId?: string) {

@@ -130,10 +130,10 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
     },
     {
       id: 'estoque',
-      label: 'Estoque e Compras',
+      label: 'Estoque e serviços',
       icon: Boxes,
       children: [
-        { id: 'estoque', label: 'Visao de Estoque' },
+        { id: 'estoque', label: 'Produtos e Serviços' },
         { id: 'compras', label: 'Compras (XML)' },
         { id: 'novos-pedidos', label: 'Novos Pedidos' },
         { id: 'cadastro-produtos', label: 'Cadastro de Produtos' },

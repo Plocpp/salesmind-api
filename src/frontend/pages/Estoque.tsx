@@ -156,6 +156,35 @@ type CompraFiltros = {
   statusPedido: string;
 };
 
+type FiltroProdutosServicos = 'TODOS' | 'VENCIDOS' | 'VENCENDO_60' | 'SEM_GRUPO' | 'BAIXO_ESTOQUE';
+
+type FracionamentoItemForm = {
+  fatorConversao: string;
+  unidadeFracionada: string;
+};
+
+type DivergenciaItemRecebimento = {
+  itemId: string;
+  nome: string;
+  score: number;
+  nivel: 'alto' | 'medio' | 'baixo';
+  observacoes: string[];
+  quantidadePendente: number;
+  quantidadeRecebida: number;
+  quantidadeEstoquePrevista: number;
+  custoPedido: number;
+  custoRecebido: number;
+};
+
+type NovoPedidoWizardItem = {
+  id: string;
+  produtoId: string;
+  nome: string;
+  quantidade: string;
+  custoUnitario: string;
+  origem: 'sugestao' | 'manual';
+};
+
 type ImportacaoXmlResumo = {
   itensNota: number;
   fornecedorCriado: boolean;
@@ -226,6 +255,16 @@ const normalizeText = (value?: string | null) => String(value || '')
   .trim();
 
 const normalizeDocument = (value?: string | null) => String(value || '').replace(/\D/g, '');
+
+const isValidadeVencida = (statusValidade?: string | null) => {
+  const status = normalizeText(statusValidade);
+  return status.includes('vencid');
+};
+
+const isValidadeVencendo60 = (statusValidade?: string | null) => {
+  const status = normalizeText(statusValidade);
+  return status.includes('vencendo') && status.includes('60');
+};
 
 const normalizeLegacyMoney = (value?: number | null) => {
   let parsed = Number(value || 0);
@@ -559,6 +598,17 @@ export default function Estoque() {
   const [loadingAtalho, setLoadingAtalho] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
+  const [filtroProdutosServicos, setFiltroProdutosServicos] = useState<FiltroProdutosServicos>('TODOS');
+  const [fracionamentoItens, setFracionamentoItens] = useState<Record<string, FracionamentoItemForm>>({});
+  const [novoPedidoPasso, setNovoPedidoPasso] = useState(1);
+  const [novoPedidoFornecedorId, setNovoPedidoFornecedorId] = useState('');
+  const [novoPedidoItens, setNovoPedidoItens] = useState<NovoPedidoWizardItem[]>([]);
+  const [novoPedidoObservacoes, setNovoPedidoObservacoes] = useState('');
+  const [novoPedidoValorFrete, setNovoPedidoValorFrete] = useState('0');
+  const [novoPedidoValorImpostos, setNovoPedidoValorImpostos] = useState('0');
+  const [novoPedidoBuscaCatalogo, setNovoPedidoBuscaCatalogo] = useState('');
+  const [confirmacaoDuplicidadeNovoPedido, setConfirmacaoDuplicidadeNovoPedido] = useState(false);
+  const [novoPedidoSalvando, setNovoPedidoSalvando] = useState(false);
   const [ultimoPedidoSugeridoAbertoId, setUltimoPedidoSugeridoAbertoId] = useState('');
   const [confirmacaoRiscoRecebimento, setConfirmacaoRiscoRecebimento] = useState(false);
   const [mostrarSomenteRiscoAlto, setMostrarSomenteRiscoAlto] = useState(false);
@@ -827,6 +877,100 @@ export default function Estoque() {
   const saldoTotal = useMemo(() => itens.reduce((total, item) => total + item.disponivel, 0), [itens]);
   const totalNotasCompra = useMemo(() => notasCompra.reduce((acc, item) => acc + Number(item.valorTotal || 0), 0), [notasCompra]);
   const pedidosPendentes = useMemo(() => pedidosCompra.filter((item) => String(item.status || '') === 'ABERTO').length, [pedidosCompra]);
+  const indicadoresProdutosServicos = useMemo(() => {
+    const vencidos = catalogo.filter((item) => isValidadeVencida(item.statusValidade)).length;
+    const vencendo60 = catalogo.filter((item) => isValidadeVencendo60(item.statusValidade)).length;
+    const semGrupo = catalogo.filter((item) => !String(item.grupo || '').trim()).length;
+    const baixoEstoque = catalogo.filter((item) => Number(item.estoqueAtual || 0) <= Number(item.estoqueMinimo || 0)).length;
+
+    return { vencidos, vencendo60, semGrupo, baixoEstoque };
+  }, [catalogo]);
+  const catalogoProdutosServicos = useMemo(() => {
+    if (filtroProdutosServicos === 'VENCIDOS') {
+      return catalogo.filter((item) => isValidadeVencida(item.statusValidade));
+    }
+
+    if (filtroProdutosServicos === 'VENCENDO_60') {
+      return catalogo.filter((item) => isValidadeVencendo60(item.statusValidade));
+    }
+
+    if (filtroProdutosServicos === 'SEM_GRUPO') {
+      return catalogo.filter((item) => !String(item.grupo || '').trim());
+    }
+
+    if (filtroProdutosServicos === 'BAIXO_ESTOQUE') {
+      return catalogo.filter((item) => Number(item.estoqueAtual || 0) <= Number(item.estoqueMinimo || 0));
+    }
+
+    return catalogo;
+  }, [catalogo, filtroProdutosServicos]);
+  const insightsIaOperacionais = useMemo(() => {
+    const insights: Array<{
+      id: string;
+      nivel: 'alto' | 'medio' | 'baixo';
+      titulo: string;
+      descricao: string;
+      acao: string;
+      onClick?: () => void;
+    }> = [];
+
+    if ((analise?.rupturas.length || 0) > 0) {
+      insights.push({
+        id: 'rupturas',
+        nivel: 'alto',
+        titulo: 'Risco de ruptura detectado',
+        descricao: `${analise?.rupturas.length || 0} item(ns) sem disponibilidade. Recomenda-se priorizar compra imediata.`,
+        acao: 'Filtrar ruptura',
+        onClick: () => aplicarAtalho('EST-AT-05'),
+      });
+    }
+
+    if ((analise?.baixoEstoque.length || 0) > 0) {
+      insights.push({
+        id: 'baixo-estoque',
+        nivel: 'medio',
+        titulo: 'Reposição preventiva sugerida',
+        descricao: `${analise?.baixoEstoque.length || 0} item(ns) abaixo do nível mínimo com potencial impacto em vendas.`,
+        acao: 'Listar baixo estoque',
+        onClick: () => aplicarAtalho('EST-AT-06'),
+      });
+    }
+
+    if (indicadoresProdutosServicos.vencidos > 0 || indicadoresProdutosServicos.vencendo60 > 0) {
+      insights.push({
+        id: 'validade',
+        nivel: indicadoresProdutosServicos.vencidos > 0 ? 'alto' : 'medio',
+        titulo: 'Produtos com risco de validade',
+        descricao: `${indicadoresProdutosServicos.vencidos} vencido(s) e ${indicadoresProdutosServicos.vencendo60} vencendo em até 60 dias no catálogo.`,
+        acao: 'Ver vencidos',
+        onClick: () => setFiltroProdutosServicos('VENCIDOS'),
+      });
+    }
+
+    if (indicadoresProdutosServicos.semGrupo > 0) {
+      insights.push({
+        id: 'cadastro',
+        nivel: 'baixo',
+        titulo: 'Padronização de cadastro recomendada',
+        descricao: `${indicadoresProdutosServicos.semGrupo} item(ns) sem grupo definido, o que reduz qualidade analítica de compras.`,
+        acao: 'Ver sem grupo',
+        onClick: () => setFiltroProdutosServicos('SEM_GRUPO'),
+      });
+    }
+
+    if (isComprasModuleView && pedidosPendentes > 0) {
+      insights.push({
+        id: 'compras-pendentes',
+        nivel: 'medio',
+        titulo: 'Pedidos pendentes para recebimento',
+        descricao: `${pedidosPendentes} pedido(s) em aberto na central de compras. Priorize conferência e recebimento fiscal.`,
+        acao: 'Focar pendentes',
+        onClick: () => setCompraFiltros((current) => ({ ...current, statusPedido: 'ABERTO' })),
+      });
+    }
+
+    return insights.slice(0, 4);
+  }, [analise, indicadoresProdutosServicos, isComprasModuleView, pedidosPendentes]);
   const pedidoSugeridoXml = useMemo<PedidoXmlSugerido | null>(() => {
     if (!isComprasXmlView || !previewXml?.itens?.length || pedidosCompra.length === 0) {
       return null;
@@ -1014,6 +1158,13 @@ export default function Estoque() {
   const abrirDetalhePedido = (pedido: PedidoCompraItem) => {
     setPedidoDetalhe(pedido);
     setRecebimentoManual(buildRecebimentoManualForm(pedido));
+    setFracionamentoItens(() => {
+      const next: Record<string, FracionamentoItemForm> = {};
+      (pedido.itens || []).forEach((item) => {
+        next[item.id] = { fatorConversao: '1', unidadeFracionada: 'UN' };
+      });
+      return next;
+    });
     setConfirmacaoRiscoRecebimento(false);
     setMostrarSomenteRiscoAlto(false);
     setErro('');
@@ -1031,6 +1182,768 @@ export default function Estoque() {
     invalidarPreviewXml();
     setConfirmacaoRiscoRecebimento(false);
   };
+
+  const recebimentoItensComFracionamento = useMemo(() => {
+    return recebimentoManual.itens.map((item) => {
+      const fracionamento = fracionamentoItens[item.itemId] || { fatorConversao: '1', unidadeFracionada: 'UN' };
+      const fator = Math.max(1, Number(fracionamento.fatorConversao || 1));
+      const quantidadeRecebida = Number(item.quantidadeRecebida || 0);
+      const quantidadeEstoquePrevista = Number((quantidadeRecebida * fator).toFixed(2));
+      const custoRecebido = Number(item.custoUnitario || 0);
+      const custoUnitarioFracionado = fator > 0 ? Number((custoRecebido / fator).toFixed(4)) : custoRecebido;
+
+      return {
+        ...item,
+        fator,
+        unidadeFracionada: fracionamento.unidadeFracionada || 'UN',
+        quantidadeRecebida,
+        quantidadeEstoquePrevista,
+        custoRecebido,
+        custoUnitarioFracionado,
+      };
+    });
+  }, [recebimentoManual.itens, fracionamentoItens]);
+
+  const resumoFracionamento = useMemo(() => {
+    const totalCompra = recebimentoItensComFracionamento.reduce((acc, item) => acc + item.quantidadeRecebida, 0);
+    const totalEstoque = recebimentoItensComFracionamento.reduce((acc, item) => acc + item.quantidadeEstoquePrevista, 0);
+    return { totalCompra, totalEstoque };
+  }, [recebimentoItensComFracionamento]);
+
+  const divergenciasRecebimentoIa = useMemo<DivergenciaItemRecebimento[]>(() => {
+    if (!pedidoDetalhe) return [];
+
+    return recebimentoItensComFracionamento.map((item) => {
+      const itemPedido = (pedidoDetalhe.itens || []).find((linha) => linha.id === item.itemId);
+      const custoPedido = Number(itemPedido?.custoUnitario || 0);
+      const quantidadePendente = Number(item.quantidadePendente || 0);
+      const observacoes: string[] = [];
+      let score = 100;
+
+      if (quantidadePendente > 0) {
+        const diffQtd = Math.abs(item.quantidadeRecebida - quantidadePendente) / Math.max(quantidadePendente, 1);
+        if (diffQtd > 0.3) {
+          score -= 35;
+          observacoes.push('quantidade recebida distante do pendente');
+        } else if (diffQtd > 0.12) {
+          score -= 18;
+          observacoes.push('quantidade recebida parcialmente divergente');
+        }
+      }
+
+      if (custoPedido > 0 && item.custoRecebido > 0) {
+        const diffCusto = Math.abs(item.custoRecebido - custoPedido) / Math.max(custoPedido, item.custoRecebido);
+        if (diffCusto > 0.2) {
+          score -= 35;
+          observacoes.push('custo unitário diverge do pedido');
+        } else if (diffCusto > 0.1) {
+          score -= 18;
+          observacoes.push('custo unitário com variação moderada');
+        }
+      }
+
+      if (item.fator > 1 && item.quantidadeEstoquePrevista > item.quantidadeRecebida * 5) {
+        score -= 15;
+        observacoes.push('fracionamento elevado, revisar conversão');
+      }
+
+      const nivel: DivergenciaItemRecebimento['nivel'] = score >= 80 ? 'baixo' : score >= 60 ? 'medio' : 'alto';
+
+      return {
+        itemId: item.itemId,
+        nome: item.nome,
+        score: Math.max(0, score),
+        nivel,
+        observacoes,
+        quantidadePendente,
+        quantidadeRecebida: item.quantidadeRecebida,
+        quantidadeEstoquePrevista: item.quantidadeEstoquePrevista,
+        custoPedido,
+        custoRecebido: item.custoRecebido,
+      };
+    });
+  }, [pedidoDetalhe, recebimentoItensComFracionamento]);
+
+  const iniciarWizardNovoPedido = () => {
+    setNovoPedidoPasso(1);
+    setNovoPedidoFornecedorId((current) => current || fornecedoresRankingNovoPedido[0]?.id || fornecedoresFiltro[0]?.id || '');
+    setConfirmacaoDuplicidadeNovoPedido(false);
+    setErro('');
+    setSucesso('');
+    if (novoPedidoItens.length === 0) {
+      setNovoPedidoItens(
+        sugestoesCompra.slice(0, 5).map((item) => ({
+          id: `sug-${item.itemId}`,
+          produtoId: item.itemId,
+          nome: item.nomeItem,
+          quantidade: String(Math.max(1, Number(item.quantidadeSugerida || 1))),
+          custoUnitario: String(custoSugeridoPorProduto.get(item.itemId) || 0),
+          origem: 'sugestao',
+        })),
+      );
+    }
+  };
+
+  const adicionarSugestaoAoWizard = (sugestao: SugestaoCompraItem) => {
+    setNovoPedidoItens((current) => {
+      const existente = current.find((item) => item.produtoId === sugestao.itemId);
+      if (existente) {
+        return current.map((item) => item.id === existente.id
+          ? {
+              ...item,
+              quantidade: String(
+                Math.max(
+                  1,
+                  Number(item.quantidade || 0) + Math.max(1, Number(sugestao.quantidadeSugerida || 1)),
+                ),
+              ),
+            }
+          : item);
+      }
+
+      return [
+        ...current,
+        {
+          id: `sug-${sugestao.itemId}-${Date.now()}`,
+          produtoId: sugestao.itemId,
+          nome: sugestao.nomeItem,
+          quantidade: String(Math.max(1, Number(sugestao.quantidadeSugerida || 1))),
+          custoUnitario: String(custoSugeridoPorProduto.get(sugestao.itemId) || 0),
+          origem: 'sugestao',
+        },
+      ];
+    });
+
+    setConfirmacaoDuplicidadeNovoPedido(false);
+
+    if (novoPedidoPasso < 2) {
+      setNovoPedidoPasso(2);
+    }
+  };
+
+  const adicionarItemManualAoWizard = (itemCatalogo: CatalogoItem) => {
+    if (!itemCatalogo.id) return;
+
+    setNovoPedidoItens((current) => {
+      const existente = current.find((item) => item.produtoId === itemCatalogo.id);
+      if (existente) {
+        return current.map((item) => item.id === existente.id
+          ? { ...item, quantidade: String(Math.max(1, Number(item.quantidade || 0) + 1)) }
+          : item);
+      }
+
+      return [
+        ...current,
+        {
+          id: `man-${itemCatalogo.id}-${Date.now()}`,
+          produtoId: itemCatalogo.id,
+          nome: itemCatalogo.nome,
+          quantidade: '1',
+          custoUnitario: String(custoSugeridoPorProduto.get(itemCatalogo.id) || 0),
+          origem: 'manual',
+        },
+      ];
+    });
+
+    setConfirmacaoDuplicidadeNovoPedido(false);
+
+    if (novoPedidoPasso < 2) {
+      setNovoPedidoPasso(2);
+    }
+  };
+
+  const concluirWizardNovoPedido = async () => {
+    if (!novoPedidoFornecedorId) {
+      setErro('Selecione um fornecedor para concluir o novo pedido.');
+      return;
+    }
+
+    if (novoPedidoItens.length === 0) {
+      setErro('Adicione ao menos um item ao rascunho do novo pedido.');
+      return;
+    }
+
+    const itensNormalizados = novoPedidoItens
+      .map((item) => ({
+        ...item,
+        quantidadeNumero: Number(item.quantidade || 0),
+        custoUnitarioNumero: Number(item.custoUnitario || 0),
+      }));
+
+    const itemInvalido = itensNormalizados.find((item) => (
+      !item.produtoId
+      || !Number.isFinite(item.quantidadeNumero)
+      || item.quantidadeNumero <= 0
+      || !Number.isFinite(item.custoUnitarioNumero)
+      || item.custoUnitarioNumero < 0
+    ));
+
+    if (itemInvalido) {
+      setErro(`Revise os dados do item "${itemInvalido.nome}": quantidade deve ser maior que zero e custo não pode ser negativo.`);
+      return;
+    }
+
+    const pedidoDuplicado = detectarPedidoDuplicadoPotencial(novoPedidoFornecedorId, itensNormalizados.map((item) => ({
+      produtoId: item.produtoId,
+      quantidade: item.quantidadeNumero,
+    })));
+
+    if (pedidoDuplicado && !confirmacaoDuplicidadeNovoPedido) {
+      setErro(`Detectamos possível duplicidade com o pedido ${pedidoDuplicado.numero || pedidoDuplicado.id.slice(0, 8)}. Marque a confirmação para prosseguir.`);
+      return;
+    }
+
+    try {
+      setNovoPedidoSalvando(true);
+      setLoadingAtalho(true);
+      setErro('');
+      setSucesso('');
+
+      const observacoesComAuditoria = montarObservacoesComAuditoriaIa(
+        'WIZARD',
+        itensNormalizados.map((item) => ({
+          idReferencia: item.id,
+          nome: item.nome,
+          quantidade: item.quantidadeNumero,
+          custoUnitario: item.custoUnitarioNumero,
+        })),
+        novoPedidoObservacoes.trim(),
+      );
+      const metadataAuditoriaIa = {
+        iaAuditoria: montarMetadataAuditoriaIa(
+          'WIZARD',
+          itensNormalizados.map((item) => ({
+            idReferencia: item.id,
+            nome: item.nome,
+            quantidade: item.quantidadeNumero,
+            custoUnitario: item.custoUnitarioNumero,
+          })),
+        ),
+      };
+
+      const pedidoCriado = await api.post('/estoque/compras/pedidos', {
+        fornecedorId: novoPedidoFornecedorId,
+        valorFrete: valorFreteNovoPedidoNumero,
+        valorImpostos: valorImpostosNovoPedidoNumero,
+        observacoes: observacoesComAuditoria,
+        metadata: metadataAuditoriaIa,
+        itens: itensNormalizados.map((item) => ({
+          produtoId: item.produtoId,
+          quantidade: item.quantidadeNumero,
+          custoUnitario: item.custoUnitarioNumero,
+        })),
+      }, token);
+
+      await Promise.all([
+        carregarCentralCompras(compraFiltros, { exibirLoading: false }),
+        carregarPedidosAbertos(),
+        carregarSugestoesCompra(),
+      ]);
+
+      setNovoPedidoPasso(1);
+      setNovoPedidoItens([]);
+      setNovoPedidoObservacoes('');
+      setNovoPedidoValorFrete('0');
+      setNovoPedidoValorImpostos('0');
+      setNovoPedidoBuscaCatalogo('');
+      setConfirmacaoDuplicidadeNovoPedido(false);
+      setSucesso(`Pedido de compra ${pedidoCriado?.numero || pedidoCriado?.id?.slice?.(0, 8) || 'criado'} registrado com sucesso.`);
+
+      if (pedidoCriado?.id) {
+        abrirDetalhePedido(pedidoCriado as PedidoCompraItem);
+      }
+    } catch (error) {
+      console.error(error);
+      setErro('Não foi possível criar o pedido de compra pelo wizard. Verifique os dados e tente novamente.');
+    } finally {
+      setNovoPedidoSalvando(false);
+      setLoadingAtalho(false);
+    }
+  };
+
+  const totalNovoPedidoEstimado = useMemo(() => {
+    return novoPedidoItens.reduce((acc, item) => {
+      const quantidade = Number(String(item.quantidade || '0').replace(',', '.'));
+      const custo = Number(String(item.custoUnitario || '0').replace(',', '.'));
+      return acc + (Number.isFinite(quantidade) ? quantidade : 0) * (Number.isFinite(custo) ? custo : 0);
+    }, 0);
+  }, [novoPedidoItens]);
+
+  const valorFreteNovoPedidoNumero = useMemo(() => {
+    const parsed = Number(String(novoPedidoValorFrete || '0').replace(',', '.'));
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  }, [novoPedidoValorFrete]);
+
+  const valorImpostosNovoPedidoNumero = useMemo(() => {
+    const parsed = Number(String(novoPedidoValorImpostos || '0').replace(',', '.'));
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  }, [novoPedidoValorImpostos]);
+
+  const custoSugeridoPorProduto = useMemo(() => {
+    const agregados = new Map<string, { total: number; count: number }>();
+
+    pedidosCompra.forEach((pedido) => {
+      (pedido.itens || []).forEach((item) => {
+        const produtoId = String(item.produtoId || '').trim();
+        const custo = Number(item.custoUnitario || 0);
+        if (!produtoId || !Number.isFinite(custo) || custo <= 0) return;
+
+        const atual = agregados.get(produtoId) || { total: 0, count: 0 };
+        atual.total += custo;
+        atual.count += 1;
+        agregados.set(produtoId, atual);
+      });
+    });
+
+    const media = new Map<string, number>();
+    agregados.forEach((value, produtoId) => {
+      if (value.count > 0) {
+        media.set(produtoId, Number((value.total / value.count).toFixed(2)));
+      }
+    });
+
+    return media;
+  }, [pedidosCompra]);
+
+  const quantidadePendentePorProdutoEmAberto = useMemo(() => {
+    const mapa = new Map<string, number>();
+
+    pedidosCompra.forEach((pedido) => {
+      const status = String(pedido.status || '').toUpperCase();
+      if (status === 'CANCELADO' || status === 'RECEBIDO') return;
+
+      (pedido.itens || []).forEach((item) => {
+        const produtoId = String(item.produtoId || '').trim();
+        if (!produtoId) return;
+
+        const quantidade = Number(item.quantidade || 0);
+        const quantidadeRecebida = Number(item.quantidadeRecebida || 0);
+        const pendente = Math.max(0, quantidade - quantidadeRecebida);
+        if (pendente <= 0) return;
+
+        mapa.set(produtoId, Number((mapa.get(produtoId) || 0) + pendente));
+      });
+    });
+
+    return mapa;
+  }, [pedidosCompra]);
+
+  const auditoriaSugestoesIa = useMemo(() => {
+    const mapa = new Map<string, { score: number; nivel: 'alto' | 'medio' | 'baixo'; motivos: string[] }>();
+
+    sugestoesCompra.forEach((item) => {
+      const quantidadeSugerida = Math.max(1, Number(item.quantidadeSugerida || 1));
+      const estoqueAtual = Math.max(0, Number(item.estoqueAtual || 0));
+      const custoSugerido = Number(custoSugeridoPorProduto.get(item.itemId) || 0);
+      const pendenteAberto = Number(quantidadePendentePorProdutoEmAberto.get(item.itemId) || 0);
+      const motivos: string[] = [];
+
+      let score = 45;
+      const coberturaAtual = estoqueAtual / quantidadeSugerida;
+
+      if (coberturaAtual <= 0.2) {
+        score += 30;
+        motivos.push('Reposição urgente: estoque muito abaixo da cobertura sugerida.');
+      } else if (coberturaAtual <= 0.6) {
+        score += 20;
+        motivos.push('Reposição relevante: cobertura parcial em estoque atual.');
+      } else {
+        score += 8;
+        motivos.push('Reposição preventiva para manter cobertura de segurança.');
+      }
+
+      if (custoSugerido > 0) {
+        score += 20;
+        motivos.push(`Custo histórico disponível (${formatCurrency(custoSugerido)}).`);
+      } else {
+        score -= 10;
+        motivos.push('Sem custo histórico confiável para este item.');
+      }
+
+      if (pendenteAberto > 0) {
+        score -= 15;
+        motivos.push(`Já existem ${pendenteAberto} un em pedidos abertos para este produto.`);
+      } else {
+        score += 10;
+        motivos.push('Sem pendências em pedidos abertos para o produto.');
+      }
+
+      score = Math.max(0, Math.min(100, Math.round(score)));
+      const nivel: 'alto' | 'medio' | 'baixo' = score >= 75 ? 'alto' : score >= 55 ? 'medio' : 'baixo';
+      mapa.set(item.itemId, { score, nivel, motivos });
+    });
+
+    return mapa;
+  }, [sugestoesCompra, custoSugeridoPorProduto, quantidadePendentePorProdutoEmAberto]);
+
+  const confiancaPedidoRapido = useMemo(() => {
+    const considerados = sugestoesCompra.slice(0, 10);
+    if (considerados.length === 0) {
+      return { score: 0, nivel: 'baixo' as const, itens: 0 };
+    }
+
+    const scoreMedio = Math.round(
+      considerados.reduce((acc, item) => acc + Number(auditoriaSugestoesIa.get(item.itemId)?.score || 0), 0) / considerados.length,
+    );
+
+    const nivel: 'alto' | 'medio' | 'baixo' = scoreMedio >= 75 ? 'alto' : scoreMedio >= 55 ? 'medio' : 'baixo';
+    return { score: scoreMedio, nivel, itens: considerados.length };
+  }, [sugestoesCompra, auditoriaSugestoesIa]);
+
+  const auditoriaItensNovoPedido = useMemo(() => {
+    const mapa = new Map<string, { score: number; nivel: 'alto' | 'medio' | 'baixo'; motivos: string[] }>();
+
+    novoPedidoItens.forEach((item) => {
+      const auditoriaSugestao = auditoriaSugestoesIa.get(item.produtoId);
+      if (auditoriaSugestao) {
+        mapa.set(item.id, {
+          ...auditoriaSugestao,
+          motivos: [
+            ...auditoriaSugestao.motivos,
+            item.origem === 'sugestao'
+              ? 'Item adicionado por sugestão automática.'
+              : 'Item manual com contexto IA herdado da sugestão do produto.',
+          ],
+        });
+        return;
+      }
+
+      const custo = Number(item.custoUnitario || 0);
+      const pendenteAberto = Number(quantidadePendentePorProdutoEmAberto.get(item.produtoId) || 0);
+      const motivos: string[] = [];
+      let score = 50;
+
+      if (custo > 0) {
+        score += 20;
+        motivos.push(`Custo informado no rascunho (${formatCurrency(custo)}).`);
+      } else {
+        score -= 10;
+        motivos.push('Sem custo informado no rascunho.');
+      }
+
+      if (pendenteAberto > 0) {
+        score -= 12;
+        motivos.push(`Produto com ${pendenteAberto} un já pendentes em pedidos abertos.`);
+      } else {
+        score += 8;
+        motivos.push('Sem pendências abertas para o produto.');
+      }
+
+      score = Math.max(0, Math.min(100, Math.round(score)));
+      const nivel: 'alto' | 'medio' | 'baixo' = score >= 75 ? 'alto' : score >= 55 ? 'medio' : 'baixo';
+      mapa.set(item.id, { score, nivel, motivos });
+    });
+
+    return mapa;
+  }, [novoPedidoItens, auditoriaSugestoesIa, quantidadePendentePorProdutoEmAberto]);
+
+  const totalGeralNovoPedidoEstimado = useMemo(
+    () => totalNovoPedidoEstimado + valorFreteNovoPedidoNumero + valorImpostosNovoPedidoNumero,
+    [totalNovoPedidoEstimado, valorFreteNovoPedidoNumero, valorImpostosNovoPedidoNumero],
+  );
+
+  const fornecedoresRankingNovoPedido = useMemo(() => {
+    const ranking = new Map<string, { id: string; nome: string; score: number; pedidos: number; abertos: number }>();
+
+    pedidosCompra.forEach((pedido) => {
+      const id = String(pedido.fornecedor?.id || '').trim();
+      const nome = String(pedido.fornecedor?.nome || '').trim();
+      if (!id || !nome) return;
+
+      const status = String(pedido.status || '').toUpperCase();
+      const valor = Number(pedido.valorTotal || pedido.valorProdutos || 0);
+      const atual = ranking.get(id) || { id, nome, score: 0, pedidos: 0, abertos: 0 };
+
+      atual.pedidos += 1;
+      atual.score += 10;
+      atual.score += Math.min(20, Math.floor(valor / 500));
+
+      if (status === 'ABERTO' || status === 'RECEBIDO_PARCIAL') {
+        atual.abertos += 1;
+        atual.score += 18;
+      }
+
+      ranking.set(id, atual);
+    });
+
+    fornecedoresFiltro.forEach((fornecedor) => {
+      if (!ranking.has(fornecedor.id)) {
+        ranking.set(fornecedor.id, { id: fornecedor.id, nome: fornecedor.nome, score: 1, pedidos: 0, abertos: 0 });
+      }
+    });
+
+    return Array.from(ranking.values())
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4);
+  }, [pedidosCompra, fornecedoresFiltro]);
+
+  const itensCatalogoParaWizard = useMemo(() => {
+    const termo = normalizeText(novoPedidoBuscaCatalogo);
+    const itensBase = catalogoProdutosServicos.length > 0 ? catalogoProdutosServicos : catalogo;
+    if (!termo) {
+      return itensBase.slice(0, 8);
+    }
+
+    return itensBase
+      .filter((item) => {
+        const nome = normalizeText(item.nome);
+        const codigo = normalizeText(item.codigoInterno || item.codigoBarras || '');
+        return nome.includes(termo) || codigo.includes(termo);
+      })
+      .slice(0, 8);
+  }, [novoPedidoBuscaCatalogo, catalogoProdutosServicos, catalogo]);
+
+  const detectarPedidoDuplicadoPotencial = (
+    fornecedorId: string,
+    itens: Array<{ produtoId: string; quantidade: number }>,
+  ) => {
+    if (!fornecedorId || itens.length === 0) return null;
+
+    const itensValidos = itens.filter((item) => item.produtoId && item.quantidade > 0);
+    if (itensValidos.length === 0) return null;
+
+    const totalNovo = itensValidos.reduce((acc, item) => acc + item.quantidade, 0);
+    const mapaNovo = new Map<string, number>();
+    itensValidos.forEach((item) => mapaNovo.set(item.produtoId, item.quantidade));
+
+    return pedidosCompra.find((pedido) => {
+      const status = String(pedido.status || '').toUpperCase();
+      if (status === 'CANCELADO' || status === 'RECEBIDO') return false;
+      if (String(pedido.fornecedor?.id || '') !== fornecedorId) return false;
+
+      const itensPedido = (pedido.itens || [])
+        .map((item) => ({
+          produtoId: String(item.produtoId || ''),
+          quantidade: Number(item.quantidade || 0),
+        }))
+        .filter((item) => item.produtoId && item.quantidade > 0);
+
+      if (itensPedido.length === 0) return false;
+
+      const mapaPedido = new Map<string, number>();
+      itensPedido.forEach((item) => mapaPedido.set(item.produtoId, item.quantidade));
+
+      let comuns = 0;
+      let intersecaoQtd = 0;
+
+      mapaNovo.forEach((qtdNovo, produtoId) => {
+        const qtdPedido = mapaPedido.get(produtoId);
+        if (!qtdPedido) return;
+        comuns += 1;
+        intersecaoQtd += Math.min(qtdNovo, qtdPedido);
+      });
+
+      const coberturaItens = comuns / Math.max(1, mapaNovo.size);
+      const coberturaQtd = intersecaoQtd / Math.max(1, totalNovo);
+      return coberturaItens >= 0.7 && coberturaQtd >= 0.6;
+    }) || null;
+  };
+
+  const duplicidadeNovoPedido = useMemo(
+    () => detectarPedidoDuplicadoPotencial(
+      novoPedidoFornecedorId,
+      novoPedidoItens.map((item) => ({ produtoId: item.produtoId, quantidade: Number(item.quantidade || 0) })),
+    ),
+    [novoPedidoFornecedorId, novoPedidoItens, pedidosCompra],
+  );
+
+  useEffect(() => {
+    setConfirmacaoDuplicidadeNovoPedido(false);
+  }, [novoPedidoFornecedorId, novoPedidoItens]);
+
+  const montarObservacoesComAuditoriaIa = (
+    contexto: 'WIZARD' | 'RAPIDO',
+    itens: Array<{ idReferencia: string; nome: string; quantidade: number; custoUnitario: number }>,
+    baseObservacoes?: string,
+  ) => {
+    const timestamp = new Date().toISOString();
+    const linhasCabecalho = [
+      `[IA-AUDITORIA][${contexto}] ${timestamp}`,
+      `Confianca pedido rapido: ${confiancaPedidoRapido.score}% (${confiancaPedidoRapido.nivel})`,
+      `Fornecedor recomendado: ${fornecedoresRankingNovoPedido[0]?.nome || 'N/D'}`,
+    ];
+
+    const itensAuditoria = itens.slice(0, 10).map((item, index) => {
+      const auditoria = auditoriaItensNovoPedido.get(item.idReferencia)
+        || auditoriaSugestoesIa.get(item.idReferencia)
+        || { score: 0, nivel: 'baixo' as const, motivos: ['Sem trilha de auditoria disponível.'] };
+
+      const motivos = auditoria.motivos.slice(0, 3).join(' | ');
+      return {
+        ordem: index + 1,
+        produto: item.nome,
+        produtoRef: item.idReferencia,
+        quantidade: item.quantidade,
+        custoUnitario: item.custoUnitario,
+        score: auditoria.score,
+        nivel: auditoria.nivel,
+        motivos: auditoria.motivos.slice(0, 3),
+        linhaTexto: `${index + 1}. ${item.nome} | qtd=${item.quantidade} | custo=${item.custoUnitario} | score=${auditoria.score}% (${auditoria.nivel}) | motivos=${motivos}`,
+      };
+    });
+
+    const payloadAuditoria = {
+      marker: 'IA_AUDITORIA_V1',
+      contexto,
+      timestamp,
+      confiancaPedidoRapido: {
+        score: confiancaPedidoRapido.score,
+        nivel: confiancaPedidoRapido.nivel,
+      },
+      fornecedorRecomendado: fornecedoresRankingNovoPedido[0]?.nome || 'N/D',
+      itens: itensAuditoria.map((item) => ({
+        ordem: item.ordem,
+        produto: item.produto,
+        produtoRef: item.produtoRef,
+        quantidade: item.quantidade,
+        custoUnitario: item.custoUnitario,
+        score: item.score,
+        nivel: item.nivel,
+        motivos: item.motivos,
+      })),
+    };
+
+    const blocoJson = `[IA-AUDITORIA-JSON] ${JSON.stringify(payloadAuditoria)}`;
+
+    const blocoAuditoria = [
+      ...linhasCabecalho,
+      'Itens analisados:',
+      ...itensAuditoria.map((item) => item.linhaTexto),
+      blocoJson,
+    ].join('\n');
+
+    const base = String(baseObservacoes || '').trim();
+    return base ? `${base}\n\n${blocoAuditoria}` : blocoAuditoria;
+  };
+
+  const montarMetadataAuditoriaIa = (
+    contexto: 'WIZARD' | 'RAPIDO',
+    itens: Array<{ idReferencia: string; nome: string; quantidade: number; custoUnitario: number }>,
+  ) => {
+    const timestamp = new Date().toISOString();
+
+    const itensAuditoria = itens.slice(0, 10).map((item, index) => {
+      const auditoria = auditoriaItensNovoPedido.get(item.idReferencia)
+        || auditoriaSugestoesIa.get(item.idReferencia)
+        || { score: 0, nivel: 'baixo' as const, motivos: ['Sem trilha de auditoria disponível.'] };
+
+      return {
+        ordem: index + 1,
+        produto: item.nome,
+        produtoRef: item.idReferencia,
+        quantidade: item.quantidade,
+        custoUnitario: item.custoUnitario,
+        score: auditoria.score,
+        nivel: auditoria.nivel,
+        motivos: auditoria.motivos.slice(0, 3),
+      };
+    });
+
+    return {
+      marker: 'IA_AUDITORIA_V1',
+      contexto,
+      timestamp,
+      confiancaPedidoRapido: {
+        score: confiancaPedidoRapido.score,
+        nivel: confiancaPedidoRapido.nivel,
+      },
+      fornecedorRecomendado: fornecedoresRankingNovoPedido[0]?.nome || 'N/D',
+      itens: itensAuditoria,
+    };
+  };
+
+  const criarPedidoRapidoPorSugestoes = async () => {
+    if (sugestoesCompra.length === 0) {
+      setErro('Não há sugestões disponíveis para criação rápida de pedido.');
+      return;
+    }
+
+    const fornecedorId = fornecedoresRankingNovoPedido[0]?.id || fornecedoresFiltro[0]?.id || '';
+    if (!fornecedorId) {
+      setErro('Nenhum fornecedor disponível para criar pedido rápido.');
+      return;
+    }
+
+    const itensRapidos = sugestoesCompra.slice(0, 10).map((item) => ({
+      produtoId: item.itemId,
+      quantidade: Math.max(1, Number(item.quantidadeSugerida || 1)),
+      custoUnitario: Number(custoSugeridoPorProduto.get(item.itemId) || 0),
+    }));
+
+    if (itensRapidos.length === 0) {
+      setErro('As sugestões atuais não possuem itens válidos para pedido rápido.');
+      return;
+    }
+
+    const duplicado = detectarPedidoDuplicadoPotencial(
+      fornecedorId,
+      itensRapidos.map((item) => ({ produtoId: item.produtoId, quantidade: item.quantidade })),
+    );
+    if (duplicado) {
+      setErro(`Pedido rápido bloqueado: possível duplicidade com o pedido ${duplicado.numero || duplicado.id.slice(0, 8)}.`);
+      return;
+    }
+
+    try {
+      setNovoPedidoSalvando(true);
+      setLoadingAtalho(true);
+      setErro('');
+      setSucesso('');
+
+      const observacoesComAuditoria = montarObservacoesComAuditoriaIa(
+        'RAPIDO',
+        itensRapidos.map((item) => ({
+          idReferencia: item.produtoId,
+          nome: sugestoesCompra.find((sug) => sug.itemId === item.produtoId)?.nomeItem || `Produto ${item.produtoId.slice(0, 8)}`,
+          quantidade: item.quantidade,
+          custoUnitario: item.custoUnitario,
+        })),
+        'Pedido criado automaticamente a partir das sugestões de compra.',
+      );
+      const metadataAuditoriaIa = {
+        iaAuditoria: montarMetadataAuditoriaIa(
+          'RAPIDO',
+          itensRapidos.map((item) => ({
+            idReferencia: item.produtoId,
+            nome: sugestoesCompra.find((sug) => sug.itemId === item.produtoId)?.nomeItem || `Produto ${item.produtoId.slice(0, 8)}`,
+            quantidade: item.quantidade,
+            custoUnitario: item.custoUnitario,
+          })),
+        ),
+      };
+
+      const pedidoCriado = await api.post('/estoque/compras/pedidos', {
+        fornecedorId,
+        valorFrete: 0,
+        valorImpostos: 0,
+        observacoes: observacoesComAuditoria,
+        metadata: metadataAuditoriaIa,
+        itens: itensRapidos,
+      }, token);
+
+      await Promise.all([
+        carregarCentralCompras(compraFiltros, { exibirLoading: false }),
+        carregarPedidosAbertos(),
+        carregarSugestoesCompra(),
+      ]);
+
+      setSucesso(`Pedido rápido ${pedidoCriado?.numero || pedidoCriado?.id?.slice?.(0, 8) || 'criado'} gerado com sucesso. Confiança IA: ${confiancaPedidoRapido.score}%.`);
+      if (pedidoCriado?.id) {
+        abrirDetalhePedido(pedidoCriado as PedidoCompraItem);
+      }
+    } catch (error) {
+      console.error(error);
+      setErro('Não foi possível gerar o pedido rápido pelas sugestões.');
+    } finally {
+      setNovoPedidoSalvando(false);
+      setLoadingAtalho(false);
+    }
+  };
+
+  const fornecedorSelecionadoNovoPedido = useMemo(
+    () => fornecedoresFiltro.find((item) => item.id === novoPedidoFornecedorId)?.nome || '-',
+    [fornecedoresFiltro, novoPedidoFornecedorId],
+  );
 
   const riscosRecebimento = useMemo(() => {
     if (!pedidoDetalhe) return [] as RiscoRecebimento[];
@@ -1393,6 +2306,60 @@ export default function Estoque() {
               <Kpi icon={Boxes} label="Total das notas" value={`R$ ${totalNotasCompra.toFixed(2)}`} tone="#54736b" />
             </div>
           )}
+
+          <section style={{ ...card, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>Produtos e serviços (visão operacional)</h3>
+                <p style={{ margin: '4px 0 0', color: '#647674', fontSize: 13 }}>
+                  Painel inspirado na aba do SimplesVet para priorizar validade, estoque mínimo e qualidade do cadastro.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => setFiltroProdutosServicos('TODOS')} style={filtroProdutosServicos === 'TODOS' ? chipActiveStyle : chipStyle}>Todos</button>
+                <button onClick={() => setFiltroProdutosServicos('VENCIDOS')} style={filtroProdutosServicos === 'VENCIDOS' ? chipActiveStyle : chipStyle}>Vencidos</button>
+                <button onClick={() => setFiltroProdutosServicos('VENCENDO_60')} style={filtroProdutosServicos === 'VENCENDO_60' ? chipActiveStyle : chipStyle}>Vencendo 60 dias</button>
+                <button onClick={() => setFiltroProdutosServicos('SEM_GRUPO')} style={filtroProdutosServicos === 'SEM_GRUPO' ? chipActiveStyle : chipStyle}>Sem grupo</button>
+                <button onClick={() => setFiltroProdutosServicos('BAIXO_ESTOQUE')} style={filtroProdutosServicos === 'BAIXO_ESTOQUE' ? chipActiveStyle : chipStyle}>Baixo estoque</button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+              <div style={miniKpiStyle}><strong>{indicadoresProdutosServicos.vencidos}</strong><span>Com validade vencida</span></div>
+              <div style={miniKpiStyle}><strong>{indicadoresProdutosServicos.vencendo60}</strong><span>Vencendo em 60 dias</span></div>
+              <div style={miniKpiStyle}><strong>{indicadoresProdutosServicos.baixoEstoque}</strong><span>Abaixo do mínimo</span></div>
+              <div style={miniKpiStyle}><strong>{indicadoresProdutosServicos.semGrupo}</strong><span>Sem grupo cadastrado</span></div>
+            </div>
+          </section>
+
+          <section style={{ ...card, padding: 16 }}>
+            <h3 style={{ margin: 0, fontSize: 16, color: '#243332' }}>Assistente IA operacional</h3>
+            <p style={{ margin: '6px 0 0', color: '#647674', fontSize: 13 }}>
+              Recomendações automáticas para compras e estoque com base em ruptura, validade e pendências de recebimento.
+            </p>
+            <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+              {insightsIaOperacionais.map((insight) => {
+                const tone = insight.nivel === 'alto'
+                  ? { color: '#9c2f2f', background: '#fff1f1', border: '#efc6c6' }
+                  : insight.nivel === 'medio'
+                    ? { color: '#8a6126', background: '#fff8ed', border: '#efd9b7' }
+                    : { color: '#2f6f73', background: '#eef8f8', border: '#c8e0df' };
+
+                return (
+                  <div key={insight.id} style={{ border: `1px solid ${tone.border}`, background: tone.background, borderRadius: 8, padding: 10, display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontWeight: 800, color: tone.color }}>{insight.titulo}</div>
+                      <div style={{ marginTop: 3, color: '#54736b', fontSize: 13 }}>{insight.descricao}</div>
+                    </div>
+                    <button onClick={insight.onClick} style={{ ...secondaryActionButtonStyle, borderColor: tone.border, background: '#fff' }}>{insight.acao}</button>
+                  </div>
+                );
+              })}
+              {insightsIaOperacionais.length === 0 && (
+                <div style={{ color: '#647674', fontSize: 13 }}>Sem alertas críticos no momento. Os dados de estoque estão estáveis.</div>
+              )}
+            </div>
+          </section>
 
           <section style={{ ...card, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -1786,7 +2753,7 @@ export default function Estoque() {
                   </tr>
                 </thead>
                 <tbody>
-                  {catalogo.slice(0, 8).map((item) => {
+                  {catalogoProdutosServicos.slice(0, 12).map((item) => {
                     const status = getStatusCatalogo(item);
                     return (
                     <tr key={item.id} style={{ borderTop: '1px solid #edf1f0', background: status.background }}>
@@ -1816,14 +2783,53 @@ export default function Estoque() {
           {isNovosPedidosView && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
             <section style={{ ...card, padding: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 15, color: '#243332', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <ShoppingCart size={16} color="#9a6a2f" /> Sugestoes de compra
-              </h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: 15, color: '#243332', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ShoppingCart size={16} color="#9a6a2f" /> Sugestoes de compra
+                </h3>
+                <button
+                  onClick={criarPedidoRapidoPorSugestoes}
+                  disabled={novoPedidoSalvando || sugestoesCompra.length === 0}
+                  style={{ ...actionButtonStyle, opacity: (novoPedidoSalvando || sugestoesCompra.length === 0) ? 0.7 : 1 }}
+                >
+                  1 clique: criar pedido
+                </button>
+              </div>
+              {sugestoesCompra.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    border: '1px solid #d9e2e1',
+                    borderRadius: 8,
+                    padding: 10,
+                    background: '#f8fbfa',
+                    color: '#54736b',
+                    fontSize: 12,
+                  }}
+                >
+                  <strong>Confiança do pedido rápido:</strong> {confiancaPedidoRapido.score}% ({confiancaPedidoRapido.nivel}) com {confiancaPedidoRapido.itens} item(ns) analisados.
+                </div>
+              )}
               <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
                 {sugestoesCompra.slice(0, 5).map((sugestao) => (
                   <div key={sugestao.itemId} style={{ padding: 10, background: '#f8faf9', border: '1px solid #d9e2e1', borderRadius: 8 }}>
                     <strong>{sugestao.nomeItem}</strong>
                     <div style={{ color: '#647674', fontSize: 12 }}>Atual: {sugestao.estoqueAtual} | Comprar: {sugestao.quantidadeSugerida}</div>
+                    <div style={{ color: '#7b8a88', fontSize: 11, marginTop: 3 }}>
+                      Custo sugerido IA: {formatCurrency(custoSugeridoPorProduto.get(sugestao.itemId) || 0)}
+                    </div>
+                    <div style={{ color: '#2f6f73', fontSize: 11, marginTop: 3, fontWeight: 700 }}>
+                      Confiança IA: {auditoriaSugestoesIa.get(sugestao.itemId)?.score || 0}% ({auditoriaSugestoesIa.get(sugestao.itemId)?.nivel || 'baixo'})
+                    </div>
+                    <div style={{ color: '#6b7d7a', fontSize: 11, marginTop: 4 }}>
+                      {auditoriaSugestoesIa.get(sugestao.itemId)?.motivos.join(' • ')}
+                    </div>
+                    <button
+                      onClick={() => adicionarSugestaoAoWizard(sugestao)}
+                      style={{ ...secondaryActionButtonStyle, marginTop: 8 }}
+                    >
+                      Adicionar ao rascunho
+                    </button>
                   </div>
                 ))}
                 {sugestoesCompra.length === 0 && <div style={{ color: '#647674', fontSize: 13 }}>Use o atalho "Gerar sugestao de compra" para listar itens.</div>}
@@ -1840,6 +2846,246 @@ export default function Estoque() {
                   </div>
                 ))}
                 {pedidosAbertos.length === 0 && <div style={{ color: '#647674', fontSize: 13 }}>Use o atalho "Filtrar pedidos de compra" para listar pedidos.</div>}
+              </div>
+            </section>
+
+            <section style={{ ...card, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: 15, color: '#243332' }}>Assistente de novo pedido (wizard)</h3>
+                <button onClick={iniciarWizardNovoPedido} style={secondaryActionButtonStyle}>Reiniciar</button>
+              </div>
+
+              <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[1, 2, 3].map((step) => (
+                  <span key={step} style={{ padding: '5px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, border: '1px solid #d9e2e1', background: novoPedidoPasso === step ? '#e8f5f2' : '#f8fbfa', color: novoPedidoPasso === step ? '#2f6f73' : '#647674' }}>
+                    Passo {step}
+                  </span>
+                ))}
+              </div>
+
+              {novoPedidoPasso === 1 && (
+                <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                  <div style={{ padding: 10, border: '1px solid #d9e2e1', borderRadius: 8, background: '#f8fbfa', display: 'grid', gap: 6 }}>
+                    <strong style={{ color: '#243332' }}>Sugestão automática de fornecedor</strong>
+                    <div style={{ color: '#647674', fontSize: 12 }}>
+                      Ranking baseado em histórico de pedidos, recorrência e pendências em aberto.
+                    </div>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      {fornecedoresRankingNovoPedido.map((fornecedor, index) => (
+                        <button
+                          key={fornecedor.id}
+                          onClick={() => setNovoPedidoFornecedorId(fornecedor.id)}
+                          style={{
+                            ...secondaryActionButtonStyle,
+                            justifyContent: 'space-between',
+                            borderColor: novoPedidoFornecedorId === fornecedor.id ? '#b7ddc4' : '#d9e2e1',
+                            background: novoPedidoFornecedorId === fornecedor.id ? '#eefaf4' : '#fff',
+                            color: '#2f6f73',
+                            width: '100%',
+                          }}
+                        >
+                          <span>#{index + 1} {fornecedor.nome}</span>
+                          <span style={{ fontSize: 11 }}>score {fornecedor.score}</span>
+                        </button>
+                      ))}
+                      {fornecedoresRankingNovoPedido.length === 0 && (
+                        <div style={{ color: '#647674', fontSize: 12 }}>Sem histórico suficiente; selecione manualmente.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <label style={{ color: '#54736b', fontSize: 12, fontWeight: 700 }}>Fornecedor</label>
+                  <select
+                    value={novoPedidoFornecedorId}
+                    onChange={(event) => setNovoPedidoFornecedorId(event.target.value)}
+                    style={{ ...inputStyle, background: '#fff' }}
+                  >
+                    <option value="">Selecione fornecedor</option>
+                    {fornecedoresFiltro.map((fornecedor) => (
+                      <option key={fornecedor.id} value={fornecedor.id}>{fornecedor.nome}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {novoPedidoPasso === 2 && (
+                <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                  <div style={{ padding: 10, border: '1px solid #d9e2e1', borderRadius: 8, background: '#f8fbfa', display: 'grid', gap: 8 }}>
+                    <strong style={{ color: '#243332' }}>Adicionar item manual pelo catálogo</strong>
+                    <input
+                      value={novoPedidoBuscaCatalogo}
+                      onChange={(event) => setNovoPedidoBuscaCatalogo(event.target.value)}
+                      placeholder="Buscar produto por nome ou código"
+                      style={inputStyle}
+                    />
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      {itensCatalogoParaWizard.map((itemCatalogo) => (
+                        <div key={`cat-${itemCatalogo.id}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', border: '1px solid #d9e2e1', borderRadius: 8, padding: 8, background: '#fff' }}>
+                          <div>
+                            <strong style={{ color: '#243332' }}>{itemCatalogo.nome}</strong>
+                            <div style={{ color: '#7b8a88', fontSize: 11 }}>Estoque: {Number(itemCatalogo.estoqueAtual || 0)} | Min: {Number(itemCatalogo.estoqueMinimo || 0)}</div>
+                          </div>
+                          <button onClick={() => adicionarItemManualAoWizard(itemCatalogo)} style={secondaryActionButtonStyle}>Adicionar</button>
+                        </div>
+                      ))}
+                      {itensCatalogoParaWizard.length === 0 && (
+                        <div style={{ color: '#647674', fontSize: 12 }}>Nenhum item de catálogo encontrado para o filtro informado.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {novoPedidoItens.map((item) => {
+                    const auditoriaItem = auditoriaItensNovoPedido.get(item.id);
+
+                    return (
+                      <div key={item.id} style={{ border: '1px solid #d9e2e1', background: '#f8fbfa', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.6fr 0.6fr auto', gap: 8, alignItems: 'center' }}>
+                          <div>
+                            <strong style={{ color: '#243332' }}>{item.nome}</strong>
+                            <div style={{ color: '#7b8a88', fontSize: 11 }}>Origem: {item.origem === 'sugestao' ? 'Sugestão IA' : 'Manual'}</div>
+                            <div style={{ color: '#2f6f73', fontSize: 11, fontWeight: 700, marginTop: 2 }}>
+                              Confiança: {auditoriaItem?.score || 0}% ({auditoriaItem?.nivel || 'baixo'})
+                            </div>
+                          </div>
+                          <input
+                            value={item.quantidade}
+                            onChange={(event) => setNovoPedidoItens((current) => current.map((row) => row.id === item.id ? { ...row, quantidade: event.target.value } : row))}
+                            placeholder="Qtd"
+                            style={{ ...inputStyle, height: 32 }}
+                          />
+                          <input
+                            value={item.custoUnitario}
+                            onChange={(event) => setNovoPedidoItens((current) => current.map((row) => row.id === item.id ? { ...row, custoUnitario: event.target.value } : row))}
+                            placeholder="Custo"
+                            style={{ ...inputStyle, height: 32 }}
+                          />
+                          <button
+                            onClick={() => setNovoPedidoItens((current) => current.filter((row) => row.id !== item.id))}
+                            style={secondaryActionButtonStyle}
+                          >
+                            Remover
+                          </button>
+                        </div>
+
+                        <div style={{ color: '#6b7d7a', fontSize: 11 }}>
+                          {auditoriaItem?.motivos.join(' • ')}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {novoPedidoItens.length === 0 && (
+                    <div style={{ color: '#647674', fontSize: 13 }}>Nenhum item no rascunho. Use as sugestões de compra para iniciar.</div>
+                  )}
+                </div>
+              )}
+
+              {novoPedidoPasso === 3 && (
+                <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                  {duplicidadeNovoPedido && (
+                    <div style={{ padding: 10, border: '1px solid #efc6c6', borderRadius: 8, background: '#fff1f1', color: '#7d4a4a' }}>
+                      <div style={{ fontWeight: 800 }}>
+                        Possível pedido duplicado detectado: {duplicidadeNovoPedido.numero || duplicidadeNovoPedido.id.slice(0, 8)}
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: 12 }}>
+                        Mesmo fornecedor e alta sobreposição de itens/quantidades com pedido em aberto.
+                      </div>
+                      <label style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={confirmacaoDuplicidadeNovoPedido}
+                          onChange={(event) => setConfirmacaoDuplicidadeNovoPedido(event.target.checked)}
+                        />
+                        Confirmo que desejo criar mesmo com risco de duplicidade.
+                      </label>
+                    </div>
+                  )}
+
+                  <div style={{ border: '1px solid #d9e2e1', borderRadius: 8, background: '#f8fbfa', padding: 10, color: '#54736b', fontSize: 13 }}>
+                    <div><strong>Fornecedor:</strong> {fornecedorSelecionadoNovoPedido}</div>
+                    <div><strong>Itens:</strong> {novoPedidoItens.length}</div>
+                    <div><strong>Total itens:</strong> {formatCurrency(totalNovoPedidoEstimado)}</div>
+                    <div><strong>Frete:</strong> {formatCurrency(valorFreteNovoPedidoNumero)}</div>
+                    <div><strong>Impostos:</strong> {formatCurrency(valorImpostosNovoPedidoNumero)}</div>
+                    <div><strong>Total geral estimado:</strong> {formatCurrency(totalGeralNovoPedidoEstimado)}</div>
+                  </div>
+
+                  {novoPedidoItens.length > 0 && (
+                    <div style={{ border: '1px solid #d9e2e1', borderRadius: 8, background: '#fcfffd', padding: 10, display: 'grid', gap: 8 }}>
+                      <strong style={{ color: '#243332' }}>Trilha IA por item</strong>
+                      {novoPedidoItens.map((item) => {
+                        const auditoriaItem = auditoriaItensNovoPedido.get(item.id);
+                        return (
+                          <div key={`aud-${item.id}`} style={{ border: '1px solid #e3eceb', borderRadius: 8, padding: 8, background: '#fff' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                              <strong style={{ color: '#243332' }}>{item.nome}</strong>
+                              <span style={{ color: '#2f6f73', fontWeight: 700, fontSize: 12 }}>
+                                {auditoriaItem?.score || 0}% ({auditoriaItem?.nivel || 'baixo'})
+                              </span>
+                            </div>
+                            <div style={{ marginTop: 4, color: '#6b7d7a', fontSize: 11 }}>
+                              {auditoriaItem?.motivos.join(' • ')}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                    <input
+                      value={novoPedidoValorFrete}
+                      onChange={(event) => setNovoPedidoValorFrete(event.target.value)}
+                      placeholder="Valor frete"
+                      style={inputStyle}
+                    />
+                    <input
+                      value={novoPedidoValorImpostos}
+                      onChange={(event) => setNovoPedidoValorImpostos(event.target.value)}
+                      placeholder="Valor impostos"
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <textarea
+                    value={novoPedidoObservacoes}
+                    onChange={(event) => setNovoPedidoObservacoes(event.target.value)}
+                    placeholder="Observações do pedido"
+                    style={{ width: '100%', minHeight: 70, border: '1px solid #d1dddd', borderRadius: 8, padding: 10, fontSize: 13, resize: 'vertical' }}
+                  />
+                </div>
+              )}
+
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+                <button
+                  onClick={() => setNovoPedidoPasso((current) => Math.max(1, current - 1))}
+                  disabled={novoPedidoPasso === 1}
+                  style={secondaryActionButtonStyle}
+                >
+                  Voltar
+                </button>
+                <button
+                  onClick={() => {
+                    if (novoPedidoPasso === 1 && !novoPedidoFornecedorId) {
+                      setErro('Selecione um fornecedor para continuar no wizard de novo pedido.');
+                      return;
+                    }
+                    if (novoPedidoPasso === 2 && novoPedidoItens.length === 0) {
+                      setErro('Adicione ao menos um item ao rascunho do novo pedido.');
+                      return;
+                    }
+                    if (novoPedidoPasso < 3) {
+                      setErro('');
+                      setNovoPedidoPasso((current) => current + 1);
+                      return;
+                    }
+
+                    concluirWizardNovoPedido();
+                  }}
+                  style={{ ...actionButtonStyle, opacity: novoPedidoSalvando ? 0.75 : 1 }}
+                  disabled={novoPedidoSalvando}
+                >
+                  {novoPedidoPasso < 3 ? 'Avançar' : novoPedidoSalvando ? 'Criando pedido...' : 'Concluir e criar pedido'}
+                </button>
               </div>
             </section>
           </div>
@@ -2107,8 +3353,51 @@ export default function Estoque() {
                     </div>
 
                     <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                      <div style={{ padding: 10, border: '1px solid #d9e2e1', borderRadius: 8, background: '#f8fbfa', display: 'grid', gap: 6 }}>
+                        <strong style={{ color: '#243332' }}>Fracionamento inteligente por item</strong>
+                        <div style={{ color: '#647674', fontSize: 12 }}>
+                          Converta unidade de compra para unidade de estoque sem alterar o lançamento até a conferência final.
+                        </div>
+                        <div style={{ color: '#54736b', fontSize: 12 }}>
+                          Total compra: {resumoFracionamento.totalCompra.toFixed(2)} | Estoque previsto após fracionamento: {resumoFracionamento.totalEstoque.toFixed(2)}
+                        </div>
+                      </div>
+
+                      {divergenciasRecebimentoIa.length > 0 && (
+                        <div style={{ padding: 10, border: '1px solid #d9e2e1', borderRadius: 8, background: '#fcfffd', display: 'grid', gap: 8 }}>
+                          <strong style={{ color: '#243332' }}>Divergência IA por item</strong>
+                          {divergenciasRecebimentoIa.map((item) => {
+                            const tone = item.nivel === 'alto'
+                              ? { color: '#9c2f2f', background: '#fff1f1', border: '#efc6c6' }
+                              : item.nivel === 'medio'
+                                ? { color: '#8a6126', background: '#fff8ed', border: '#efd9b7' }
+                                : { color: '#2f6f73', background: '#eef8f8', border: '#c8e0df' };
+
+                            return (
+                              <div key={`divergencia-${item.itemId}`} style={{ border: `1px solid ${tone.border}`, background: tone.background, borderRadius: 8, padding: 8 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                  <strong style={{ color: '#243332' }}>{item.nome}</strong>
+                                  <span style={{ color: tone.color, fontWeight: 800, fontSize: 12 }}>Score {item.score}%</span>
+                                </div>
+                                <div style={{ marginTop: 4, color: '#54736b', fontSize: 12 }}>
+                                  Pendente: {item.quantidadePendente} | Recebida: {item.quantidadeRecebida} | Estoque previsto: {item.quantidadeEstoquePrevista}
+                                </div>
+                                <div style={{ color: '#54736b', fontSize: 12 }}>
+                                  Custo pedido: {formatCurrency(item.custoPedido)} | Custo recebido: {formatCurrency(item.custoRecebido)}
+                                </div>
+                                {item.observacoes.length > 0 && (
+                                  <div style={{ marginTop: 4, color: tone.color, fontSize: 12, fontWeight: 700 }}>
+                                    {item.observacoes.join(' • ')}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       {recebimentoManual.itens.map((item) => (
-                        <div key={item.itemId} style={{ padding: 10, border: '1px solid #d9e2e1', borderRadius: 8, background: '#fff', display: 'grid', gridTemplateColumns: '1.5fr 0.7fr 0.7fr', gap: 10, alignItems: 'center' }}>
+                        <div key={item.itemId} style={{ padding: 10, border: '1px solid #d9e2e1', borderRadius: 8, background: '#fff', display: 'grid', gridTemplateColumns: '1.4fr 0.6fr 0.6fr 0.6fr 0.6fr', gap: 10, alignItems: 'center' }}>
                           <div>
                             <strong>{item.nome}</strong>
                             <div style={{ color: '#647674', fontSize: 12, marginTop: 4 }}>Pendente: {item.quantidadePendente}</div>
@@ -2129,6 +3418,30 @@ export default function Estoque() {
                               itens: current.itens.map((linha) => linha.itemId === item.itemId ? { ...linha, custoUnitario: event.target.value } : linha),
                             }))}
                             placeholder="Custo"
+                            style={inputStyle}
+                          />
+                          <input
+                            value={fracionamentoItens[item.itemId]?.fatorConversao || '1'}
+                            onChange={(event) => setFracionamentoItens((current) => ({
+                              ...current,
+                              [item.itemId]: {
+                                fatorConversao: event.target.value,
+                                unidadeFracionada: current[item.itemId]?.unidadeFracionada || 'UN',
+                              },
+                            }))}
+                            placeholder="Fator"
+                            style={inputStyle}
+                          />
+                          <input
+                            value={fracionamentoItens[item.itemId]?.unidadeFracionada || 'UN'}
+                            onChange={(event) => setFracionamentoItens((current) => ({
+                              ...current,
+                              [item.itemId]: {
+                                fatorConversao: current[item.itemId]?.fatorConversao || '1',
+                                unidadeFracionada: event.target.value.toUpperCase(),
+                              },
+                            }))}
+                            placeholder="Unidade"
                             style={inputStyle}
                           />
                         </div>
@@ -2277,6 +3590,9 @@ function DetailCard({ label, value }: { label: string; value: React.ReactNode })
 const th: React.CSSProperties = { textAlign: 'left', padding: '11px 12px', fontWeight: 800 };
 const td: React.CSSProperties = { padding: '12px', verticalAlign: 'middle', color: '#243332' };
 const inputStyle: React.CSSProperties = { height: 38, border: '1px solid #d1dddd', borderRadius: 8, padding: '0 10px', fontSize: 13 };
+const chipStyle: React.CSSProperties = { border: '1px solid #d9e2e1', background: '#f8fbfa', color: '#54736b', borderRadius: 999, padding: '6px 10px', cursor: 'pointer', fontWeight: 700, fontSize: 12 };
+const chipActiveStyle: React.CSSProperties = { ...chipStyle, background: '#e8f5f2', color: '#2f6f73', border: '1px solid #c7dcd7' };
+const miniKpiStyle: React.CSSProperties = { border: '1px solid #d9e2e1', background: '#f8fbfa', borderRadius: 8, padding: 10, display: 'grid', gap: 2, color: '#54736b', fontSize: 12 };
 const actionButtonStyle: React.CSSProperties = { height: 28, display: 'inline-flex', alignItems: 'center', border: '1px solid #c7d5d2', background: '#fff', color: '#2f6f73', borderRadius: 7, padding: '0 10px', cursor: 'pointer', fontWeight: 700, fontSize: 12 };
 const secondaryActionButtonStyle: React.CSSProperties = { height: 28, display: 'inline-flex', alignItems: 'center', border: '1px solid #d9e2e1', background: '#f8fbfa', color: '#54736b', borderRadius: 7, padding: '0 10px', cursor: 'pointer', fontWeight: 700, fontSize: 12 };
 const detailOverlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(24, 35, 34, 0.36)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 };
