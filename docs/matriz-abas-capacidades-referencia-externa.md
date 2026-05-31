@@ -61,3 +61,8 @@ Com esta priorizacao, o SalesMind evolui com foco em:
 1. Operacao comercial completa sem ruptura.
 2. Reuso real de blocos entre sistemas padronizados.
 3. Contratos de API claros por capacidade de negocio.
+
+## Referencias complementares
+
+- Mapeamento de caminhos por menu e rota: [mapeamento-simplesvet-caminhos.md](mapeamento-simplesvet-caminhos.md)
+- Guia funcional por pagina com validado/inferido: [simplesvet-capacidades-funcionais.md](simplesvet-capacidades-funcionais.md)
