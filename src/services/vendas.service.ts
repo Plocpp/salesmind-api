@@ -1771,7 +1771,7 @@ export class VendasService {
           metadata: {
             ...metadataAtual,
             [chaveDocumento]: documentoFiscal,
-          },
+          } as any,
           timeline: {
             create: {
               status: venda.status,
@@ -1858,14 +1858,14 @@ export class VendasService {
       }));
     });
 
-    const filtrados = documentos.filter((documento) => {
+    const filtrados = documentos.filter((documento: any) => {
       if (filtros.modelo && documento.modelo !== filtros.modelo) return false;
       if (filtros.status && String(documento.status).toUpperCase() !== String(filtros.status).toUpperCase()) return false;
       return true;
     });
 
-    const origens = Array.from(new Set(filtrados.map((item) => item.origemReferenciaFinanceira)));
-    const lancamentos = origens.length > 0
+    const origens = Array.from(new Set(filtrados.map((item: any) => item.origemReferenciaFinanceira)));
+    const lancamentosRaw = origens.length > 0
       ? await (prisma as any).lancamentoFinanceiro.findMany({
           where: {
             origemReferencia: { in: origens },
@@ -1873,15 +1873,16 @@ export class VendasService {
           orderBy: [{ vencimento: 'asc' }, { createdAt: 'asc' }],
         })
       : [];
+    const lancamentos = (Array.isArray(lancamentosRaw) ? lancamentosRaw : []) as Array<{ origemReferencia?: string | null; [key: string]: any }>;
 
-    const lancamentosPorOrigem = lancamentos.reduce<Record<string, any[]>>((acc, lancamento) => {
+    const lancamentosPorOrigem: Record<string, any[]> = lancamentos.reduce((acc: Record<string, any[]>, lancamento) => {
       const chave = String(lancamento.origemReferencia || '');
       if (!acc[chave]) acc[chave] = [];
       acc[chave].push(lancamento);
       return acc;
     }, {});
 
-    return filtrados.map((documento) => ({
+    return filtrados.map((documento: any) => ({
       ...documento,
       lancamentosFinanceiros: lancamentosPorOrigem[documento.origemReferenciaFinanceira] || [],
     }));

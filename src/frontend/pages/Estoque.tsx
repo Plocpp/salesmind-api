@@ -292,6 +292,21 @@ const isValidadeVencendo60 = (statusValidade?: string | null) => {
   return status.includes('vencendo') && status.includes('60');
 };
 
+const normalizeStatusPedidoCompra = (status?: string | null) => {
+  const normalized = String(status || '').trim().toUpperCase();
+
+  if (!normalized) return '';
+  if (normalized === 'ABERTO' || normalized === 'EM_ABERTO') return 'SOLICITADO';
+  if (normalized === 'PARCIAL') return 'RECEBIDO_PARCIAL';
+
+  return normalized;
+};
+
+const isStatusPedidoCompraAberto = (status?: string | null) => {
+  const normalized = normalizeStatusPedidoCompra(status);
+  return ['SOLICITADO', 'APROVADO', 'COMPRADO', 'RECEBIDO_PARCIAL'].includes(normalized);
+};
+
 const normalizeLegacyMoney = (value?: number | null) => {
   let parsed = Number(value || 0);
   if (!Number.isFinite(parsed)) return 0;
@@ -438,8 +453,8 @@ const buildRecebimentoManualForm = (pedido?: PedidoCompraItem | null): Recebimen
   };
 };
 
-const buildCadastroRapidoProdutoForm = (): CadastroRapidoProdutoForm => ({
-  tipo: 'PRODUTO',
+const buildCadastroRapidoProdutoForm = (tipo: CadastroRapidoProdutoForm['tipo'] = 'PRODUTO'): CadastroRapidoProdutoForm => ({
+  tipo,
   nome: '',
   codigoInterno: '',
   codigoBarras: '',
@@ -610,6 +625,7 @@ export default function Estoque() {
   const isComprasXmlView = routeBase === 'compras';
   const isNovosPedidosView = routeBase === 'novos-pedidos';
   const isComprasModuleView = isComprasXmlView || isNovosPedidosView;
+  const cadastroRapidoTipoPadrao = isServicosView ? 'SERVICO' : 'PRODUTO';
   const catalogoDefaultParams = isServicosView ? { tipo: 'SERVICO' } : {};
   const catalogoDefaultLabel = isComprasModuleView
     ? 'Central de compras'
@@ -664,7 +680,7 @@ export default function Estoque() {
   const [mostrarSomenteRiscoAlto, setMostrarSomenteRiscoAlto] = useState(false);
   const [atalhosCascataAberto, setAtalhosCascataAberto] = useState<string | null>('pesquisa');
   const [cadastroRapidoAberto, setCadastroRapidoAberto] = useState(false);
-  const [cadastroRapidoProduto, setCadastroRapidoProduto] = useState<CadastroRapidoProdutoForm>(buildCadastroRapidoProdutoForm());
+  const [cadastroRapidoProduto, setCadastroRapidoProduto] = useState<CadastroRapidoProdutoForm>(buildCadastroRapidoProdutoForm(cadastroRapidoTipoPadrao));
 
   const token = localStorage.getItem('token');
 
@@ -778,9 +794,10 @@ export default function Estoque() {
         notaParams.set('fim', filtros.fim);
       }
 
-      if (filtros.statusPedido) {
-        pedidoParams.set('status', filtros.statusPedido);
-        notaParams.set('statusPedido', filtros.statusPedido);
+      const statusPedidoNormalizado = normalizeStatusPedidoCompra(filtros.statusPedido);
+      if (statusPedidoNormalizado) {
+        pedidoParams.set('status', statusPedidoNormalizado);
+        notaParams.set('statusPedido', statusPedidoNormalizado);
       }
 
       const [pedidos, notas] = await Promise.all([
@@ -815,7 +832,7 @@ export default function Estoque() {
         : notasLista;
 
       setPedidosCompra(pedidosLista);
-      setPedidosAbertos(pedidosLista.filter((pedido) => String(pedido.status || '') === 'ABERTO'));
+      setPedidosAbertos(pedidosLista.filter((pedido) => isStatusPedidoCompraAberto(pedido.status)));
       setNotasCompra(notasFiltradas);
     } finally {
       if (exibirLoading) setLoadingAtalho(false);
@@ -941,10 +958,17 @@ export default function Estoque() {
     carregar();
   }, []);
 
+  useEffect(() => {
+    setCadastroRapidoProduto((current) => ({
+      ...buildCadastroRapidoProdutoForm(cadastroRapidoTipoPadrao),
+      tipo: cadastroRapidoTipoPadrao,
+    }));
+  }, [cadastroRapidoTipoPadrao]);
+
   const itens = analise?.itens ?? [];
   const saldoTotal = useMemo(() => itens.reduce((total, item) => total + item.disponivel, 0), [itens]);
   const totalNotasCompra = useMemo(() => notasCompra.reduce((acc, item) => acc + Number(item.valorTotal || 0), 0), [notasCompra]);
-  const pedidosPendentes = useMemo(() => pedidosCompra.filter((item) => String(item.status || '') === 'ABERTO').length, [pedidosCompra]);
+  const pedidosPendentes = useMemo(() => pedidosCompra.filter((item) => isStatusPedidoCompraAberto(item.status)).length, [pedidosCompra]);
   const catalogoPorContexto = useMemo(() => {
     if (isServicosView) {
       return catalogo.filter((item) => String(item.tipo || '').toUpperCase() === 'SERVICO');
@@ -968,13 +992,6 @@ export default function Estoque() {
   const catalogoProdutosServicos = useMemo(() => {
     if (filtroProdutosServicos === 'VENCIDOS') {
       return catalogoPorContexto.filter((item) => isValidadeVencida(item.statusValidade));
-
-      useEffect(() => {
-        setCadastroRapidoProduto((current) => ({
-          ...current,
-          tipo: isServicosView ? 'SERVICO' : 'PRODUTO',
-        }));
-      }, [isServicosView]);
     }
 
     if (filtroProdutosServicos === 'VENCENDO_60') {
@@ -991,6 +1008,33 @@ export default function Estoque() {
 
     return catalogoPorContexto;
   }, [catalogoPorContexto, filtroProdutosServicos]);
+
+  const filtroCatalogoBaseLabel = isComprasModuleView
+    ? 'Central de compras'
+    : isServicosView
+      ? 'Catalogo de servicos'
+      : 'Catalogo completo';
+
+  const resumoOperacionalCards = useMemo(() => {
+    if (isServicosView) {
+      const servicosProntos = Math.max(catalogoPorContexto.length - indicadoresProdutosServicos.semGrupo, 0);
+
+      return [
+        { icon: Boxes, label: 'Servicos ativos', value: catalogoPorContexto.length, tone: '#2f6f73' },
+        { icon: ClipboardCheck, label: 'Cadastro pronto', value: servicosProntos, tone: '#54736b' },
+        { icon: AlertTriangle, label: 'Validade vencida', value: indicadoresProdutosServicos.vencidos, tone: '#a64b4b' },
+        { icon: PackagePlus, label: 'Vencendo em 60 dias', value: indicadoresProdutosServicos.vencendo60, tone: '#9a6a2f' },
+      ];
+    }
+
+    return [
+      { icon: Boxes, label: 'Produtos ativos', value: analise?.totalProdutos ?? 0, tone: '#2f6f73' },
+      { icon: Warehouse, label: 'Disponivel', value: `${saldoTotal} un`, tone: '#54736b' },
+      { icon: AlertTriangle, label: 'Rupturas', value: analise?.rupturas.length ?? 0, tone: '#a64b4b' },
+      { icon: PackagePlus, label: 'Estoque baixo', value: analise?.baixoEstoque.length ?? 0, tone: '#9a6a2f' },
+    ];
+  }, [analise, catalogoPorContexto.length, indicadoresProdutosServicos.semGrupo, indicadoresProdutosServicos.vencendo60, indicadoresProdutosServicos.vencidos, isServicosView, saldoTotal]);
+
   const insightsIaOperacionais = useMemo(() => {
     const insights: Array<{
       id: string;
@@ -1052,7 +1096,7 @@ export default function Estoque() {
         titulo: 'Pedidos pendentes para recebimento',
         descricao: `${pedidosPendentes} pedido(s) em aberto na central de compras. Priorize conferência e recebimento fiscal.`,
         acao: 'Focar pendentes',
-        onClick: () => setCompraFiltros((current) => ({ ...current, statusPedido: 'ABERTO' })),
+        onClick: () => setCompraFiltros((current) => ({ ...current, statusPedido: 'SOLICITADO' })),
       });
     }
 
@@ -1071,7 +1115,7 @@ export default function Estoque() {
     let melhor: PedidoXmlSugerido | null = null;
 
     for (const pedido of pedidosCompra) {
-      const status = String(pedido.status || '').toUpperCase();
+      const status = normalizeStatusPedidoCompra(pedido.status);
       if (status === 'CANCELADO' || status === 'RECEBIDO') {
         continue;
       }
@@ -1197,7 +1241,7 @@ export default function Estoque() {
         }
       }
 
-      if (status === 'ABERTO') {
+      if (status === 'SOLICITADO') {
         score += 8;
         pontosDataStatus += 8;
       }
@@ -1737,7 +1781,7 @@ export default function Estoque() {
       const nome = String(pedido.fornecedor?.nome || '').trim();
       if (!id || !nome) return;
 
-      const status = String(pedido.status || '').toUpperCase();
+      const status = normalizeStatusPedidoCompra(pedido.status);
       const valor = Number(pedido.valorTotal || pedido.valorProdutos || 0);
       const atual = ranking.get(id) || { id, nome, score: 0, pedidos: 0, abertos: 0 };
 
@@ -1745,7 +1789,7 @@ export default function Estoque() {
       atual.score += 10;
       atual.score += Math.min(20, Math.floor(valor / 500));
 
-      if (status === 'ABERTO' || status === 'RECEBIDO_PARCIAL') {
+      if (isStatusPedidoCompraAberto(status)) {
         atual.abertos += 1;
         atual.score += 18;
       }
@@ -2198,7 +2242,7 @@ export default function Estoque() {
       await Promise.all([
         carregarCentralCompras(compraFiltros, { exibirLoading: false }),
         carregarSugestoesCompra(),
-        carregarCatalogo({}, isComprasModuleView ? 'Central de compras' : 'Catalogo completo'),
+        carregarCatalogo(catalogoDefaultParams, filtroCatalogoBaseLabel),
         api.get('/estoque/analise', token).then((data) => setAnalise(data)),
       ]);
     } catch (error) {
@@ -2219,7 +2263,10 @@ export default function Estoque() {
       const buscaEfetiva = (options.buscaForcada ?? busca).trim();
 
       if (codigo === 'EST-AT-01') {
-        await carregarCatalogo({ q: buscaEfetiva || undefined }, buscaEfetiva ? `Pesquisa: ${buscaEfetiva}` : 'Catalogo completo');
+        await carregarCatalogo(
+          { ...catalogoDefaultParams, q: buscaEfetiva || undefined },
+          buscaEfetiva ? `Pesquisa: ${buscaEfetiva}` : filtroCatalogoBaseLabel,
+        );
         if (persistirHash) setHashState({ atalho: codigo, q: buscaEfetiva || undefined });
         return;
       }
@@ -2335,7 +2382,7 @@ export default function Estoque() {
       ]);
 
       setSucesso(`Cadastro rápido concluído: ${nome}.`);
-      setCadastroRapidoProduto(buildCadastroRapidoProdutoForm());
+      setCadastroRapidoProduto(buildCadastroRapidoProdutoForm(cadastroRapidoTipoPadrao));
       setCadastroRapidoAberto(false);
     } catch (error) {
       console.error(error);
@@ -2476,8 +2523,8 @@ export default function Estoque() {
                     style={{ height: 38, border: '1px solid #d1dddd', borderRadius: 8, padding: '0 10px', fontSize: 13, background: '#fff' }}
                   >
                     <option value="">Todos os status</option>
-                    <option value="ABERTO">Aberto</option>
-                    <option value="PARCIAL">Parcial</option>
+                    <option value="SOLICITADO">Aberto (solicitado)</option>
+                    <option value="RECEBIDO_PARCIAL">Parcial</option>
                     <option value="RECEBIDO">Recebido</option>
                     <option value="CANCELADO">Cancelado</option>
                   </select>
@@ -2602,7 +2649,7 @@ export default function Estoque() {
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
                   <button
-                    onClick={() => setCadastroRapidoProduto(buildCadastroRapidoProdutoForm())}
+                    onClick={() => setCadastroRapidoProduto(buildCadastroRapidoProdutoForm(cadastroRapidoTipoPadrao))}
                     style={secondaryActionButtonStyle}
                   >
                     Limpar
@@ -2647,7 +2694,7 @@ export default function Estoque() {
                   onClick={async () => {
                     setBusca('');
                     setHashState({});
-                    await carregarCatalogo({}, 'Catalogo completo');
+                    await carregarCatalogo(catalogoDefaultParams, filtroCatalogoBaseLabel);
                   }}
                   style={{ height: 36, display: 'inline-flex', alignItems: 'center', border: '1px solid #d9e2e1', background: '#f8fbfa', color: '#54736b', borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 700 }}
                 >
@@ -2690,10 +2737,9 @@ export default function Estoque() {
           </section>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
-            <Kpi icon={Boxes} label="Produtos ativos" value={analise?.totalProdutos ?? 0} tone="#2f6f73" />
-            <Kpi icon={Warehouse} label="Disponivel" value={`${saldoTotal} un`} tone="#54736b" />
-            <Kpi icon={AlertTriangle} label="Rupturas" value={analise?.rupturas.length ?? 0} tone="#a64b4b" />
-            <Kpi icon={PackagePlus} label="Estoque baixo" value={analise?.baixoEstoque.length ?? 0} tone="#9a6a2f" />
+            {resumoOperacionalCards.map((item) => (
+              <Kpi key={item.label} icon={item.icon} label={item.label} value={item.value} tone={item.tone} />
+            ))}
           </div>
 
           {isComprasXmlView && (
@@ -3014,7 +3060,13 @@ export default function Estoque() {
 
           <section style={{ ...card, overflow: 'hidden' }}>
             <div style={{ padding: 16, borderBottom: '1px solid #d9e2e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <strong>{isComprasModuleView ? 'Catalogo de apoio para compras' : 'Resultado rapido do catalogo'}</strong>
+              <strong>
+                {isComprasModuleView
+                  ? 'Catalogo de apoio para compras'
+                  : isServicosView
+                    ? 'Resultado rapido de servicos'
+                    : 'Resultado rapido do catalogo'}
+              </strong>
               <span style={{ fontSize: 12, color: '#647674' }}>{filtroAtivo}</span>
             </div>
             <div style={{ overflowX: 'auto' }}>
@@ -3831,10 +3883,10 @@ function formatCurrency(value?: number | null) {
 }
 
 function StatusPedido({ status }: { status?: string | null }) {
-  const normalized = String(status || 'ABERTO').toUpperCase();
+  const normalized = normalizeStatusPedidoCompra(status || 'SOLICITADO');
   const palette = normalized === 'RECEBIDO'
     ? { color: '#2f6f73', background: '#e9f8f5', label: 'Recebido' }
-    : normalized === 'PARCIAL'
+    : normalized === 'RECEBIDO_PARCIAL'
       ? { color: '#9a6a2f', background: '#fff5e8', label: 'Parcial' }
       : normalized === 'CANCELADO'
         ? { color: '#a64b4b', background: '#fff0f0', label: 'Cancelado' }

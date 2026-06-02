@@ -4,9 +4,18 @@ import integracoesService from '../services/integracoes.service';
 
 const router = Router();
 
+const toParamString = (value: unknown, fieldName: string) => {
+  const parsed = Array.isArray(value) ? value[0] : value;
+  if (typeof parsed !== 'string' || !parsed.trim()) {
+    throw new Error(`Parametro obrigatorio ausente: ${fieldName}`);
+  }
+
+  return parsed;
+};
+
 router.get('/callback/:providerId', async (req, res, next) => {
   try {
-    const providerId = req.params.providerId;
+    const providerId = toParamString(req.params.providerId, 'providerId');
     const code = typeof req.query.code === 'string' ? req.query.code : undefined;
     const state = typeof req.query.state === 'string' ? req.query.state : undefined;
     const error = typeof req.query.error === 'string' ? req.query.error : undefined;
@@ -53,7 +62,7 @@ router.get('/providers', (req, res, next) => {
 
 router.get('/providers/:providerId/connect-url', (req: AuthRequest, res, next) => {
   try {
-    const providerId = req.params.providerId;
+    const providerId = toParamString(req.params.providerId, 'providerId');
     const shopDomainRaw = req.query.shopDomain;
     const shopDomain = typeof shopDomainRaw === 'string'
       ? shopDomainRaw
@@ -71,7 +80,7 @@ router.get('/providers/:providerId/connect-url', (req: AuthRequest, res, next) =
 
 router.post('/providers/:providerId/test', async (req, res, next) => {
   try {
-    const providerId = req.params.providerId;
+    const providerId = toParamString(req.params.providerId, 'providerId');
     const result = await integracoesService.testarAcesso(providerId);
     return res.json(result);
   } catch (error) {

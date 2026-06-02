@@ -39,7 +39,8 @@ class EstoqueController {
 
   atualizarItemCatalogo = async (req: AuthRequest, res: Response) => {
     requireUser(req);
-    const item = await estoqueService.atualizarItemCatalogo(req.params.id, req.body);
+    const id = this.requireParamString(req.params.id, "id");
+    const item = await estoqueService.atualizarItemCatalogo(id, req.body);
     return res.json(item);
   };
 
@@ -151,13 +152,15 @@ class EstoqueController {
 
   obterAuditoriaIaPedidoCompra = async (req: AuthRequest, res: Response) => {
     requireUser(req);
-    const auditoria = await estoqueService.obterAuditoriaIaPedidoCompra(req.params.id);
+    const id = this.requireParamString(req.params.id, "id");
+    const auditoria = await estoqueService.obterAuditoriaIaPedidoCompra(id);
     return res.json(auditoria);
   };
 
   cancelarPedidoCompra = async (req: AuthRequest, res: Response) => {
     const usuarioId = requireUser(req);
-    const pedido = await estoqueService.cancelarPedidoCompra(req.params.id, req.body, usuarioId);
+    const id = this.requireParamString(req.params.id, "id");
+    const pedido = await estoqueService.cancelarPedidoCompra(id, req.body, usuarioId);
     return res.json(pedido);
   };
 
@@ -217,6 +220,15 @@ class EstoqueController {
     if (raw === undefined) return undefined;
     const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private requireParamString(value: unknown, fieldName: string) {
+    const raw = this.asString(value);
+    if (!raw) {
+      throw new Error(`Parametro obrigatorio ausente: ${fieldName}`);
+    }
+
+    return raw;
   }
 }
 

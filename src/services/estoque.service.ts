@@ -277,6 +277,26 @@ const mapTipoProdutoParaCatalogo = (tipo: string) => {
   return "PRODUTO";
 };
 
+const statusPedidoCompraValidos = [
+  "SOLICITADO",
+  "APROVADO",
+  "COMPRADO",
+  "RECEBIDO_PARCIAL",
+  "RECEBIDO",
+  "CANCELADO",
+] as const;
+
+const normalizeStatusPedidoCompra = (status?: string) => {
+  const normalized = String(status || "").trim().toUpperCase();
+
+  if (!normalized) return undefined;
+  if (normalized === "ABERTO" || normalized === "EM_ABERTO") return "SOLICITADO";
+  if (normalized === "PARCIAL") return "RECEBIDO_PARCIAL";
+  if ((statusPedidoCompraValidos as readonly string[]).includes(normalized)) return normalized;
+
+  return undefined;
+};
+
 export class EstoqueService {
   async listarCatalogoItens(filtros: unknown) {
     const parsed = filtrosCatalogoSchema.parse(filtros || {});
@@ -346,7 +366,7 @@ export class EstoqueService {
         {
           codigo: "EST-AT-04",
           titulo: "Filtrar pedidos de compra",
-          rota: "/estoque/compras/pedidos?status=ABERTO&q=",
+          rota: "/estoque/compras/pedidos?status=SOLICITADO&q=",
           acaoRapida: "Pesquisar pedidos por numero/fornecedor e filtrar por periodo.",
         },
         {
@@ -478,7 +498,7 @@ export class EstoqueService {
       return [];
     }
 
-    const vendas30Dias = await prisma.itemVenda.findMany({
+    const vendas30DiasRaw = await prisma.itemVenda.findMany({
       where: {
         produtoId: { in: produtos.map((produto: any) => produto.id) },
         venda: {
@@ -492,7 +512,9 @@ export class EstoqueService {
       },
     });
 
-    const vendasPorProduto = vendas30Dias.reduce<Record<string, number>>((acc, item: any) => {
+    const vendas30Dias = (Array.isArray(vendas30DiasRaw) ? vendas30DiasRaw : []) as Array<{ produtoId: string; quantidade: number }>;
+
+    const vendasPorProduto: Record<string, number> = vendas30Dias.reduce((acc: Record<string, number>, item) => {
       const atual = acc[item.produtoId] || 0;
       acc[item.produtoId] = atual + Number(item.quantidade || 0);
       return acc;
@@ -518,7 +540,7 @@ export class EstoqueService {
       };
     });
 
-    return sugestoes.filter((item) => {
+    return sugestoes.filter((item: { quantidadeSugerida: number; estoqueAtual: number; estoqueMinimo: number }) => {
       if (item.quantidadeSugerida > 0) return true;
       if (!parsed.incluirItensSemVenda) return false;
       return item.estoqueAtual <= item.estoqueMinimo;
@@ -697,10 +719,11 @@ export class EstoqueService {
 
   async listarPedidosCompra(filtros: unknown = {}) {
     const parsed = filtrosPedidoCompraSchema.parse(filtros || {});
+    const statusNormalizado = normalizeStatusPedidoCompra(parsed.status);
 
     return prisma.pedidoCompra.findMany({
       where: {
-        ...(parsed.status ? { status: parsed.status as any } : {}),
+        ...(statusNormalizado ? { status: statusNormalizado as any } : {}),
         ...(parsed.fornecedorId ? { fornecedorId: parsed.fornecedorId } : {}),
         ...(parsed.inicio || parsed.fim
           ? {
@@ -869,7 +892,7 @@ export class EstoqueService {
         throw new Error("Pedido de compra nao pode receber nota fiscal neste status");
       }
 
-      const itensPedidoPorProduto = new Map((pedido.itens || []).map((item: any) => [item.produtoId, item]));
+      const itensPedidoPorProduto = new Map<string, any>((pedido.itens || []).map((item: any) => [String(item.produtoId), item]));
 
       let valorProdutos = 0;
       let totalRecebidoNoLote = 0;
@@ -1154,7 +1177,7 @@ export class EstoqueService {
     const nomesProdutos = Array.from(new Set(extraida.itens.map((item) => item.nome)));
     const marcasXml = Array.from(new Set(extraida.itens.map((item) => this.normalizarTexto(item.marcaNome)).filter(Boolean))) as string[];
 
-    const produtos = await prisma.produto.findMany({
+    const produtosRaw = await prisma.produto.findMany({
       where: {
         OR: [
           ...(codigosBarras.length > 0 ? [{ codigoBarras: { in: codigosBarras } }] : []),
@@ -1170,13 +1193,21 @@ export class EstoqueService {
       },
     });
 
-    const marcas = marcasXml.length > 0
+    const produtos = (Array.isArray(produtosRaw) ? produtosRaw : []) as Array<{
+      id: string;
+      nome: string;
+      codigo?: string | null;
+      codigoBarras?: string | null;
+    }>;
+
+    const marcasRaw = marcasXml.length > 0
       ? await prisma.marca.findMany({ where: { nome: { in: marcasXml } }, select: { id: true, nome: true } })
       : [];
+    const marcas = (Array.isArray(marcasRaw) ? marcasRaw : []) as Array<{ id: string; nome: string }>;
 
-    const produtoPorCodigoBarras = new Map(produtos.filter((p: any) => p.codigoBarras).map((p: any) => [String(p.codigoBarras), p]));
-    const produtoPorCodigoInterno = new Map(produtos.filter((p: any) => p.codigo).map((p: any) => [String(p.codigo), p]));
-    const produtoPorNome = new Map(produtos.map((p: any) => [String(p.nome), p]));
+    const produtoPorCodigoBarras = new Map<string, { id: string; nome: string }>(produtos.filter((p) => p.codigoBarras).map((p) => [String(p.codigoBarras), { id: p.id, nome: p.nome }]));
+    const produtoPorCodigoInterno = new Map<string, { id: string; nome: string }>(produtos.filter((p) => p.codigo).map((p) => [String(p.codigo), { id: p.id, nome: p.nome }]));
+    const produtoPorNome = new Map<string, { id: string; nome: string }>(produtos.map((p) => [String(p.nome), { id: p.id, nome: p.nome }]));
 
     const itens = extraida.itens.map((item) => {
       const produtoEncontrado = (item.codigoBarras ? produtoPorCodigoBarras.get(item.codigoBarras) : undefined)
@@ -1231,10 +1262,12 @@ export class EstoqueService {
   }
 
   async listarNotasFiscaisCompra(filtros: { inicio?: string; fim?: string; fornecedorId?: string; statusPedido?: string } = {}) {
+    const statusPedidoNormalizado = normalizeStatusPedidoCompra(filtros.statusPedido);
+
     const pedidos = await prisma.pedidoCompra.findMany({
       where: {
         ...(filtros.fornecedorId ? { fornecedorId: filtros.fornecedorId } : {}),
-        ...(filtros.statusPedido ? { status: filtros.statusPedido as any } : {}),
+        ...(statusPedidoNormalizado ? { status: statusPedidoNormalizado as any } : {}),
       },
       include: {
         fornecedor: true,
@@ -1267,14 +1300,14 @@ export class EstoqueService {
       }));
     });
 
-    const filtrados = documentos.filter((documento) => {
+    const filtrados = documentos.filter((documento: any) => {
       if (filtros.inicio && documento.dataEntrada && new Date(documento.dataEntrada) < new Date(filtros.inicio)) return false;
       if (filtros.fim && documento.dataEntrada && new Date(documento.dataEntrada) > new Date(filtros.fim)) return false;
       return true;
     });
 
-    const origens = Array.from(new Set(filtrados.map((item) => item.origemReferenciaFinanceira)));
-    const lancamentos = origens.length > 0
+    const origens = Array.from(new Set(filtrados.map((item: any) => item.origemReferenciaFinanceira)));
+    const lancamentosRaw = origens.length > 0
       ? await (prisma as any).lancamentoFinanceiro.findMany({
           where: {
             origemReferencia: { in: origens },
@@ -1282,15 +1315,16 @@ export class EstoqueService {
           orderBy: [{ vencimento: "asc" }, { createdAt: "asc" }],
         })
       : [];
+    const lancamentos = (Array.isArray(lancamentosRaw) ? lancamentosRaw : []) as Array<{ origemReferencia?: string | null; [key: string]: any }>;
 
-    const lancamentosPorOrigem = lancamentos.reduce<Record<string, any[]>>((acc, lancamento) => {
+    const lancamentosPorOrigem: Record<string, any[]> = lancamentos.reduce((acc: Record<string, any[]>, lancamento) => {
       const chave = String(lancamento.origemReferencia || "");
       if (!acc[chave]) acc[chave] = [];
       acc[chave].push(lancamento);
       return acc;
     }, {});
 
-    return filtrados.map((documento) => ({
+    return filtrados.map((documento: any) => ({
       ...documento,
       lancamentosFinanceiros: lancamentosPorOrigem[documento.origemReferenciaFinanceira] || [],
     }));
