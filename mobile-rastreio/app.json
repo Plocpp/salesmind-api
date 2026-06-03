@@ -5,18 +5,9 @@
     "version": "1.0.0",
     "jsEngine": "jsc",
     "newArchEnabled": false,
-    "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "splash": {
-      "backgroundColor": "#0f2e30"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
-    "plugins": [],
-    "android": {
-      "package": "com.salesmind.rastreio"
-    },
     "extra": {
       "apiBaseUrl": "https://salesmind-api.onrender.com",
       "eas": {
