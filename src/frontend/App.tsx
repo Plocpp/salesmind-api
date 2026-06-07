@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import AlertHost from './components/AlertHost';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import Layout from './components/Layout';
+import { api } from './services/api';
 import Login from './pages/Login';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -139,16 +140,37 @@ function App() {
         if (publicSessaoId) return;
 
         const token = localStorage.getItem('token');
-        const role = localStorage.getItem('userRole');
-        if (token) {
-            setIsLoggedIn(true);
-            setUserRole(role || '');
+        if (!token) return;
 
-            const hashPage = readPrivatePageFromHash();
-            if (hashPage) {
-                setCurrentPage(hashPage);
+        const syncSession = async () => {
+            try {
+                const me = await api.get('/auth/me', token);
+                const role = String(me?.role || localStorage.getItem('userRole') || '');
+                const nome = String(me?.nome || localStorage.getItem('userName') || '');
+
+                localStorage.setItem('userRole', role);
+                if (nome) {
+                    localStorage.setItem('userName', nome);
+                }
+
+                setIsLoggedIn(true);
+                setUserRole(role);
+
+                const hashPage = readPrivatePageFromHash();
+                if (hashPage) {
+                    setCurrentPage(hashPage);
+                }
+            } catch {
+                localStorage.removeItem('token');
+                localStorage.removeItem('userRole');
+                localStorage.removeItem('userName');
+                setIsLoggedIn(false);
+                setUserRole('');
+                setCurrentPage('dashboard');
             }
-        }
+        };
+
+        void syncSession();
     }, [publicSessaoId]);
 
     useEffect(() => {
@@ -192,6 +214,7 @@ function App() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('userRole');
+        localStorage.removeItem('userName');
         setIsLoggedIn(false);
         setCurrentPage('dashboard');
         setUserRole('');

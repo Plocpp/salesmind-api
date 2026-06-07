@@ -65,8 +65,13 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         try {
             const response = await api.post("/auth/login", { email, senha });
             localStorage.setItem("token", response.accessToken);
-            localStorage.setItem("userRole", response.role || "USER");
-            onLogin(response.role);
+            const me = await api.get('/auth/me', response.accessToken);
+            const role = me?.role || response.role || "USER";
+            localStorage.setItem("userRole", role);
+            if (me?.nome) {
+                localStorage.setItem('userName', me.nome);
+            }
+            onLogin(role);
         } catch (error) {
             setErro(formatarErroLogin(error));
         } finally {
