@@ -146,6 +146,59 @@ const sanitizeArea = (value: string) =>
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-_.]/g, "");
 
+const parseStoredStringList = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value !== "string") return [];
+
+  const raw = value.trim();
+  if (!raw) return [];
+
+  if (raw.startsWith("[") || raw.startsWith("\"[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => String(item || "").trim())
+          .filter(Boolean);
+      }
+    } catch {
+      // Legacy rows may contain comma-separated strings instead of JSON arrays.
+    }
+  }
+
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const parseStoredObject = (value: unknown): Record<string, any> => {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, any>;
+  }
+  if (typeof value !== "string") return {};
+
+  const raw = value.trim();
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // Backward compatibility: ignore malformed legacy payloads.
+  }
+
+  return {};
+};
+
 class AcessosService {
   private _tablesReady = false;
 
@@ -174,8 +227,8 @@ class AcessosService {
       descricao: row.descricao,
       nivel: Number(row.nivel),
       roleBase: this.normalizeRoleBase(row.role_base),
-      areasPadrao: row.areas_json ? JSON.parse(row.areas_json) : [],
-      dadosPermitidosPadrao: row.dados_permitidos_json ? JSON.parse(row.dados_permitidos_json) : [],
+      areasPadrao: parseStoredStringList(row.areas_json),
+      dadosPermitidosPadrao: parseStoredStringList(row.dados_permitidos_json),
       origem: "CUSTOM" as const,
     }));
   }
@@ -695,9 +748,9 @@ class AcessosService {
       id: row.id,
       userId: row.user_id,
       nomeAcesso: row.nome_acesso,
-      areasPermitidas: row.areas_json ? JSON.parse(row.areas_json) : [],
-      restricoes: row.restricoes_json ? JSON.parse(row.restricoes_json) : {},
-      dadosPermitidos: row.dados_permitidos_json ? JSON.parse(row.dados_permitidos_json) : [],
+      areasPermitidas: parseStoredStringList(row.areas_json),
+      restricoes: parseStoredObject(row.restricoes_json),
+      dadosPermitidos: parseStoredStringList(row.dados_permitidos_json),
       baseLegal: row.base_legal,
       finalidade: row.finalidade,
       justificativa: row.justificativa,
@@ -726,8 +779,8 @@ class AcessosService {
       id: row.id,
       userId: row.user_id,
       nomeAcesso: row.nome_acesso,
-      areasPermitidas: row.areas_json ? JSON.parse(row.areas_json) : [],
-      dadosPermitidos: row.dados_permitidos_json ? JSON.parse(row.dados_permitidos_json) : [],
+      areasPermitidas: parseStoredStringList(row.areas_json),
+      dadosPermitidos: parseStoredStringList(row.dados_permitidos_json),
       baseLegal: row.base_legal,
       finalidade: row.finalidade,
       status: row.status,
@@ -765,7 +818,7 @@ class AcessosService {
       acessoId: row.acesso_id,
       userId: row.user_id,
       acao: row.acao,
-      detalhes: row.detalhes_json ? JSON.parse(row.detalhes_json) : {},
+      detalhes: parseStoredObject(row.detalhes_json),
       autorUserId: row.autor_user_id,
       createdAt: row.created_at,
     }));
