@@ -330,6 +330,53 @@ class AcessosService {
     return Array.from(new Set(normalized));
   }
 
+  private perfilRepresentaEntregador(perfil: PerfilHierarquia) {
+    const nome = String(perfil.nome || "").trim().toLowerCase();
+    const temAreaRastreio = this.normalizeAreas(perfil.areasPadrao || []).includes("rastreio-transporte");
+    return nome.includes("entregador") || (perfil.roleBase === "USER" && temAreaRastreio);
+  }
+
+  private async sincronizarCadastroEntregador(input: {
+    nome: string;
+    email: string;
+    emailAnterior?: string;
+  }) {
+    const entregadorDelegate = (prisma as any)?.entregador;
+    if (!entregadorDelegate?.findFirst || !entregadorDelegate?.update || !entregadorDelegate?.create) return;
+
+    const nome = String(input.nome || "").trim();
+    const email = String(input.email || "").trim().toLowerCase();
+    const emailAnterior = String(input.emailAnterior || "").trim().toLowerCase();
+
+    if (!nome || !email) return;
+
+    const existente = await entregadorDelegate.findFirst({
+      where: {
+        OR: [
+          { email },
+          ...(emailAnterior ? [{ email: emailAnterior }] : []),
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (existente?.id) {
+      await entregadorDelegate.update({
+        where: { id: existente.id },
+        data: { nome, email, ativo: true },
+      });
+      return;
+    }
+
+    await entregadorDelegate.create({
+      data: {
+        nome,
+        email,
+        ativo: true,
+      },
+    });
+  }
+
   async listarPerfisHierarquia() {
     const perfisCustomizados = await this.listarPerfisCustomizados();
     return {
@@ -646,6 +693,13 @@ class AcessosService {
       autorUserId: input.autorUserId,
     });
 
+    if (this.perfilRepresentaEntregador(perfil)) {
+      await this.sincronizarCadastroEntregador({
+        nome: usuario.nome,
+        email: usuario.email,
+      });
+    }
+
     return {
       usuario: {
         id: usuario.id,
@@ -695,6 +749,12 @@ class AcessosService {
       where: { id: usuario.id },
       data: { nome, email },
       select: { id: true, nome: true, email: true, role: true, createdAt: true },
+    });
+
+    await this.sincronizarCadastroEntregador({
+      nome,
+      email,
+      emailAnterior: usuario.email,
     });
 
     await this.registrarAuditoria({
