@@ -25,6 +25,7 @@ interface LayoutProps {
   currentPage: string;
   onLogout: () => void;
   userRole: string;
+  areasPermitidas?: string[];
 }
 
 const colors = {
@@ -55,7 +56,7 @@ type MenuModule = {
   children: MenuChild[];
 };
 
-const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLogout, userRole }) => {
+const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLogout, userRole, areasPermitidas = [] }) => {
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({
     painel: true,
     vendas: true,
@@ -144,6 +145,8 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
     },
   ];
 
+  const hasAreaAccess = (area: string) => userRole === 'ADMIN' || areasPermitidas.includes('*') || areasPermitidas.includes(area);
+
   useEffect(() => {
     const allModules = [...operationModules, ...managementModules];
     const activeModule = allModules.find((module) => module.children.some((child) => child.id === currentPage));
@@ -200,6 +203,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentPage, onLo
       id: 'transporte-rastreamento',
       label: 'Transporte e Rastreamento',
       icon: Truck,
+      hidden: !hasAreaAccess('rastreio-transporte') && userRole !== 'ADMIN',
       children: [
         { id: 'rastreio-transporte', label: 'Central de Rastreamento' },
         { id: 'km-por-litro', label: 'Km por Litro' },

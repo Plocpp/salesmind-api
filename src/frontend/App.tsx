@@ -113,6 +113,7 @@ function App() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [currentPage, setCurrentPage] = useState<string>('dashboard');
     const [userRole, setUserRole] = useState<string>('');
+    const [areasPermitidas, setAreasPermitidas] = useState<string[]>([]);
     const [publicSessaoId, setPublicSessaoId] = useState('');
 
     const readPublicRoute = () => {
@@ -147,6 +148,7 @@ function App() {
                 const me = await api.get('/auth/me', token);
                 const role = String(me?.role || localStorage.getItem('userRole') || '');
                 const nome = String(me?.nome || localStorage.getItem('userName') || '');
+                const areas = Array.isArray(me?.areasPermitidas) ? me.areasPermitidas.map((item: string) => String(item)) : [];
 
                 localStorage.setItem('userRole', role);
                 if (nome) {
@@ -155,6 +157,7 @@ function App() {
 
                 setIsLoggedIn(true);
                 setUserRole(role);
+                setAreasPermitidas(areas);
 
                 const hashPage = readPrivatePageFromHash();
                 if (hashPage) {
@@ -166,6 +169,7 @@ function App() {
                 localStorage.removeItem('userName');
                 setIsLoggedIn(false);
                 setUserRole('');
+                setAreasPermitidas([]);
                 setCurrentPage('dashboard');
             }
         };
@@ -218,6 +222,7 @@ function App() {
         setIsLoggedIn(false);
         setCurrentPage('dashboard');
         setUserRole('');
+        setAreasPermitidas([]);
 
         if (typeof window !== 'undefined') {
             window.history.replaceState(null, '', '#dashboard');
@@ -360,6 +365,7 @@ function App() {
                 currentPage={currentPage}
                 onLogout={handleLogout}
                 userRole={userRole}
+                areasPermitidas={areasPermitidas}
             >
                 <Suspense
                     fallback={
