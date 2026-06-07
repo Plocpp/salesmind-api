@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
+import cadastrosAuxiliaresRoutes from "./routes/cadastros-auxiliares.routes";
 import { errorHandlingMiddleware } from "./middlewares/errorHandler";
 import acessosRoutes from "./routes/acessos.routes";
 import authRoutes from "./routes/auth.routes";
@@ -117,6 +118,7 @@ app.use("/estoque", estoqueRoutes);
 app.use("/integracoes", integracoesRoutes);
 app.use("/onboarding", onboardingPagamentoRoutes);
 app.use("/rastreio", rastreioTransporteRoutes);
+app.use("/", cadastrosAuxiliaresRoutes);
 
 // Alias versionado para padrao enterprise sem quebrar clientes legados.
 app.use("/api/v1/auth", authRoutes);
@@ -129,6 +131,7 @@ app.use("/api/v1/estoque", estoqueRoutes);
 app.use("/api/v1/integracoes", integracoesRoutes);
 app.use("/api/v1/onboarding", onboardingPagamentoRoutes);
 app.use("/api/v1/rastreio", rastreioTransporteRoutes);
+app.use("/api/v1", cadastrosAuxiliaresRoutes);
 
 // Rotas de diagnóstico (sem autenticação para acesso em emergências)
 app.use("/diagnostico", diagnosticoRoutes);
