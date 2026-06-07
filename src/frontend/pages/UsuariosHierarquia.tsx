@@ -9,6 +9,7 @@ type PerfilHierarquia = {
   roleBase: string;
   areasPadrao: string[];
   dadosPermitidosPadrao: string[];
+  origem?: 'PADRAO' | 'CUSTOM';
 };
 
 type FuncionarioHierarquia = {
@@ -84,13 +85,22 @@ const PROMOCOES_POR_ROLE: Record<string, PromocaoAcesso | null> = {
 export default function UsuariosHierarquia() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingPerfil, setSavingPerfil] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
 
   const [perfis, setPerfis] = useState<PerfilHierarquia[]>([]);
   const [areasDisponiveis, setAreasDisponiveis] = useState<string[]>([]);
+  const [roleBaseDisponiveis, setRoleBaseDisponiveis] = useState<string[]>([]);
   const [funcionarios, setFuncionarios] = useState<FuncionarioHierarquia[]>([]);
+
+  const [novoPerfilNome, setNovoPerfilNome] = useState('');
+  const [novoPerfilDescricao, setNovoPerfilDescricao] = useState('');
+  const [novoPerfilNivel, setNovoPerfilNivel] = useState('50');
+  const [novoPerfilRoleBase, setNovoPerfilRoleBase] = useState('USER');
+  const [novoPerfilAreasSelecionadas, setNovoPerfilAreasSelecionadas] = useState<string[]>([]);
+  const [novoPerfilDadosCsv, setNovoPerfilDadosCsv] = useState('');
 
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
@@ -168,6 +178,7 @@ export default function UsuariosHierarquia() {
       const perfisList = Array.isArray(perfisResp?.perfis) ? perfisResp.perfis : [];
       setPerfis(perfisList);
       setAreasDisponiveis(Array.isArray(perfisResp?.areasDisponiveis) ? perfisResp.areasDisponiveis : []);
+      setRoleBaseDisponiveis(Array.isArray(perfisResp?.roleBaseDisponiveis) ? perfisResp.roleBaseDisponiveis : []);
       setFuncionarios(Array.isArray(funcionariosResp?.funcionarios) ? funcionariosResp.funcionarios : []);
 
       if (!perfilId && perfisList.length > 0) {
@@ -197,6 +208,46 @@ export default function UsuariosHierarquia() {
   useEffect(() => {
     carregarTudo();
   }, []);
+
+  const criarPerfil = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setErro('');
+    setSucesso('');
+
+    const token = getToken();
+    if (!token) {
+      setErro('Sessão expirada. Faça login novamente.');
+      return;
+    }
+
+    try {
+      setSavingPerfil(true);
+      const perfil = await api.acessos.criarPerfilHierarquia(token, {
+        nome: novoPerfilNome,
+        descricao: novoPerfilDescricao,
+        nivel: Number(novoPerfilNivel || 0),
+        roleBase: novoPerfilRoleBase,
+        areasPadrao: novoPerfilRoleBase === 'ADMIN' ? ['*'] : novoPerfilAreasSelecionadas,
+        dadosPermitidosPadrao: parseCsv(novoPerfilDadosCsv),
+      });
+
+      setNovoPerfilNome('');
+      setNovoPerfilDescricao('');
+      setNovoPerfilNivel('50');
+      setNovoPerfilRoleBase('USER');
+      setNovoPerfilAreasSelecionadas([]);
+      setNovoPerfilDadosCsv('');
+      setSucesso('Cargo criado com sucesso.');
+      await carregarTudo();
+      if (perfil?.id) {
+        setPerfilId(perfil.id);
+      }
+    } catch (e: any) {
+      setErro(e?.message || 'Falha ao criar cargo.');
+    } finally {
+      setSavingPerfil(false);
+    }
+  };
 
   const criarFuncionario = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -362,6 +413,90 @@ export default function UsuariosHierarquia() {
       )}
 
       <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
+        <form onSubmit={criarPerfil} style={{ ...cardStyle, display: 'grid', gap: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Criar Cargo</h2>
+
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>Nome do cargo</span>
+            <input value={novoPerfilNome} onChange={(e) => setNovoPerfilNome(e.target.value)} required />
+          </label>
+
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>Descrição</span>
+            <input value={novoPerfilDescricao} onChange={(e) => setNovoPerfilDescricao(e.target.value)} required />
+          </label>
+
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr' }}>
+            <label style={{ display: 'grid', gap: 4 }}>
+              <span>Role base</span>
+              <select value={novoPerfilRoleBase} onChange={(e) => setNovoPerfilRoleBase(e.target.value)}>
+                {roleBaseDisponiveis.map((role) => (
+                  <option key={role} value={role}>{roleLabel(role)}</option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ display: 'grid', gap: 4 }}>
+              <span>Nível</span>
+              <input type="number" min="1" max="100" value={novoPerfilNivel} onChange={(e) => setNovoPerfilNivel(e.target.value)} required />
+            </label>
+          </div>
+
+          {novoPerfilRoleBase !== 'ADMIN' && (
+            <div style={{ display: 'grid', gap: 6 }}>
+              <span>Áreas do cargo</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {areasDisponiveis.map((area) => {
+                  const ativo = novoPerfilAreasSelecionadas.includes(area);
+                  return (
+                    <button
+                      key={`perfil-${area}`}
+                      type="button"
+                      onClick={() => toggleFromList(area, novoPerfilAreasSelecionadas, setNovoPerfilAreasSelecionadas)}
+                      style={{
+                        border: '1px solid #c8d1dc',
+                        background: ativo ? '#dbeafe' : '#fff',
+                        color: ativo ? '#1d4ed8' : '#334155',
+                        borderRadius: 999,
+                        padding: '4px 10px',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {ativo ? '✓ ' : ''}{area}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>Dados permitidos (vírgula)</span>
+            <input
+              placeholder="vendas,clientes,financeiro"
+              value={novoPerfilDadosCsv}
+              onChange={(e) => setNovoPerfilDadosCsv(e.target.value)}
+            />
+          </label>
+
+          <button
+            type="submit"
+            disabled={savingPerfil || loading || backendHierarquiaIndisponivel}
+            style={{
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 14px',
+              background: '#7c3aed',
+              color: '#fff',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            {savingPerfil ? 'Criando cargo...' : 'Criar cargo'}
+          </button>
+        </form>
+
         <form onSubmit={criarFuncionario} style={{ ...cardStyle, display: 'grid', gap: 10 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>Cadastrar Funcionário</h2>
 
@@ -389,7 +524,7 @@ export default function UsuariosHierarquia() {
               <option value="">Selecione</option>
               {perfis.map((perfil) => (
                 <option key={perfil.id} value={perfil.id}>
-                  {perfil.nome} ({perfil.roleBase})
+                  {perfil.nome} ({perfil.roleBase}{perfil.origem === 'CUSTOM' ? ' · custom' : ''})
                 </option>
               ))}
             </select>
@@ -658,7 +793,7 @@ export default function UsuariosHierarquia() {
         <div style={{ display: 'grid', gap: 8 }}>
           {perfis.map((perfil) => (
             <div key={perfil.id} style={{ border: '1px solid #e6e2d6', borderRadius: 8, padding: 10 }}>
-              <strong>{perfil.nome}</strong> · <span>{perfil.roleBase}</span> · <span>Nível {perfil.nivel}</span>
+              <strong>{perfil.nome}</strong> · <span>{perfil.roleBase}</span> · <span>Nível {perfil.nivel}</span> · <span>{perfil.origem === 'CUSTOM' ? 'Customizado' : 'Padrão'}</span>
               <div style={{ color: '#62726c', marginTop: 4 }}>{perfil.descricao}</div>
             </div>
           ))}

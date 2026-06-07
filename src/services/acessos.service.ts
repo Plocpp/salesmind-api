@@ -18,15 +18,20 @@ export type CadastroAcessoInput = {
 
 const TABELA_ACESSO = "acesso_restrito";
 const TABELA_AUDITORIA = "acesso_lgpd_auditoria";
+const TABELA_PERFIL_HIERARQUIA = "perfil_hierarquia_custom";
+
+const ROLE_BASE_OPTIONS = ["ADMIN", "GERENTE", "VENDEDOR", "CAIXA", "ESTOQUISTA", "USER"] as const;
+type RoleBase = (typeof ROLE_BASE_OPTIONS)[number];
 
 type PerfilHierarquia = {
   id: string;
   nome: string;
   descricao: string;
   nivel: number;
-  roleBase: "ADMIN" | "GERENTE" | "VENDEDOR" | "CAIXA" | "ESTOQUISTA" | "USER";
+  roleBase: RoleBase;
   areasPadrao: string[];
   dadosPermitidosPadrao: string[];
+  origem?: "PADRAO" | "CUSTOM";
 };
 
 const AREAS_SISTEMA = [
@@ -144,6 +149,42 @@ const sanitizeArea = (value: string) =>
 class AcessosService {
   private _tablesReady = false;
 
+  private normalizeRoleBase(role?: string): RoleBase {
+    const normalized = String(role || "").trim().toUpperCase() as RoleBase;
+    if (!ROLE_BASE_OPTIONS.includes(normalized)) {
+      throw new Error("role_base_invalida");
+    }
+    return normalized;
+  }
+
+  private async listarPerfisCustomizados() {
+    await this.ensureTables();
+
+    const rows = await prisma.$queryRawUnsafe<any[]>(
+      `
+      SELECT id, nome, descricao, nivel, role_base, areas_json, dados_permitidos_json
+      FROM ${TABELA_PERFIL_HIERARQUIA}
+      ORDER BY nivel DESC, nome ASC
+      `
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      nome: row.nome,
+      descricao: row.descricao,
+      nivel: Number(row.nivel),
+      roleBase: this.normalizeRoleBase(row.role_base),
+      areasPadrao: row.areas_json ? JSON.parse(row.areas_json) : [],
+      dadosPermitidosPadrao: row.dados_permitidos_json ? JSON.parse(row.dados_permitidos_json) : [],
+      origem: "CUSTOM" as const,
+    }));
+  }
+
+  private async resolverPerfilHierarquia(perfilId: string) {
+    const perfisCustomizados = await this.listarPerfisCustomizados();
+    return [...PERFIS_HIERARQUIA, ...perfisCustomizados].find((item) => item.id === perfilId) || null;
+  }
+
   private getAreasPadraoPorRole(role?: string) {
     const normalizedRole = String(role || "").toUpperCase();
     if (!normalizedRole || normalizedRole === "ADMIN") return [];
@@ -202,6 +243,22 @@ class AcessosService {
         INDEX idx_audit_acesso (acesso_id)
       )
     `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS ${TABELA_PERFIL_HIERARQUIA} (
+        id VARCHAR(191) PRIMARY KEY,
+        nome VARCHAR(120) NOT NULL,
+        descricao TEXT NOT NULL,
+        nivel INT NOT NULL,
+        role_base VARCHAR(40) NOT NULL,
+        areas_json JSON NOT NULL,
+        dados_permitidos_json JSON NOT NULL,
+        created_by_user_id VARCHAR(191) NOT NULL,
+        created_at DATETIME(3) NOT NULL,
+        updated_at DATETIME(3) NOT NULL,
+        UNIQUE KEY uk_perfil_hierarquia_nome (nome)
+      )
+    `);
   }
 
   private normalizeAreas(areas: string[]) {
@@ -218,10 +275,83 @@ class AcessosService {
     return Array.from(new Set(normalized));
   }
 
-  listarPerfisHierarquia() {
+  async listarPerfisHierarquia() {
+    const perfisCustomizados = await this.listarPerfisCustomizados();
     return {
-      perfis: PERFIS_HIERARQUIA,
+      perfis: [...PERFIS_HIERARQUIA, ...perfisCustomizados].map((perfil) => ({
+        ...perfil,
+        origem: perfil.origem || "PADRAO",
+      })),
       areasDisponiveis: AREAS_SISTEMA,
+      roleBaseDisponiveis: [...ROLE_BASE_OPTIONS],
+    };
+  }
+
+  async criarPerfilHierarquia(input: {
+    nome: string;
+    descricao: string;
+    nivel: number;
+    roleBase: string;
+    areasPadrao?: string[];
+    dadosPermitidosPadrao?: string[];
+    autorUserId: string;
+  }) {
+    await this.ensureTables();
+
+    const nome = String(input.nome || "").trim();
+    const descricao = String(input.descricao || "").trim();
+    const nivel = Number(input.nivel || 0);
+    const roleBase = this.normalizeRoleBase(input.roleBase);
+
+    if (!nome) throw new Error("nome_perfil_obrigatorio");
+    if (!descricao) throw new Error("descricao_perfil_obrigatoria");
+    if (!Number.isFinite(nivel) || nivel <= 0) throw new Error("nivel_perfil_invalido");
+
+    const areasPadrao = roleBase === "ADMIN" ? ["*"] : this.normalizeAreas(input.areasPadrao || []);
+    if (roleBase !== "ADMIN" && areasPadrao.length === 0) {
+      throw new Error("areas_padrao_obrigatorias");
+    }
+
+    const dadosPermitidosPadrao = roleBase === "ADMIN"
+      ? ["*"]
+      : this.normalizeDadosPermitidos(input.dadosPermitidosPadrao || []);
+
+    const id = `custom-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+
+    try {
+      await prisma.$executeRawUnsafe(
+        `
+        INSERT INTO ${TABELA_PERFIL_HIERARQUIA}
+        (id, nome, descricao, nivel, role_base, areas_json, dados_permitidos_json, created_by_user_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        id,
+        nome,
+        descricao,
+        nivel,
+        roleBase,
+        JSON.stringify(areasPadrao),
+        JSON.stringify(dadosPermitidosPadrao.length > 0 ? dadosPermitidosPadrao : ["operacao-basica"]),
+        input.autorUserId,
+        new Date(),
+        new Date(),
+      );
+    } catch (error: any) {
+      if (String(error?.message || "").toLowerCase().includes("uk_perfil_hierarquia_nome")) {
+        throw new Error("nome_perfil_ja_cadastrado");
+      }
+      throw error;
+    }
+
+    return {
+      id,
+      nome,
+      descricao,
+      nivel,
+      roleBase,
+      areasPadrao,
+      dadosPermitidosPadrao: dadosPermitidosPadrao.length > 0 ? dadosPermitidosPadrao : ["operacao-basica"],
+      origem: "CUSTOM" as const,
     };
   }
 
@@ -238,7 +368,7 @@ class AcessosService {
   }) {
     await this.ensureTables();
 
-    const perfil = PERFIS_HIERARQUIA.find((item) => item.id === input.perfilId);
+    const perfil = await this.resolverPerfilHierarquia(input.perfilId);
     if (!perfil) throw new Error("perfil_hierarquico_invalido");
 
     const email = String(input.email || "").trim().toLowerCase();
@@ -643,31 +773,9 @@ class AcessosService {
 
   async validarAcessoArea(userId: string, role: string | undefined, area: string) {
     if (!userId) return false;
-    if (role === "ADMIN") return true;
-
     const normalizedArea = sanitizeArea(area);
-    const areasPadrao = this.getAreasPadraoPorRole(role);
-    if (areasPadrao.includes(normalizedArea)) {
-      return true;
-    }
-
-    await this.ensureTables();
-    const rows = await prisma.$queryRawUnsafe<any[]>(
-      `
-      SELECT id
-      FROM ${TABELA_ACESSO}
-      WHERE user_id = ?
-        AND status = 'ATIVO'
-        AND (expires_at IS NULL OR expires_at > NOW())
-        AND revoked_at IS NULL
-        AND JSON_CONTAINS(areas_json, JSON_QUOTE(?))
-      LIMIT 1
-      `,
-      userId,
-      normalizedArea
-    );
-
-    return rows.length > 0;
+    const areasPermitidas = await this.listarAreasPermitidas(userId, role);
+    return areasPermitidas.includes("*") || areasPermitidas.includes(normalizedArea);
   }
 
   async listarAreasPermitidas(userId: string, role?: string) {
@@ -676,14 +784,23 @@ class AcessosService {
     const acessos = await this.listarAcessosPorUsuario(userId);
     const now = Date.now();
 
-    const areas = new Set<string>(this.getAreasPadraoPorRole(role));
-    acessos
-      .filter((item) => {
-        if (item.status !== "ATIVO") return false;
-        if (!item.expiraEm) return true;
-        const expiresAt = new Date(item.expiraEm).getTime();
-        return expiresAt > now;
-      })
+    const acessosAtivos = acessos.filter((item) => {
+      if (item.status !== "ATIVO") return false;
+      if (!item.expiraEm) return true;
+      const expiresAt = new Date(item.expiraEm).getTime();
+      return expiresAt > now;
+    });
+
+    const acessoHierarquicoAtivo = acessosAtivos.find((item) => item.nomeAcesso.startsWith("perfil-hierarquia:"));
+
+    const areas = new Set<string>(
+      acessoHierarquicoAtivo
+        ? (acessoHierarquicoAtivo.areasPermitidas || [])
+        : this.getAreasPadraoPorRole(role)
+    );
+
+    acessosAtivos
+      .filter((item) => !item.nomeAcesso.startsWith("perfil-hierarquia:"))
       .forEach((item) => {
         (item.areasPermitidas || []).forEach((area: string) => areas.add(area));
       });

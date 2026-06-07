@@ -5,10 +5,33 @@ import acessosService from "../services/acessos.service";
 class AcessosController {
   async listarPerfisHierarquia(req: AuthRequest, res: Response) {
     try {
-      const data = acessosService.listarPerfisHierarquia();
+      const data = await acessosService.listarPerfisHierarquia();
       return res.json(data);
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || "erro_listar_perfis_hierarquia" });
+    }
+  }
+
+  async criarPerfilHierarquia(req: AuthRequest, res: Response) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ error: "Nao autenticado" });
+      }
+
+      const payload = req.body || {};
+      const data = await acessosService.criarPerfilHierarquia({
+        nome: String(payload.nome || ""),
+        descricao: String(payload.descricao || ""),
+        nivel: Number(payload.nivel || 0),
+        roleBase: String(payload.roleBase || ""),
+        areasPadrao: Array.isArray(payload.areasPadrao) ? payload.areasPadrao : [],
+        dadosPermitidosPadrao: Array.isArray(payload.dadosPermitidosPadrao) ? payload.dadosPermitidosPadrao : [],
+        autorUserId: req.userId,
+      });
+
+      return res.status(201).json(data);
+    } catch (error: any) {
+      return res.status(400).json({ error: error?.message || "erro_criar_perfil_hierarquia" });
     }
   }
 

@@ -10,6 +10,7 @@ router.use(authMiddleware);
 router.get("/me", acessosController.listarMeusAcessos);
 
 router.get("/hierarquia/perfis", authorizeRole(["ADMIN"]), acessosController.listarPerfisHierarquia);
+router.post("/hierarquia/perfis", authorizeRole(["ADMIN"]), acessosController.criarPerfilHierarquia);
 router.get("/hierarquia/funcionarios", authorizeRole(["ADMIN"]), acessosController.listarFuncionariosHierarquia);
 router.post("/hierarquia/funcionarios", authorizeRole(["ADMIN"]), acessosController.criarFuncionarioHierarquia);
 router.put(

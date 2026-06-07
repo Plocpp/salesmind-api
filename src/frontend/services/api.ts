@@ -91,6 +91,9 @@ export const api = {
     listarPerfisHierarquia: async (token: string) => {
       return apiClient.get('/acessos/hierarquia/perfis', token);
     },
+    criarPerfilHierarquia: async (token: string, payload: any) => {
+      return apiClient.post('/acessos/hierarquia/perfis', payload, token);
+    },
     listarFuncionariosHierarquia: async (token: string) => {
       return apiClient.get('/acessos/hierarquia/funcionarios', token);
     },
