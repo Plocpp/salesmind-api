@@ -1,0 +1,23 @@
+# Build artifacts
+android/.gradle/
+android/.gradle/**
+android/build/
+android/app/build/
+.gradle/
+**/.gradle/
+**/.gradle/**
+
+dist/
+dist-export-test/
+dist-export-test-fix/
+
+# Local large files
+*.apk
+*.aab
+*.log
+
+# Dependencies
+node_modules/
+
+# VCS
+.git/

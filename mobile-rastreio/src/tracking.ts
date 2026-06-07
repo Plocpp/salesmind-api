@@ -1,7 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
 
-declare const require: (moduleName: string) => any;
-
 const STORAGE_KEYS = {
   token: 'salesmind_rastreio_token',
   sessionId: 'salesmind_rastreio_sessao_id',
@@ -44,10 +42,11 @@ export type EstadoRastreio = {
   pendentes: number;
 };
 
-function loadLocationModule() {
+async function loadLocationModule() {
   if (cachedLocationModule) return cachedLocationModule;
+
   try {
-    cachedLocationModule = require('expo-location') as typeof import('expo-location');
+    cachedLocationModule = await import('expo-location');
     return cachedLocationModule;
   } catch {
     return null;
@@ -137,7 +136,7 @@ async function pararWatcherLocal() {
 }
 
 async function iniciarWatcherLocal(token: string, sessaoId: string) {
-  const Location = loadLocationModule();
+  const Location = await loadLocationModule();
   if (!Location) throw new Error('Modulo de localizacao indisponivel no dispositivo.');
 
   await pararWatcherLocal();
@@ -173,7 +172,7 @@ async function obterNotaAtiva() {
 }
 
 export async function iniciarRastreio(input: IniciarSessaoInput) {
-  const Location = loadLocationModule();
+  const Location = await loadLocationModule();
   if (!Location) {
     throw new Error('Modulo de localizacao indisponivel no dispositivo.');
   }
