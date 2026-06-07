@@ -56,6 +56,10 @@ const lerRawJson = (raw: unknown) => {
 export class RastreioTransporteService {
   private schemaReady = false;
 
+  private getEntregadorDelegate() {
+    return (prisma as any)?.entregador;
+  }
+
   private tokenHash(token: string) {
     return createHash('sha256').update(token).digest('hex');
   }
@@ -127,10 +131,33 @@ export class RastreioTransporteService {
   }
 
   private async validarEntregador(entregadorId: string) {
-    const entregador = await (prisma as any).entregador.findUnique({
-      where: { id: entregadorId },
-      select: { id: true, nome: true, ativo: true },
-    });
+    const delegate = this.getEntregadorDelegate();
+    let entregador: { id: string; nome: string; ativo: boolean } | null = null;
+
+    if (delegate?.findUnique) {
+      entregador = await delegate.findUnique({
+        where: { id: entregadorId },
+        select: { id: true, nome: true, ativo: true },
+      });
+    } else {
+      const rows = await prisma.$queryRawUnsafe<Array<any>>(
+        `
+        SELECT id, nome, ativo
+        FROM Entregador
+        WHERE id = ?
+        LIMIT 1
+        `,
+        entregadorId,
+      );
+
+      if (rows[0]) {
+        entregador = {
+          id: rows[0].id,
+          nome: rows[0].nome,
+          ativo: Boolean(rows[0].ativo),
+        };
+      }
+    }
 
     if (!entregador) throw new Error('Entregador nao encontrado.');
     if (!entregador.ativo) throw new Error('Entregador esta inativo para rastreio.');
@@ -162,11 +189,30 @@ export class RastreioTransporteService {
   }
 
   async listarEntregadores() {
-    return (prisma as any).entregador.findMany({
-      select: { id: true, nome: true, ativo: true, telefone: true, email: true },
-      orderBy: { nome: 'asc' },
-      take: 300,
-    });
+    const delegate = this.getEntregadorDelegate();
+
+    if (delegate?.findMany) {
+      return delegate.findMany({
+        select: { id: true, nome: true, ativo: true, telefone: true, email: true },
+        orderBy: { nome: 'asc' },
+        take: 300,
+      });
+    }
+
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(`
+      SELECT id, nome, ativo, telefone, email
+      FROM Entregador
+      ORDER BY nome ASC
+      LIMIT 300
+    `);
+
+    return rows.map((row) => ({
+      id: row.id,
+      nome: row.nome,
+      ativo: Boolean(row.ativo),
+      telefone: row.telefone || null,
+      email: row.email || null,
+    }));
   }
 
   async criarDispositivo(data: unknown, userId: string) {
