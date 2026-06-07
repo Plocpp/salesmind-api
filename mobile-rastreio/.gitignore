@@ -2,4 +2,8 @@ node_modules
 .expo
 .expo-shared
 dist
+builds
+dist-export-test
+dist-export-test-fix
+app-eas-preview.apk
 *.log
