@@ -27,6 +27,15 @@ type PromocaoAcesso = {
   dadosExtras: string[];
 };
 
+type AuditoriaLgpd = {
+  id: string;
+  userId: string;
+  autorUserId: string;
+  acao: string;
+  detalhes?: Record<string, any>;
+  createdAt: string;
+};
+
 const cardStyle: React.CSSProperties = {
   background: '#ffffff',
   border: '1px solid #d8d3c6',
@@ -88,6 +97,7 @@ export default function UsuariosHierarquia() {
   const [savingPerfil, setSavingPerfil] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [changingCargo, setChangingCargo] = useState(false);
+  const [savingCadastro, setSavingCadastro] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
 
@@ -95,6 +105,7 @@ export default function UsuariosHierarquia() {
   const [areasDisponiveis, setAreasDisponiveis] = useState<string[]>([]);
   const [roleBaseDisponiveis, setRoleBaseDisponiveis] = useState<string[]>([]);
   const [funcionarios, setFuncionarios] = useState<FuncionarioHierarquia[]>([]);
+  const [auditoria, setAuditoria] = useState<AuditoriaLgpd[]>([]);
 
   const [novoPerfilNome, setNovoPerfilNome] = useState('');
   const [novoPerfilDescricao, setNovoPerfilDescricao] = useState('');
@@ -153,6 +164,19 @@ export default function UsuariosHierarquia() {
     });
   }, [funcionarios, filtroBusca, filtroRole]);
 
+  const usuarioPorId = useMemo(() => {
+    const map = new Map<string, string>();
+    funcionarios.forEach((item) => {
+      map.set(item.id, `${item.nome} (${item.email})`);
+    });
+    return map;
+  }, [funcionarios]);
+
+  const auditoriaOperacional = useMemo(() => {
+    const acoesRelevantes = new Set(['PERMISSOES_ATUALIZADAS', 'CARGO_ALTERADO', 'CADASTRO_ATUALIZADO']);
+    return auditoria.filter((item) => acoesRelevantes.has(item.acao)).slice(0, 20);
+  }, [auditoria]);
+
   useEffect(() => {
     if (!funcionarioSelecionado) {
       setCargoPerfilId('');
@@ -193,9 +217,10 @@ export default function UsuariosHierarquia() {
       setMensagemBackend('');
       setBackendHierarquiaIndisponivel(false);
 
-      const [perfisResp, funcionariosResp] = await Promise.all([
+      const [perfisResp, funcionariosResp, auditoriaResp] = await Promise.all([
         api.acessos.listarPerfisHierarquia(token),
         api.acessos.listarFuncionariosHierarquia(token),
+        api.acessos.auditoriaLgpd(token),
       ]);
 
       const perfisList = Array.isArray(perfisResp?.perfis) ? perfisResp.perfis : [];
@@ -203,6 +228,7 @@ export default function UsuariosHierarquia() {
       setAreasDisponiveis(Array.isArray(perfisResp?.areasDisponiveis) ? perfisResp.areasDisponiveis : []);
       setRoleBaseDisponiveis(Array.isArray(perfisResp?.roleBaseDisponiveis) ? perfisResp.roleBaseDisponiveis : []);
       setFuncionarios(Array.isArray(funcionariosResp?.funcionarios) ? funcionariosResp.funcionarios : []);
+      setAuditoria(Array.isArray(auditoriaResp?.auditoria) ? auditoriaResp.auditoria : []);
 
       if (!perfilId && perfisList.length > 0) {
         setPerfilId(perfisList[0].id);
@@ -219,6 +245,7 @@ export default function UsuariosHierarquia() {
         setPerfis([]);
         setFuncionarios([]);
         setAreasDisponiveis([]);
+        setAuditoria([]);
         return;
       }
 
@@ -440,7 +467,7 @@ export default function UsuariosHierarquia() {
     }
 
     try {
-      setChangingCargo(true);
+      setSavingCadastro(true);
       await api.acessos.atualizarCadastroHierarquia(token, funcionarioSelecionado, {
         nome: cadastroNome,
         email: cadastroEmail,
@@ -450,8 +477,49 @@ export default function UsuariosHierarquia() {
     } catch (e: any) {
       setErro(e?.message || 'Falha ao atualizar cadastro do usuário.');
     } finally {
-      setChangingCargo(false);
+      setSavingCadastro(false);
     }
+  };
+
+  const acaoLegivel = (acao: string) => {
+    const labels: Record<string, string> = {
+      PERMISSOES_ATUALIZADAS: 'Permissões ajustadas',
+      CARGO_ALTERADO: 'Cargo alterado',
+      CADASTRO_ATUALIZADO: 'Cadastro atualizado',
+    };
+    return labels[acao] || acao;
+  };
+
+  const resumoDetalhes = (item: AuditoriaLgpd) => {
+    const detalhes = item.detalhes || {};
+
+    if (item.acao === 'CADASTRO_ATUALIZADO') {
+      const nomeAnterior = String(detalhes.nomeAnterior || '-');
+      const nomeNovo = String(detalhes.nomeNovo || '-');
+      const emailAnterior = String(detalhes.emailAnterior || '-');
+      const emailNovo = String(detalhes.emailNovo || '-');
+      return `Nome: ${nomeAnterior} → ${nomeNovo} | E-mail: ${emailAnterior} → ${emailNovo}`;
+    }
+
+    if (item.acao === 'CARGO_ALTERADO') {
+      const roleAnterior = String(detalhes.roleAnterior || '-');
+      const roleNovo = String(detalhes.roleNovo || '-');
+      return `Role: ${roleAnterior} → ${roleNovo}`;
+    }
+
+    if (item.acao === 'PERMISSOES_ATUALIZADAS') {
+      const extras = Array.isArray(detalhes.areasExtras) ? detalhes.areasExtras.join(', ') : '';
+      const removidas = Array.isArray(detalhes.areasRemovidas) ? detalhes.areasRemovidas.join(', ') : '';
+      return `Extras: ${extras || 'nenhuma'} | Removidas: ${removidas || 'nenhuma'}`;
+    }
+
+    return '-';
+  };
+
+  const formatarDataHora = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString('pt-BR');
   };
 
   return (
@@ -501,6 +569,15 @@ export default function UsuariosHierarquia() {
           {sucesso}
         </div>
       )}
+
+      <div style={{ ...cardStyle, borderColor: '#cfd8e3', background: '#f8fbff' }}>
+        <h2 style={{ margin: '0 0 8px', fontSize: 18, color: '#1e3a5f' }}>Guia rápido de impacto</h2>
+        <div style={{ display: 'grid', gap: 6, color: '#334155' }}>
+          <div><strong>Ajustar permissões:</strong> muda apenas áreas e dados permitidos.</div>
+          <div><strong>Mudança de cargo:</strong> altera role/cargo e recalcula permissões padrão.</div>
+          <div><strong>Editar cadastro:</strong> altera nome e e-mail, sem mexer no cargo.</div>
+        </div>
+      </div>
 
       <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
         <form onSubmit={criarPerfil} style={{ ...cardStyle, display: 'grid', gap: 10 }}>
@@ -741,6 +818,7 @@ export default function UsuariosHierarquia() {
 
         <form onSubmit={atualizarPermissoes} style={{ ...cardStyle, display: 'grid', gap: 10 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>Ajustar Permissões</h2>
+          <small style={{ color: '#1d4ed8', fontWeight: 700 }}>Impacto: mantém cargo e cadastro</small>
 
           <label style={{ display: 'grid', gap: 4 }}>
             <span>Funcionário</span>
@@ -879,6 +957,7 @@ export default function UsuariosHierarquia() {
 
         <form onSubmit={alterarCargo} style={{ ...cardStyle, display: 'grid', gap: 10 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>Mudança de Cargo</h2>
+          <small style={{ color: '#6d28d9', fontWeight: 700 }}>Impacto: altera cargo e permissões padrão</small>
 
           <label style={{ display: 'grid', gap: 4 }}>
             <span>Funcionário</span>
@@ -936,6 +1015,7 @@ export default function UsuariosHierarquia() {
 
         <form onSubmit={atualizarCadastro} style={{ ...cardStyle, display: 'grid', gap: 10 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>Editar Cadastro</h2>
+          <small style={{ color: '#0f766e', fontWeight: 700 }}>Impacto: altera nome/e-mail, sem trocar cargo</small>
 
           <label style={{ display: 'grid', gap: 4 }}>
             <span>Funcionário</span>
@@ -965,7 +1045,7 @@ export default function UsuariosHierarquia() {
 
           <button
             type="submit"
-            disabled={changingCargo || loading || backendHierarquiaIndisponivel}
+            disabled={savingCadastro || loading || backendHierarquiaIndisponivel}
             style={{
               border: 'none',
               borderRadius: 8,
@@ -976,9 +1056,46 @@ export default function UsuariosHierarquia() {
               cursor: 'pointer',
             }}
           >
-            {changingCargo ? 'Salvando...' : 'Salvar cadastro'}
+            {savingCadastro ? 'Salvando...' : 'Salvar cadastro'}
           </button>
         </form>
+      </div>
+
+      <div style={cardStyle}>
+        <h2 style={{ marginTop: 0, marginBottom: 10, fontSize: 18 }}>Histórico recente de alterações</h2>
+        <small style={{ color: '#64748b' }}>
+          Últimas 20 ações de permissão, cargo e cadastro para facilitar auditoria operacional.
+        </small>
+
+        <div style={{ overflowX: 'auto', marginTop: 10 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
+            <thead>
+              <tr style={{ background: '#f8faf9' }}>
+                <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e6e2d6' }}>Data</th>
+                <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e6e2d6' }}>Ação</th>
+                <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e6e2d6' }}>Usuário afetado</th>
+                <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e6e2d6' }}>Autor</th>
+                <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e6e2d6' }}>Detalhes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditoriaOperacional.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ padding: 12, color: '#64748b' }}>Nenhum registro operacional encontrado.</td>
+                </tr>
+              )}
+              {auditoriaOperacional.map((item) => (
+                <tr key={item.id}>
+                  <td style={{ padding: 8, borderBottom: '1px solid #f0ede5' }}>{formatarDataHora(item.createdAt)}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid #f0ede5' }}>{acaoLegivel(item.acao)}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid #f0ede5' }}>{usuarioPorId.get(item.userId) || item.userId}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid #f0ede5' }}>{usuarioPorId.get(item.autorUserId) || item.autorUserId}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid #f0ede5' }}>{resumoDetalhes(item)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div style={cardStyle}>
