@@ -106,6 +106,9 @@ export const api = {
     alterarCargoHierarquia: async (token: string, userId: string, payload: any) => {
       return apiClient.put(`/acessos/hierarquia/funcionarios/${userId}/cargo`, payload, token);
     },
+    atualizarCadastroHierarquia: async (token: string, userId: string, payload: any) => {
+      return apiClient.put(`/acessos/hierarquia/funcionarios/${userId}/cadastro`, payload, token);
+    },
     listar: async (token: string) => {
       return apiClient.get('/acessos', token);
     },

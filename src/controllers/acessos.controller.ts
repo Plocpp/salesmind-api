@@ -121,6 +121,28 @@ class AcessosController {
     }
   }
 
+  async atualizarCadastroHierarquia(req: AuthRequest, res: Response) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ error: "Nao autenticado" });
+      }
+
+      const payload = req.body || {};
+      const userIdAlvo = String(req.params.userId || "");
+
+      const result = await acessosService.atualizarCadastroHierarquia({
+        userIdAlvo,
+        nome: payload.nome ? String(payload.nome) : undefined,
+        email: payload.email ? String(payload.email) : undefined,
+        autorUserId: req.userId,
+      });
+
+      return res.json(result);
+    } catch (error: any) {
+      return res.status(400).json({ error: error?.message || "erro_atualizar_cadastro_hierarquia" });
+    }
+  }
+
   async criarAcesso(req: AuthRequest, res: Response) {
     try {
       const autorUserId = req.userId || "";

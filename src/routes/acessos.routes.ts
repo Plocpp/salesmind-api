@@ -23,6 +23,11 @@ router.put(
 	authorizeRole(["ADMIN"]),
 	acessosController.alterarCargoHierarquia
 );
+router.put(
+	"/hierarquia/funcionarios/:userId/cadastro",
+	authorizeRole(["ADMIN"]),
+	acessosController.atualizarCadastroHierarquia
+);
 
 router.get("/", authorizeRole(["ADMIN", "GERENTE"]), acessosController.listarAcessos);
 router.post("/", authorizeRole(["ADMIN", "GERENTE"]), acessosController.criarAcesso);

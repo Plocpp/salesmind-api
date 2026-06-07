@@ -115,6 +115,8 @@ export default function UsuariosHierarquia() {
   const [dadosRemovidosCsv, setDadosRemovidosCsv] = useState('');
 
   const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
+  const [cadastroNome, setCadastroNome] = useState('');
+  const [cadastroEmail, setCadastroEmail] = useState('');
   const [upAreasExtrasCsv, setUpAreasExtrasCsv] = useState('');
   const [upAreasRemovidasCsv, setUpAreasRemovidasCsv] = useState('');
   const [upAreasExtrasSelecionadas, setUpAreasExtrasSelecionadas] = useState<string[]>([]);
@@ -154,11 +156,16 @@ export default function UsuariosHierarquia() {
   useEffect(() => {
     if (!funcionarioSelecionado) {
       setCargoPerfilId('');
+      setCadastroNome('');
+      setCadastroEmail('');
       return;
     }
 
     const atual = funcionarios.find((item) => item.id === funcionarioSelecionado);
     if (!atual) return;
+
+    setCadastroNome(atual.nome);
+    setCadastroEmail(atual.email);
 
     const perfilAtual = perfis.find((item) => item.roleBase === atual.role);
     setCargoPerfilId(perfilAtual?.id || '');
@@ -411,6 +418,37 @@ export default function UsuariosHierarquia() {
       await carregarTudo();
     } catch (e: any) {
       setErro(e?.message || 'Falha ao alterar cargo.');
+    } finally {
+      setChangingCargo(false);
+    }
+  };
+
+  const atualizarCadastro = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setErro('');
+    setSucesso('');
+
+    const token = getToken();
+    if (!token) {
+      setErro('Sessão expirada. Faça login novamente.');
+      return;
+    }
+
+    if (!funcionarioSelecionado) {
+      setErro('Selecione um funcionário para atualizar o cadastro.');
+      return;
+    }
+
+    try {
+      setChangingCargo(true);
+      await api.acessos.atualizarCadastroHierarquia(token, funcionarioSelecionado, {
+        nome: cadastroNome,
+        email: cadastroEmail,
+      });
+      setSucesso('Cadastro do usuário atualizado com sucesso.');
+      await carregarTudo();
+    } catch (e: any) {
+      setErro(e?.message || 'Falha ao atualizar cadastro do usuário.');
     } finally {
       setChangingCargo(false);
     }
@@ -893,6 +931,52 @@ export default function UsuariosHierarquia() {
             }}
           >
             {changingCargo ? 'Alterando cargo...' : 'Alterar cargo'}
+          </button>
+        </form>
+
+        <form onSubmit={atualizarCadastro} style={{ ...cardStyle, display: 'grid', gap: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Editar Cadastro</h2>
+
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>Funcionário</span>
+            <select
+              value={funcionarioSelecionado}
+              onChange={(e) => setFuncionarioSelecionado(e.target.value)}
+              required
+            >
+              <option value="">Selecione</option>
+              {funcionarios.map((func) => (
+                <option key={`cadastro-${func.id}`} value={func.id}>
+                  {func.nome} - {func.email}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>Nome</span>
+            <input value={cadastroNome} onChange={(e) => setCadastroNome(e.target.value)} required />
+          </label>
+
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>E-mail</span>
+            <input type="email" value={cadastroEmail} onChange={(e) => setCadastroEmail(e.target.value)} required />
+          </label>
+
+          <button
+            type="submit"
+            disabled={changingCargo || loading || backendHierarquiaIndisponivel}
+            style={{
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 14px',
+              background: '#0f766e',
+              color: '#fff',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            {changingCargo ? 'Salvando...' : 'Salvar cadastro'}
           </button>
         </form>
       </div>

@@ -660,6 +660,58 @@ class AcessosService {
     };
   }
 
+  async atualizarCadastroHierarquia(input: {
+    userIdAlvo: string;
+    nome?: string;
+    email?: string;
+    autorUserId: string;
+  }) {
+    await this.ensureTables();
+
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: input.userIdAlvo },
+      select: { id: true, nome: true, email: true, role: true },
+    });
+
+    if (!usuario) throw new Error("usuario_nao_encontrado");
+
+    const nome = String(input.nome || usuario.nome).trim();
+    const email = String(input.email || usuario.email).trim().toLowerCase();
+
+    if (!nome) throw new Error("nome_obrigatorio");
+    if (!email) throw new Error("email_obrigatorio");
+
+    const emailExistente = await prisma.usuario.findFirst({
+      where: {
+        email,
+        NOT: { id: usuario.id },
+      },
+      select: { id: true },
+    });
+
+    if (emailExistente) throw new Error("email_ja_cadastrado");
+
+    const atualizado = await prisma.usuario.update({
+      where: { id: usuario.id },
+      data: { nome, email },
+      select: { id: true, nome: true, email: true, role: true, createdAt: true },
+    });
+
+    await this.registrarAuditoria({
+      userId: usuario.id,
+      acao: "CADASTRO_ATUALIZADO",
+      detalhes: {
+        nomeAnterior: usuario.nome,
+        nomeNovo: nome,
+        emailAnterior: usuario.email,
+        emailNovo: email,
+      },
+      autorUserId: input.autorUserId,
+    });
+
+    return { usuario: atualizado };
+  }
+
   async listarFuncionariosHierarquia() {
     await this.ensureTables();
 
