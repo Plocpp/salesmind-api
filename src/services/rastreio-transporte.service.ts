@@ -55,9 +55,33 @@ const lerRawJson = (raw: unknown) => {
 
 export class RastreioTransporteService {
   private schemaReady = false;
+  private entregadorTableName: string | null | undefined = undefined;
 
   private getEntregadorDelegate() {
     return (prisma as any)?.entregador;
+  }
+
+  private async resolveEntregadorTableName() {
+    if (this.entregadorTableName !== undefined) return this.entregadorTableName;
+
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = DATABASE()
+        AND LOWER(table_name) IN ('entregador', 'entregadores')
+      ORDER BY CASE
+        WHEN LOWER(table_name) = 'entregador' THEN 0
+        WHEN LOWER(table_name) = 'entregadores' THEN 1
+        ELSE 2
+      END
+      LIMIT 1
+      `,
+    );
+
+    const tableName = rows[0]?.table_name ? String(rows[0].table_name) : null;
+    this.entregadorTableName = /^[a-zA-Z0-9_]+$/.test(tableName || '') ? tableName : null;
+    return this.entregadorTableName;
   }
 
   private tokenHash(token: string) {
@@ -140,10 +164,14 @@ export class RastreioTransporteService {
         select: { id: true, nome: true, ativo: true },
       });
     } else {
+      const entregadorTable = await this.resolveEntregadorTableName();
+      if (!entregadorTable) {
+        entregador = null;
+      } else {
       const rows = await prisma.$queryRawUnsafe<Array<any>>(
         `
         SELECT id, nome, ativo
-        FROM Entregador
+        FROM ${entregadorTable}
         WHERE id = ?
         LIMIT 1
         `,
@@ -156,6 +184,7 @@ export class RastreioTransporteService {
           nome: rows[0].nome,
           ativo: Boolean(rows[0].ativo),
         };
+      }
       }
     }
 
@@ -199,9 +228,12 @@ export class RastreioTransporteService {
       });
     }
 
+    const entregadorTable = await this.resolveEntregadorTableName();
+    if (!entregadorTable) return [];
+
     const rows = await prisma.$queryRawUnsafe<Array<any>>(`
       SELECT id, nome, ativo, telefone, email
-      FROM Entregador
+      FROM ${entregadorTable}
       ORDER BY nome ASC
       LIMIT 300
     `);
@@ -270,11 +302,17 @@ export class RastreioTransporteService {
   async listarDispositivos() {
     await this.ensureSchema();
 
+    const entregadorTable = await this.resolveEntregadorTableName();
+    const joinEntregador = entregadorTable
+      ? `LEFT JOIN ${entregadorTable} e ON e.id = d.entregador_id`
+      : '';
+    const selectEntregadorNome = entregadorTable ? 'e.nome AS entregador_nome' : 'NULL AS entregador_nome';
+
     const dispositivos = await prisma.$queryRawUnsafe<Array<any>>(`
       SELECT d.id, d.entregador_id, d.nome_dispositivo, d.plataforma, d.device_id,
-             d.ativo, d.ultimo_ping_em, d.created_at, e.nome AS entregador_nome
+             d.ativo, d.ultimo_ping_em, d.created_at, ${selectEntregadorNome}
       FROM rastreio_dispositivo d
-      LEFT JOIN Entregador e ON e.id = d.entregador_id
+      ${joinEntregador}
       ORDER BY d.created_at DESC
       LIMIT 500
     `);
@@ -433,12 +471,18 @@ export class RastreioTransporteService {
   async listarSessoesAtivas() {
     await this.ensureSchema();
 
+    const entregadorTable = await this.resolveEntregadorTableName();
+    const joinEntregador = entregadorTable
+      ? `LEFT JOIN ${entregadorTable} e ON e.id = s.entregador_id`
+      : '';
+    const selectEntregadorNome = entregadorTable ? 'e.nome AS entregador_nome' : 'NULL AS entregador_nome';
+
     const rows = await prisma.$queryRawUnsafe<Array<any>>(`
             SELECT s.id, s.entregador_id, s.dispositivo_id, s.venda_id, s.iniciada_em,
-              e.nome AS entregador_nome,
+              ${selectEntregadorNome},
               p.latitude, p.longitude, p.precisao, p.velocidade, p.bateria, p.fonte, p.registrado_em, p.raw
       FROM rastreio_sessao s
-      LEFT JOIN Entregador e ON e.id = s.entregador_id
+      ${joinEntregador}
       LEFT JOIN rastreio_ponto p ON p.id = (
         SELECT p2.id FROM rastreio_ponto p2
         WHERE p2.sessao_id = s.id
@@ -575,12 +619,18 @@ export class RastreioTransporteService {
     await this.ensureSchema();
     const safeLimit = Math.max(1, Math.min(120, Number(limit) || 60));
 
+    const entregadorTable = await this.resolveEntregadorTableName();
+    const joinEntregador = entregadorTable
+      ? `LEFT JOIN ${entregadorTable} e ON e.id = s.entregador_id`
+      : '';
+    const selectEntregadorNome = entregadorTable ? 'e.nome AS entregador_nome' : 'NULL AS entregador_nome';
+
     const sessaoRows = await prisma.$queryRawUnsafe<Array<any>>(
       `
       SELECT s.id, s.entregador_id, s.dispositivo_id, s.venda_id, s.status, s.iniciada_em, s.finalizada_em, s.motivo,
-             e.nome AS entregador_nome
+             ${selectEntregadorNome}
       FROM rastreio_sessao s
-      LEFT JOIN Entregador e ON e.id = s.entregador_id
+      ${joinEntregador}
       WHERE s.id = ?
       LIMIT 1
       `,
