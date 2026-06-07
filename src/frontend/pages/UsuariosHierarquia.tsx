@@ -87,6 +87,7 @@ export default function UsuariosHierarquia() {
   const [saving, setSaving] = useState(false);
   const [savingPerfil, setSavingPerfil] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [changingCargo, setChangingCargo] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
 
@@ -121,6 +122,8 @@ export default function UsuariosHierarquia() {
   const [upDadosExtrasCsv, setUpDadosExtrasCsv] = useState('');
   const [upDadosRemovidosCsv, setUpDadosRemovidosCsv] = useState('');
   const [justificativa, setJustificativa] = useState('Ajuste operacional definido pela administração.');
+  const [cargoPerfilId, setCargoPerfilId] = useState('');
+  const [cargoJustificativa, setCargoJustificativa] = useState('Mudança de cargo definida pela administração.');
   const [filtroBusca, setFiltroBusca] = useState('');
   const [filtroRole, setFiltroRole] = useState('TODOS');
   const [backendHierarquiaIndisponivel, setBackendHierarquiaIndisponivel] = useState(false);
@@ -147,6 +150,19 @@ export default function UsuariosHierarquia() {
       return matchRole && matchBusca;
     });
   }, [funcionarios, filtroBusca, filtroRole]);
+
+  useEffect(() => {
+    if (!funcionarioSelecionado) {
+      setCargoPerfilId('');
+      return;
+    }
+
+    const atual = funcionarios.find((item) => item.id === funcionarioSelecionado);
+    if (!atual) return;
+
+    const perfilAtual = perfis.find((item) => item.roleBase === atual.role);
+    setCargoPerfilId(perfilAtual?.id || '');
+  }, [funcionarioSelecionado, funcionarios, perfis]);
 
   const toggleFromList = (
     value: string,
@@ -361,6 +377,42 @@ export default function UsuariosHierarquia() {
       setErro(e?.message || 'Falha ao aplicar promoção rápida.');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const alterarCargo = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setErro('');
+    setSucesso('');
+
+    const token = getToken();
+    if (!token) {
+      setErro('Sessão expirada. Faça login novamente.');
+      return;
+    }
+
+    if (!funcionarioSelecionado) {
+      setErro('Selecione um funcionário para alterar o cargo.');
+      return;
+    }
+
+    if (!cargoPerfilId) {
+      setErro('Selecione o novo cargo para o funcionário.');
+      return;
+    }
+
+    try {
+      setChangingCargo(true);
+      await api.acessos.alterarCargoHierarquia(token, funcionarioSelecionado, {
+        perfilId: cargoPerfilId,
+        justificativa: cargoJustificativa,
+      });
+      setSucesso('Cargo alterado com sucesso.');
+      await carregarTudo();
+    } catch (e: any) {
+      setErro(e?.message || 'Falha ao alterar cargo.');
+    } finally {
+      setChangingCargo(false);
     }
   };
 
@@ -784,6 +836,63 @@ export default function UsuariosHierarquia() {
             }}
           >
             {updating ? 'Atualizando...' : 'Aplicar ajustes'}
+          </button>
+        </form>
+
+        <form onSubmit={alterarCargo} style={{ ...cardStyle, display: 'grid', gap: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Mudança de Cargo</h2>
+
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>Funcionário</span>
+            <select
+              value={funcionarioSelecionado}
+              onChange={(e) => setFuncionarioSelecionado(e.target.value)}
+              required
+            >
+              <option value="">Selecione</option>
+              {funcionarios.map((func) => (
+                <option key={`cargo-${func.id}`} value={func.id}>
+                  {func.nome} - {roleLabel(func.role)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>Novo cargo</span>
+            <select value={cargoPerfilId} onChange={(e) => setCargoPerfilId(e.target.value)} required>
+              <option value="">Selecione</option>
+              {perfis.map((perfil) => (
+                <option key={`cargo-perfil-${perfil.id}`} value={perfil.id}>
+                  {perfil.nome} ({roleLabel(perfil.roleBase)})
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>Justificativa</span>
+            <input
+              value={cargoJustificativa}
+              onChange={(e) => setCargoJustificativa(e.target.value)}
+              placeholder="Motivo da mudança de cargo"
+            />
+          </label>
+
+          <button
+            type="submit"
+            disabled={changingCargo || loading || backendHierarquiaIndisponivel}
+            style={{
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 14px',
+              background: '#6d28d9',
+              color: '#fff',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            {changingCargo ? 'Alterando cargo...' : 'Alterar cargo'}
           </button>
         </form>
       </div>

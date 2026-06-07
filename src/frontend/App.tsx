@@ -317,9 +317,6 @@ function App() {
             case 'usuarios-hierarquia':
                 return <UsuariosHierarquia />;
             case 'rastreio-transporte':
-                if (userRole !== 'ADMIN') {
-                    return <Placeholder title="Acesso restrito" />;
-                }
                 return <RastreioTransporte />;
             default:
                 if (placeholderPageTitles[currentPage]) {

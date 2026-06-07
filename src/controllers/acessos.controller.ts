@@ -99,6 +99,28 @@ class AcessosController {
     }
   }
 
+  async alterarCargoHierarquia(req: AuthRequest, res: Response) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ error: "Nao autenticado" });
+      }
+
+      const payload = req.body || {};
+      const userIdAlvo = String(req.params.userId || "");
+
+      const result = await acessosService.alterarCargoHierarquia({
+        userIdAlvo,
+        perfilId: String(payload.perfilId || ""),
+        justificativa: payload.justificativa ? String(payload.justificativa) : undefined,
+        autorUserId: req.userId,
+      });
+
+      return res.json(result);
+    } catch (error: any) {
+      return res.status(400).json({ error: error?.message || "erro_alterar_cargo_hierarquia" });
+    }
+  }
+
   async criarAcesso(req: AuthRequest, res: Response) {
     try {
       const autorUserId = req.userId || "";

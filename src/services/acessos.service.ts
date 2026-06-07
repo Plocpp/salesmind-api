@@ -56,6 +56,7 @@ const AREAS_SISTEMA = [
   "integracoes",
   "diagnostico",
   "relatorios",
+  "rastreio-transporte",
   "cadastros",
   "acessos",
 ];
@@ -97,6 +98,7 @@ const PERFIS_HIERARQUIA: PerfilHierarquia[] = [
       "formas-pagamento",
       "integracoes",
       "relatorios",
+      "rastreio-transporte",
       "acessos",
     ],
     dadosPermitidosPadrao: ["vendas", "estoque", "financeiro", "clientes", "integracoes"],
@@ -569,6 +571,92 @@ class AcessosService {
       areasPermitidas: areasFinal,
       dadosPermitidos: dadosFinal.length > 0 ? dadosFinal : ["operacao-basica"],
       acesso: novoAcesso,
+    };
+  }
+
+  async alterarCargoHierarquia(input: {
+    userIdAlvo: string;
+    perfilId: string;
+    justificativa?: string;
+    autorUserId: string;
+  }) {
+    await this.ensureTables();
+
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: input.userIdAlvo },
+      select: { id: true, nome: true, email: true, role: true },
+    });
+
+    if (!usuario) throw new Error("usuario_nao_encontrado");
+
+    const perfil = await this.resolverPerfilHierarquia(input.perfilId);
+    if (!perfil) throw new Error("perfil_hierarquico_invalido");
+
+    await prisma.usuario.update({
+      where: { id: usuario.id },
+      data: { role: perfil.roleBase },
+    });
+
+    await prisma.$executeRawUnsafe(
+      `
+      UPDATE ${TABELA_ACESSO}
+      SET status = 'REVOGADO', revoked_at = ?, updated_at = ?
+      WHERE user_id = ?
+        AND status = 'ATIVO'
+        AND nome_acesso LIKE 'perfil-hierarquia:%'
+      `,
+      new Date(),
+      new Date(),
+      usuario.id
+    );
+
+    let acessoHierarquico: any = null;
+    let areasPermitidas: string[] = [];
+    let dadosPermitidos: string[] = [];
+
+    if (perfil.roleBase === "ADMIN") {
+      areasPermitidas = ["*"];
+      dadosPermitidos = ["*"];
+    } else {
+      areasPermitidas = this.normalizeAreas(perfil.areasPadrao);
+      dadosPermitidos = this.normalizeDadosPermitidos(perfil.dadosPermitidosPadrao);
+
+      acessoHierarquico = await this.cadastrarAcesso({
+        userIdAlvo: usuario.id,
+        nomeAcesso: `perfil-hierarquia:${perfil.id}`,
+        areasPermitidas,
+        dadosPermitidos: dadosPermitidos.length > 0 ? dadosPermitidos : ["operacao-basica"],
+        baseLegal: "execucao_de_contrato",
+        finalidade: "mudanca_de_cargo_hierarquico",
+        justificativa: input.justificativa || `Mudanca de cargo para ${perfil.nome}`,
+        autorUserId: input.autorUserId,
+      });
+    }
+
+    await this.registrarAuditoria({
+      userId: usuario.id,
+      acao: "CARGO_ALTERADO",
+      detalhes: {
+        roleAnterior: usuario.role,
+        roleNovo: perfil.roleBase,
+        perfilId: perfil.id,
+        perfilNome: perfil.nome,
+        justificativa: input.justificativa || null,
+      },
+      autorUserId: input.autorUserId,
+    });
+
+    return {
+      usuario: {
+        id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        role: perfil.roleBase,
+      },
+      perfil,
+      areasPermitidas,
+      dadosPermitidos,
+      acessoHierarquico,
     };
   }
 
