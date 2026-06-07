@@ -2,8 +2,8 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import AlertHost from './components/AlertHost';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import Layout from './components/Layout';
-import { api } from './services/api';
 import Login from './pages/Login';
+import { api } from './services/api';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Diagnostico = lazy(() => import('./pages/Diagnostico'));
