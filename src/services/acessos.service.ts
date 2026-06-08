@@ -328,7 +328,8 @@ class AcessosService {
       `
       SELECT a.id AS acesso_id, a.user_id, a.areas_json, u.nome, u.email, u.role
       FROM ${TABELA_ACESSO} a
-      INNER JOIN Usuario u ON u.id = a.user_id
+      INNER JOIN Usuario u
+        ON u.id COLLATE utf8mb4_unicode_ci = a.user_id COLLATE utf8mb4_unicode_ci
       WHERE a.status = 'ATIVO'
         AND a.nome_acesso = ?
       LIMIT 500
