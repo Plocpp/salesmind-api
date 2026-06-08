@@ -120,6 +120,32 @@ export class CadastrosAuxiliaresService {
     return candidates.find((item) => columns.has(item)) || null;
   }
 
+  private async pickExistingColumn(tableName: string, candidates: string[]) {
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+      `,
+      tableName,
+    );
+
+    const byLower = new Map<string, string>();
+    rows.forEach((row) => {
+      const name = String(row.column_name || "").trim();
+      if (!name) return;
+      byLower.set(name.toLowerCase(), name);
+    });
+
+    for (const candidate of candidates) {
+      const resolved = byLower.get(candidate.toLowerCase());
+      if (resolved) return resolved;
+    }
+
+    return null;
+  }
+
   async listarVendedores() {
     return (prisma as any).vendedor.findMany({ orderBy: { nome: "asc" } });
   }
@@ -251,25 +277,35 @@ export class CadastrosAuxiliaresService {
     const table = await this.resolveEntregadorTableName();
     if (!table) throw new Error("tabela_entregador_nao_encontrada");
 
-    const columns = await this.getTableColumns(table);
-    const payload: Record<string, any> = {
-      id: crypto.randomUUID(),
-      nome: parsed.nome.trim(),
-      email: emptyToNull(parsed.email),
-      telefone: emptyToNull(parsed.telefone),
-      cpf: emptyToNull(parsed.cpf),
-      endereco: emptyToNull(parsed.endereco),
-      ativo: parsed.ativo ?? true,
-    };
+    const idCol = await this.pickExistingColumn(table, ["id"]);
+    const nomeCol = await this.pickExistingColumn(table, ["nome"]);
+    const emailCol = await this.pickExistingColumn(table, ["email"]);
+    const telefoneCol = await this.pickExistingColumn(table, ["telefone"]);
+    const cpfCol = await this.pickExistingColumn(table, ["cpf"]);
+    const enderecoCol = await this.pickExistingColumn(table, ["endereco"]);
+    const ativoCol = await this.pickExistingColumn(table, ["ativo"]);
+    const veiculoCol = await this.pickExistingColumn(table, ["veiculoId", "veiculo_id"]);
 
-    const veiculoCol = this.pickColumn(columns, ["veiculoId", "veiculo_id"]);
-    if (veiculoCol) {
-      payload[veiculoCol] = emptyToNull(parsed.veiculoId);
+    if (!idCol || !nomeCol) {
+      throw new Error("colunas_entregador_invalidas");
     }
 
-    const fields = Object.keys(payload).filter((key) => columns.has(key));
+    const id = crypto.randomUUID();
+    const fieldValuePairs: Array<{ field: string; value: any }> = [
+      { field: idCol, value: id },
+      { field: nomeCol, value: parsed.nome.trim() },
+    ];
+
+    if (emailCol) fieldValuePairs.push({ field: emailCol, value: emptyToNull(parsed.email) });
+    if (telefoneCol) fieldValuePairs.push({ field: telefoneCol, value: emptyToNull(parsed.telefone) });
+    if (cpfCol) fieldValuePairs.push({ field: cpfCol, value: emptyToNull(parsed.cpf) });
+    if (enderecoCol) fieldValuePairs.push({ field: enderecoCol, value: emptyToNull(parsed.endereco) });
+    if (ativoCol) fieldValuePairs.push({ field: ativoCol, value: parsed.ativo ?? true });
+    if (veiculoCol) fieldValuePairs.push({ field: veiculoCol, value: emptyToNull(parsed.veiculoId) });
+
+    const fields = fieldValuePairs.map((item) => item.field);
     const placeholders = fields.map(() => "?").join(", ");
-    const values = fields.map((key) => payload[key]);
+    const values = fieldValuePairs.map((item) => item.value);
 
     await prisma.$executeRawUnsafe(
       `
@@ -280,14 +316,14 @@ export class CadastrosAuxiliaresService {
     );
 
     return {
-      id: payload.id,
-      nome: payload.nome,
-      email: payload.email,
-      telefone: payload.telefone,
-      cpf: payload.cpf,
-      endereco: payload.endereco,
-      veiculoId: veiculoCol ? payload[veiculoCol] : null,
-      ativo: Boolean(payload.ativo),
+      id,
+      nome: parsed.nome.trim(),
+      email: emptyToNull(parsed.email),
+      telefone: emptyToNull(parsed.telefone),
+      cpf: emptyToNull(parsed.cpf),
+      endereco: emptyToNull(parsed.endereco),
+      veiculoId: veiculoCol ? emptyToNull(parsed.veiculoId) : null,
+      ativo: Boolean(parsed.ativo ?? true),
       veiculo: null,
     };
   }
