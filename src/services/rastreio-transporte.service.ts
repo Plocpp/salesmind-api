@@ -161,7 +161,9 @@ export class RastreioTransporteService {
         where: { id: entregadorId },
         select: { id: true, nome: true, ativo: true },
       });
-    } else {
+    }
+
+    if (!entregador) {
       const entregadorTable = await this.resolveEntregadorTableName();
       if (!entregadorTable) {
         entregador = null;

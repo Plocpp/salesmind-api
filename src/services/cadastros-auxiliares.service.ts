@@ -1,8 +1,6 @@
-import { PrismaClient } from "@prisma/client";
 import crypto from "crypto";
 import { z } from "zod";
-
-const prisma = new PrismaClient();
+import prisma from "../database/prisma";
 
 const vendedorSchema = z.object({
   nome: z.string().min(1, "Nome obrigatorio"),
