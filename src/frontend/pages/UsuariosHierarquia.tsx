@@ -19,6 +19,8 @@ type FuncionarioHierarquia = {
   role: string;
   createdAt: string;
   areasPermitidas: string[];
+  perfilAtualId?: string;
+  perfilAtualNome?: string;
 };
 
 type PromocaoAcesso = {
@@ -43,6 +45,9 @@ const cardStyle: React.CSSProperties = {
   padding: 16,
 };
 
+const AREA_RASTREIO_TRANSPORTE = 'rastreio-transporte';
+const PERFIL_ENTREGADOR_NATIVO_ID = 'entregador-transporte';
+
 function getToken() {
   return localStorage.getItem('token') || '';
 }
@@ -64,6 +69,19 @@ function roleLabel(role: string) {
     USER: 'Usuário/Estagiário',
   };
   return map[role] || role;
+}
+
+function isEntregador(funcionario?: FuncionarioHierarquia | null) {
+  if (!funcionario) return false;
+  if (funcionario.perfilAtualId === PERFIL_ENTREGADOR_NATIVO_ID) return true;
+  return (funcionario.areasPermitidas || []).includes(AREA_RASTREIO_TRANSPORTE);
+}
+
+function cargoLabel(funcionario?: FuncionarioHierarquia | null) {
+  if (!funcionario) return '-';
+  if (funcionario.perfilAtualNome) return funcionario.perfilAtualNome;
+  if (isEntregador(funcionario)) return 'Entregador';
+  return roleLabel(funcionario.role);
 }
 
 const PROMOCOES_POR_ROLE: Record<string, PromocaoAcesso | null> = {
@@ -191,7 +209,11 @@ export default function UsuariosHierarquia() {
     setCadastroNome(atual.nome);
     setCadastroEmail(atual.email);
 
-    const perfilAtual = perfis.find((item) => item.roleBase === atual.role);
+    const perfilAtual = atual.perfilAtualId
+      ? perfis.find((item) => item.id === atual.perfilAtualId)
+      : (isEntregador(atual)
+        ? perfis.find((item) => item.id === PERFIL_ENTREGADOR_NATIVO_ID)
+        : perfis.find((item) => item.roleBase === atual.role));
     setCargoPerfilId(perfilAtual?.id || '');
   }, [funcionarioSelecionado, funcionarios, perfis]);
 
@@ -830,7 +852,7 @@ export default function UsuariosHierarquia() {
               <option value="">Selecione</option>
               {funcionarios.map((func) => (
                 <option key={func.id} value={func.id}>
-                  {func.nome} - {roleLabel(func.role)}
+                  {func.nome} - {cargoLabel(func)}
                 </option>
               ))}
             </select>
@@ -838,7 +860,7 @@ export default function UsuariosHierarquia() {
 
           {funcionarioAtual && (
             <div style={{ background: '#f8faf9', border: '1px solid #d8d3c6', borderRadius: 8, padding: 10 }}>
-              <div><strong>{funcionarioAtual.nome}</strong> ({roleLabel(funcionarioAtual.role)})</div>
+              <div><strong>{funcionarioAtual.nome}</strong> ({cargoLabel(funcionarioAtual)})</div>
               <small style={{ color: '#64748b' }}>Áreas atuais: {funcionarioAtual.areasPermitidas.join(', ') || 'nenhuma'}</small>
             </div>
           )}
@@ -969,7 +991,7 @@ export default function UsuariosHierarquia() {
               <option value="">Selecione</option>
               {funcionarios.map((func) => (
                 <option key={`cargo-${func.id}`} value={func.id}>
-                  {func.nome} - {roleLabel(func.role)}
+                  {func.nome} - {cargoLabel(func)}
                 </option>
               ))}
             </select>
@@ -1146,7 +1168,7 @@ export default function UsuariosHierarquia() {
                 <tr key={funcionario.id}>
                   <td style={{ padding: 8, borderBottom: '1px solid #f0ede5' }}>{funcionario.nome}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #f0ede5' }}>{funcionario.email}</td>
-                  <td style={{ padding: 8, borderBottom: '1px solid #f0ede5' }}>{roleLabel(funcionario.role)}</td>
+                  <td style={{ padding: 8, borderBottom: '1px solid #f0ede5' }}>{cargoLabel(funcionario)}</td>
                   <td style={{ padding: 8, borderBottom: '1px solid #f0ede5' }}>
                     {funcionario.areasPermitidas?.length ? funcionario.areasPermitidas.join(', ') : 'Sem áreas'}
                   </td>
