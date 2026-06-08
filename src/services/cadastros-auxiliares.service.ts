@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import crypto from "crypto";
 import { z } from "zod";
 
 const prisma = new PrismaClient();
@@ -41,6 +42,49 @@ function emptyToNull(value?: string | null) {
 }
 
 export class CadastrosAuxiliaresService {
+  private entregadorTableName: string | null | undefined = undefined;
+
+  private async resolveEntregadorTableName() {
+    if (this.entregadorTableName !== undefined) return this.entregadorTableName;
+
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = DATABASE()
+        AND LOWER(table_name) IN ('entregador', 'entregadores')
+      ORDER BY CASE
+        WHEN LOWER(table_name) = 'entregador' THEN 0
+        WHEN LOWER(table_name) = 'entregadores' THEN 1
+        ELSE 2
+      END
+      LIMIT 1
+      `,
+    );
+
+    const tableName = rows[0]?.table_name ? String(rows[0].table_name) : null;
+    this.entregadorTableName = /^[a-zA-Z0-9_]+$/.test(tableName || "") ? tableName : null;
+    return this.entregadorTableName;
+  }
+
+  private async getTableColumns(tableName: string) {
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+      `,
+      tableName,
+    );
+
+    return new Set(rows.map((row) => String(row.column_name || "")));
+  }
+
+  private pickColumn(columns: Set<string>, candidates: string[]) {
+    return candidates.find((item) => columns.has(item)) || null;
+  }
+
   async listarVendedores() {
     return (prisma as any).vendedor.findMany({ orderBy: { nome: "asc" } });
   }
@@ -115,26 +159,102 @@ export class CadastrosAuxiliaresService {
   }
 
   async listarEntregadores() {
-    return (prisma as any).entregador.findMany({
-      include: { veiculo: true },
-      orderBy: { nome: "asc" },
-    });
+    const delegate = (prisma as any).entregador;
+    if (delegate?.findMany) {
+      return delegate.findMany({
+        include: { veiculo: true },
+        orderBy: { nome: "asc" },
+      });
+    }
+
+    const table = await this.resolveEntregadorTableName();
+    if (!table) return [];
+
+    const columns = await this.getTableColumns(table);
+    const veiculoCol = this.pickColumn(columns, ["veiculoId", "veiculo_id"]);
+
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT id, nome, email, telefone, cpf, endereco, ${veiculoCol || "NULL"} AS veiculo_id, ativo
+      FROM ${table}
+      ORDER BY nome ASC
+      LIMIT 500
+      `,
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      nome: row.nome,
+      email: row.email,
+      telefone: row.telefone,
+      cpf: row.cpf,
+      endereco: row.endereco,
+      veiculoId: row.veiculo_id || null,
+      ativo: Boolean(row.ativo),
+      veiculo: null,
+    }));
   }
 
   async criarEntregador(data: EntregadorInput) {
     const parsed = entregadorSchema.parse(data);
-    return (prisma as any).entregador.create({
-      data: {
-        nome: parsed.nome.trim(),
-        email: emptyToNull(parsed.email),
-        telefone: emptyToNull(parsed.telefone),
-        cpf: emptyToNull(parsed.cpf),
-        endereco: emptyToNull(parsed.endereco),
-        veiculoId: emptyToNull(parsed.veiculoId),
-        ativo: parsed.ativo ?? true,
-      },
-      include: { veiculo: true },
-    });
+    const delegate = (prisma as any).entregador;
+    if (delegate?.create) {
+      return delegate.create({
+        data: {
+          nome: parsed.nome.trim(),
+          email: emptyToNull(parsed.email),
+          telefone: emptyToNull(parsed.telefone),
+          cpf: emptyToNull(parsed.cpf),
+          endereco: emptyToNull(parsed.endereco),
+          veiculoId: emptyToNull(parsed.veiculoId),
+          ativo: parsed.ativo ?? true,
+        },
+        include: { veiculo: true },
+      });
+    }
+
+    const table = await this.resolveEntregadorTableName();
+    if (!table) throw new Error("tabela_entregador_nao_encontrada");
+
+    const columns = await this.getTableColumns(table);
+    const payload: Record<string, any> = {
+      id: crypto.randomUUID(),
+      nome: parsed.nome.trim(),
+      email: emptyToNull(parsed.email),
+      telefone: emptyToNull(parsed.telefone),
+      cpf: emptyToNull(parsed.cpf),
+      endereco: emptyToNull(parsed.endereco),
+      ativo: parsed.ativo ?? true,
+    };
+
+    const veiculoCol = this.pickColumn(columns, ["veiculoId", "veiculo_id"]);
+    if (veiculoCol) {
+      payload[veiculoCol] = emptyToNull(parsed.veiculoId);
+    }
+
+    const fields = Object.keys(payload).filter((key) => columns.has(key));
+    const placeholders = fields.map(() => "?").join(", ");
+    const values = fields.map((key) => payload[key]);
+
+    await prisma.$executeRawUnsafe(
+      `
+      INSERT INTO ${table} (${fields.join(", ")})
+      VALUES (${placeholders})
+      `,
+      ...values,
+    );
+
+    return {
+      id: payload.id,
+      nome: payload.nome,
+      email: payload.email,
+      telefone: payload.telefone,
+      cpf: payload.cpf,
+      endereco: payload.endereco,
+      veiculoId: veiculoCol ? payload[veiculoCol] : null,
+      ativo: Boolean(payload.ativo),
+      veiculo: null,
+    };
   }
 
   async atualizarEntregador(id: string, data: Partial<EntregadorInput>) {
