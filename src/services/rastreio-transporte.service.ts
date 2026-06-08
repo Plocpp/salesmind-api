@@ -219,11 +219,15 @@ export class RastreioTransporteService {
     const delegate = this.getEntregadorDelegate();
 
     if (delegate?.findMany) {
-      return delegate.findMany({
+      const entregadores = await delegate.findMany({
         select: { id: true, nome: true, ativo: true, telefone: true, email: true },
         orderBy: { nome: 'asc' },
         take: 300,
       });
+
+      if (Array.isArray(entregadores) && entregadores.length > 0) {
+        return entregadores;
+      }
     }
 
     const entregadorTable = await this.resolveEntregadorTableName();
