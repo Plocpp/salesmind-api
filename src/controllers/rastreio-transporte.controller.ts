@@ -55,6 +55,12 @@ export class RastreioTransporteController {
     return res.status(201).json(result);
   }
 
+  async gerarCodigoAtivacao(req: AuthRequest, res: Response) {
+    const userId = requireUser(req);
+    const result = await service.gerarCodigoAtivacaoDispositivo(req.body, userId);
+    return res.status(201).json(result);
+  }
+
   async listarDispositivos(req: AuthRequest, res: Response) {
     requireUser(req);
     return res.json(await service.listarDispositivos());
@@ -102,7 +108,11 @@ export class RastreioTransporteController {
     }
   }
 
-  // Endpoints para app mobile (sem JWT de usuario, autenticados por token do dispositivo)
+  // Endpoints para app mobile (ativacao por codigo ou sessao autenticada por token do dispositivo)
+  async ativarDispositivoMobile(req: AuthRequest, res: Response) {
+    return res.status(201).json(await service.ativarDispositivoPorCodigo(req.body));
+  }
+
   async iniciarSessaoMobile(req: AuthRequest, res: Response) {
     const token = getBearerToken(req);
     return res.status(201).json(await service.iniciarSessaoMobile(token, req.body));

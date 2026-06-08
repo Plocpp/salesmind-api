@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Platform,
     Pressable,
     SafeAreaView,
     ScrollView,
@@ -11,6 +12,7 @@ import {
     View,
 } from 'react-native';
 import {
+    ativarDispositivo,
     atualizarNotaAtiva,
     finalizarRastreio,
     iniciarRastreio,
@@ -36,6 +38,8 @@ export default function App() {
   const [carregando, setCarregando] = useState(true);
   const [processando, setProcessando] = useState(false);
 
+  const [codigoAtivacao, setCodigoAtivacao] = useState('');
+  const [nomeDispositivo, setNomeDispositivo] = useState('');
   const [entregadorId, setEntregadorId] = useState('');
   const [vendaId, setVendaId] = useState('');
   const [token, setToken] = useState('');
@@ -110,16 +114,37 @@ export default function App() {
 
   function validarInicio() {
     if (!entregadorId.trim()) {
-      Alert.alert('Campo obrigatorio', 'Informe o Entregador ID.');
+      Alert.alert('Campo obrigatorio', 'Ative o aparelho ou informe o Entregador ID.');
       return false;
     }
 
     if (!token.trim()) {
-      Alert.alert('Campo obrigatorio', 'Informe o token do dispositivo.');
+      Alert.alert('Campo obrigatorio', 'Ative o aparelho ou informe o token do dispositivo.');
       return false;
     }
 
     return true;
+  }
+
+  async function ativarNoAparelho() {
+    if (!codigoAtivacao.trim()) {
+      Alert.alert('Campo obrigatorio', 'Informe o codigo de ativacao enviado pela administracao.');
+      return;
+    }
+
+    await withSafeAction('ativar-aparelho', async () => {
+      const ativacao = await ativarDispositivo({
+        codigo: codigoAtivacao,
+        nomeDispositivo,
+        plataforma: Platform.OS === 'ios' ? 'IOS' : 'ANDROID',
+      });
+      setToken(ativacao.token);
+      setEntregadorId(ativacao.entregadorId);
+      setCodigoAtivacao('');
+      if (ativacao.entregadorNome) {
+        Alert.alert('Aparelho ativado', `Entregador vinculado: ${ativacao.entregadorNome}`);
+      }
+    });
   }
 
   useEffect(() => {
@@ -218,7 +243,65 @@ export default function App() {
             gap: 10,
           }}
         >
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>Parametros</Text>
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>Ativacao e parametros</Text>
+
+          <Text style={{ color: colors.muted, lineHeight: 20 }}>
+            Use o codigo curto enviado pela administracao para ativar este aparelho. O preenchimento manual fica apenas como contingencia.
+          </Text>
+
+          <TextInput
+            value={codigoAtivacao}
+            onChangeText={setCodigoAtivacao}
+            placeholder="Codigo de ativacao"
+            placeholderTextColor={colors.muted}
+            autoCapitalize="characters"
+            style={{
+              backgroundColor: '#0f262b',
+              color: colors.text,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: '#29555c',
+              paddingHorizontal: 12,
+              height: 46,
+            }}
+          />
+
+          <TextInput
+            value={nomeDispositivo}
+            onChangeText={setNomeDispositivo}
+            placeholder="Nome do aparelho (opcional)"
+            placeholderTextColor={colors.muted}
+            style={{
+              backgroundColor: '#0f262b',
+              color: colors.text,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: '#29555c',
+              paddingHorizontal: 12,
+              height: 46,
+            }}
+          />
+
+          <Pressable
+            onPress={ativarNoAparelho}
+            disabled={processando}
+            style={{
+              height: 48,
+              borderRadius: 12,
+              backgroundColor: '#2f6f73',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: processando ? 0.7 : 1,
+            }}
+          >
+            <Text style={{ color: colors.text, fontWeight: '800' }}>
+              {processando ? 'Ativando...' : 'Ativar aparelho por codigo'}
+            </Text>
+          </Pressable>
+
+          <Text style={{ color: colors.muted, fontSize: 12 }}>
+            Contingencia tecnica: se necessario, voce ainda pode preencher token e Entregador ID manualmente abaixo.
+          </Text>
 
           <TextInput
             value={entregadorId}

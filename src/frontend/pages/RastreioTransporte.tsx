@@ -64,6 +64,13 @@ type ResumoRastreio = {
   checkedAt: string;
 };
 
+type CodigoAtivacao = {
+  codigo: string;
+  expiraEm: string;
+  entregadorId: string;
+  instrucoes?: string;
+};
+
 const panel: React.CSSProperties = {
   background: '#fff',
   border: '1px solid #d9e2e1',
@@ -202,6 +209,7 @@ export default function RastreioTransporte() {
   const [erro, setErro] = useState('');
   const [resumo, setResumo] = useState<ResumoRastreio | null>(null);
   const [novoTokenGerado, setNovoTokenGerado] = useState<string | null>(null);
+  const [novoCodigoAtivacao, setNovoCodigoAtivacao] = useState<CodigoAtivacao | null>(null);
   const [form, setForm] = useState({
     entregadorId: '',
     nomeDispositivo: '',
@@ -309,6 +317,7 @@ export default function RastreioTransporte() {
     try {
       setSaving(true);
       setNovoTokenGerado(null);
+      setNovoCodigoAtivacao(null);
       const response = await api.post('/rastreio/dispositivos', {
         entregadorId: form.entregadorId,
         nomeDispositivo: form.nomeDispositivo || undefined,
@@ -321,6 +330,31 @@ export default function RastreioTransporte() {
     } catch (error) {
       console.error(error);
       alert(parseApiError(error, 'Nao foi possivel gerar token de rastreio.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const gerarCodigoAtivacao = async () => {
+    if (!form.entregadorId) {
+      alert('Selecione um entregador para gerar o codigo de ativacao.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setNovoTokenGerado(null);
+      const response = await api.post('/rastreio/dispositivos/ativacao', {
+        entregadorId: form.entregadorId,
+        nomeDispositivo: form.nomeDispositivo || undefined,
+        plataforma: form.plataforma,
+        deviceId: form.deviceId || undefined,
+      }, token);
+
+      setNovoCodigoAtivacao(response || null);
+    } catch (error) {
+      console.error(error);
+      alert(parseApiError(error, 'Nao foi possivel gerar codigo de ativacao.'));
     } finally {
       setSaving(false);
     }
@@ -553,9 +587,9 @@ export default function RastreioTransporte() {
       </section>
 
       <section style={{ ...panel, padding: 14, display: 'grid', gap: 10 }}>
-        <h3 style={{ margin: '0 0 2px', color: '#243332' }}>Gerar token de dispositivo</h3>
+        <h3 style={{ margin: '0 0 2px', color: '#243332' }}>Ativacao do aparelho do entregador</h3>
         <div style={{ color: '#647674', fontSize: 12 }}>
-          Gere o token e informe no app instalado no smartphone do entregador.
+          Preferencialmente gere um codigo curto e envie para o aparelho. O token manual fica como contingencia tecnica.
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8 }}>
@@ -597,11 +631,23 @@ export default function RastreioTransporte() {
           />
         </div>
 
-        <div>
-          <button onClick={gerarTokenDispositivo} style={buttonPrimary} disabled={saving}>
-            {saving ? 'Gerando...' : 'Gerar token'}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={gerarCodigoAtivacao} style={buttonPrimary} disabled={saving}>
+            {saving ? 'Gerando...' : 'Gerar codigo de ativacao'}
+          </button>
+          <button onClick={gerarTokenDispositivo} style={buttonSecondary} disabled={saving}>
+            {saving ? 'Gerando...' : 'Gerar token manual'}
           </button>
         </div>
+
+        {novoCodigoAtivacao && (
+          <div style={{ border: '1px solid #c7d8ef', background: '#eef5ff', borderRadius: 8, padding: 10, color: '#1f3d68', display: 'grid', gap: 6 }}>
+            <div style={{ fontWeight: 800 }}>Codigo de ativacao para o entregador</div>
+            <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: '0.14em' }}>{novoCodigoAtivacao.codigo}</div>
+            <div style={{ fontSize: 12 }}>Valido ate {formatDateTime(novoCodigoAtivacao.expiraEm)}</div>
+            <div style={{ fontSize: 12 }}>{novoCodigoAtivacao.instrucoes || 'Abra o app mobile e informe este codigo para ativar o aparelho.'}</div>
+          </div>
+        )}
 
         {novoTokenGerado && (
           <div style={{ border: '1px solid #b7d8ce', background: '#ecf8f4', borderRadius: 8, padding: 10, color: '#214f47' }}>

@@ -20,6 +20,13 @@ export type IniciarSessaoInput = {
   token: string;
 };
 
+export type AtivarDispositivoInput = {
+  codigo: string;
+  nomeDispositivo?: string;
+  plataforma?: 'ANDROID' | 'IOS' | 'OUTRO';
+  deviceId?: string;
+};
+
 type PontoPayload = {
   latitude: number;
   longitude: number;
@@ -53,13 +60,18 @@ async function loadLocationModule() {
   }
 }
 
-async function post(path: string, token: string, payload: unknown) {
+async function post(path: string, token: string | null, payload: unknown) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -169,6 +181,30 @@ async function iniciarWatcherLocal(token: string, sessaoId: string) {
 async function obterNotaAtiva() {
   const nota = await SecureStore.getItemAsync(STORAGE_KEYS.notaAtual);
   return (nota || '').trim();
+}
+
+export async function ativarDispositivo(input: AtivarDispositivoInput) {
+  const response = await post('/rastreio/mobile/ativar', null, {
+    codigo: input.codigo.trim(),
+    nomeDispositivo: input.nomeDispositivo || undefined,
+    plataforma: input.plataforma || 'ANDROID',
+    deviceId: input.deviceId || undefined,
+  });
+
+  const token = String(response?.token || '');
+  const entregadorId = String(response?.entregadorId || '');
+  if (!token || !entregadorId) {
+    throw new Error('Resposta invalida ao ativar dispositivo.');
+  }
+
+  await SecureStore.setItemAsync(STORAGE_KEYS.token, token);
+  await SecureStore.setItemAsync(STORAGE_KEYS.entregadorId, entregadorId);
+  return {
+    token,
+    entregadorId,
+    entregadorNome: String(response?.entregadorNome || ''),
+    dispositivoId: String(response?.id || ''),
+  };
 }
 
 export async function iniciarRastreio(input: IniciarSessaoInput) {

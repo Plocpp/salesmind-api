@@ -13,6 +13,21 @@ const criarDispositivoSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const gerarCodigoAtivacaoSchema = z.object({
+  entregadorId: z.string().min(1),
+  nomeDispositivo: z.string().max(120).optional(),
+  plataforma: z.enum(['ANDROID', 'IOS', 'OUTRO']).default('ANDROID'),
+  deviceId: z.string().max(120).optional(),
+  validadeMinutos: z.number().int().min(5).max(1440).optional(),
+});
+
+const ativarDispositivoSchema = z.object({
+  codigo: z.string().min(4).max(12),
+  nomeDispositivo: z.string().max(120).optional(),
+  plataforma: z.enum(['ANDROID', 'IOS', 'OUTRO']).default('ANDROID'),
+  deviceId: z.string().max(120).optional(),
+});
+
 const iniciarSessaoSchema = z.object({
   vendaId: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -39,6 +54,7 @@ const finalizarSessaoSchema = z.object({
 const MAX_FUTURO_MS = 5 * 60 * 1000;
 const MAX_PASSADO_MS = 7 * 24 * 60 * 60 * 1000;
 const STALE_MINUTES_DEFAULT = 5;
+const ACTIVATION_CODE_MINUTES_DEFAULT = 30;
 
 const lerRawJson = (raw: unknown) => {
   if (!raw) return null;
@@ -91,6 +107,49 @@ export class RastreioTransporteService {
 
   private gerarToken() {
     return `trk_${randomBytes(24).toString('hex')}`;
+  }
+
+  private gerarCodigoAtivacao() {
+    return String(Math.floor(100000 + Math.random() * 900000));
+  }
+
+  private async createDeviceRecord(input: {
+    entregadorId: string;
+    nomeDispositivo?: string;
+    plataforma: 'ANDROID' | 'IOS' | 'OUTRO';
+    deviceId?: string;
+    metadata?: Record<string, unknown>;
+    userId?: string | null;
+  }) {
+    const id = randomUUID();
+    const token = this.gerarToken();
+    const hash = this.tokenHash(token);
+
+    await prisma.$executeRawUnsafe(
+      `
+      INSERT INTO rastreio_dispositivo (
+        id, entregador_id, nome_dispositivo, plataforma, device_id, token_hash, ativo, metadata, created_by_user_id
+      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+      `,
+      id,
+      input.entregadorId,
+      input.nomeDispositivo || null,
+      input.plataforma,
+      input.deviceId || null,
+      hash,
+      input.metadata ? JSON.stringify(input.metadata) : null,
+      input.userId || null,
+    );
+
+    return {
+      id,
+      token,
+      entregadorId: input.entregadorId,
+      plataforma: input.plataforma,
+      nomeDispositivo: input.nomeDispositivo || null,
+      deviceId: input.deviceId || null,
+      observacao: 'Guarde este token com seguranca. Ele nao sera exibido novamente.',
+    };
   }
 
   private async ensureSchema() {
@@ -149,6 +208,24 @@ export class RastreioTransporteService {
         raw JSON NULL,
         created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
         INDEX idx_rastreio_ponto_sessao (sessao_id, registrado_em)
+      )
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS rastreio_ativacao_mobile (
+        id VARCHAR(36) PRIMARY KEY,
+        codigo VARCHAR(12) NOT NULL UNIQUE,
+        entregador_id VARCHAR(191) NOT NULL,
+        nome_dispositivo VARCHAR(120) NULL,
+        plataforma VARCHAR(40) NOT NULL,
+        device_id VARCHAR(120) NULL,
+        metadata JSON NULL,
+        expires_at DATETIME(3) NOT NULL,
+        used_at DATETIME(3) NULL,
+        created_by_user_id VARCHAR(191) NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        INDEX idx_rastreio_ativacao_entregador (entregador_id, expires_at),
+        INDEX idx_rastreio_ativacao_codigo (codigo, used_at)
       )
     `);
 
@@ -271,34 +348,105 @@ export class RastreioTransporteService {
     const payload = criarDispositivoSchema.parse(data);
     await this.validarEntregador(payload.entregadorId);
 
-    const id = randomUUID();
-    const token = this.gerarToken();
-    const hash = this.tokenHash(token);
+    return this.createDeviceRecord({
+      entregadorId: payload.entregadorId,
+      nomeDispositivo: payload.nomeDispositivo,
+      plataforma: payload.plataforma,
+      deviceId: payload.deviceId,
+      metadata: payload.metadata,
+      userId,
+    });
+  }
+
+  async gerarCodigoAtivacaoDispositivo(data: unknown, userId: string) {
+    await this.ensureSchema();
+    const payload = gerarCodigoAtivacaoSchema.parse(data);
+    await this.validarEntregador(payload.entregadorId);
 
     await prisma.$executeRawUnsafe(
       `
-      INSERT INTO rastreio_dispositivo (
-        id, entregador_id, nome_dispositivo, plataforma, device_id, token_hash, ativo, metadata, created_by_user_id
-      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+      UPDATE rastreio_ativacao_mobile
+      SET used_at = COALESCE(used_at, NOW(3))
+      WHERE entregador_id = ?
+        AND used_at IS NULL
+        AND expires_at > NOW(3)
       `,
-      id,
+      payload.entregadorId,
+    );
+
+    const codigo = this.gerarCodigoAtivacao();
+    const expiresAt = new Date(Date.now() + (payload.validadeMinutos || ACTIVATION_CODE_MINUTES_DEFAULT) * 60 * 1000);
+
+    await prisma.$executeRawUnsafe(
+      `
+      INSERT INTO rastreio_ativacao_mobile (
+        id, codigo, entregador_id, nome_dispositivo, plataforma, device_id, metadata, expires_at, created_by_user_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      randomUUID(),
+      codigo,
       payload.entregadorId,
       payload.nomeDispositivo || null,
       payload.plataforma,
       payload.deviceId || null,
-      hash,
-      payload.metadata ? JSON.stringify(payload.metadata) : null,
+      null,
+      expiresAt,
       userId,
     );
 
     return {
-      id,
-      token,
+      codigo,
       entregadorId: payload.entregadorId,
       plataforma: payload.plataforma,
       nomeDispositivo: payload.nomeDispositivo || null,
       deviceId: payload.deviceId || null,
-      observacao: 'Guarde este token com seguranca. Ele nao sera exibido novamente.',
+      expiraEm: expiresAt.toISOString(),
+      instrucoes: 'Informe este codigo no app mobile do entregador para ativar o aparelho sem copiar token manualmente.',
+    };
+  }
+
+  async ativarDispositivoPorCodigo(data: unknown) {
+    await this.ensureSchema();
+    const payload = ativarDispositivoSchema.parse(data);
+
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT id, codigo, entregador_id, nome_dispositivo, plataforma, device_id, created_by_user_id, expires_at, used_at
+      FROM rastreio_ativacao_mobile
+      WHERE codigo = ?
+      LIMIT 1
+      `,
+      payload.codigo.trim(),
+    );
+
+    const ativacao = rows[0];
+    if (!ativacao) throw new Error('Codigo de ativacao invalido.');
+    if (ativacao.used_at) throw new Error('Codigo de ativacao ja utilizado.');
+    if (ativacao.expires_at && new Date(ativacao.expires_at).getTime() <= Date.now()) {
+      throw new Error('Codigo de ativacao expirado. Gere um novo codigo no painel.');
+    }
+
+    const entregador = await this.validarEntregador(String(ativacao.entregador_id));
+    const dispositivo = await this.createDeviceRecord({
+      entregadorId: String(ativacao.entregador_id),
+      nomeDispositivo: payload.nomeDispositivo || ativacao.nome_dispositivo || undefined,
+      plataforma: payload.plataforma || ativacao.plataforma || 'ANDROID',
+      deviceId: payload.deviceId || ativacao.device_id || undefined,
+      userId: ativacao.created_by_user_id ? String(ativacao.created_by_user_id) : null,
+    });
+
+    await prisma.$executeRawUnsafe(
+      `
+      UPDATE rastreio_ativacao_mobile
+      SET used_at = NOW(3)
+      WHERE id = ?
+      `,
+      String(ativacao.id),
+    );
+
+    return {
+      ...dispositivo,
+      entregadorNome: entregador.nome,
     };
   }
 
