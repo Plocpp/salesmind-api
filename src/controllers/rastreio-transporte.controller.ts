@@ -1,8 +1,10 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
+import { CadastrosAuxiliaresService } from '../services/cadastros-auxiliares.service';
 import { RastreioTransporteService } from '../services/rastreio-transporte.service';
 
 const service = new RastreioTransporteService();
+const cadastrosService = new CadastrosAuxiliaresService();
 
 const getBearerToken = (req: AuthRequest) => {
   const auth = req.headers.authorization || '';
@@ -30,7 +32,21 @@ const requireUser = (req: AuthRequest) => {
 export class RastreioTransporteController {
   async listarEntregadores(req: AuthRequest, res: Response) {
     requireUser(req);
-    return res.json(await service.listarEntregadores());
+    const entregadores = await service.listarEntregadores();
+    if (Array.isArray(entregadores) && entregadores.length > 0) {
+      return res.json(entregadores);
+    }
+
+    const fallback = await cadastrosService.listarEntregadores();
+    return res.json(
+      (fallback || []).map((item: any) => ({
+        id: item.id,
+        nome: item.nome,
+        ativo: Boolean(item.ativo),
+        telefone: item.telefone || null,
+        email: item.email || null,
+      }))
+    );
   }
 
   async criarDispositivo(req: AuthRequest, res: Response) {
