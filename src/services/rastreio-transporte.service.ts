@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { z } from 'zod';
-
-const prisma = new PrismaClient();
+import prisma from '../database/prisma';
 
 const criarDispositivoSchema = z.object({
   entregadorId: z.string().min(1),
