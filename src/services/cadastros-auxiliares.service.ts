@@ -44,6 +44,29 @@ function emptyToNull(value?: string | null) {
 export class CadastrosAuxiliaresService {
   private entregadorTableName: string | null | undefined = undefined;
 
+  private async ensureEntregadorTable() {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS entregador (
+        id VARCHAR(191) PRIMARY KEY,
+        nome VARCHAR(191) NOT NULL,
+        email VARCHAR(191) NULL,
+        telefone VARCHAR(60) NULL,
+        cpf VARCHAR(60) NULL,
+        endereco TEXT NULL,
+        veiculoId VARCHAR(191) NULL,
+        ativo TINYINT(1) NOT NULL DEFAULT 1,
+        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        INDEX idx_entregador_nome (nome),
+        INDEX idx_entregador_email (email),
+        INDEX idx_entregador_ativo (ativo)
+      )
+    `);
+
+    this.entregadorTableName = "entregador";
+    return this.entregadorTableName;
+  }
+
   private async resolveEntregadorTableName() {
     if (this.entregadorTableName !== undefined) return this.entregadorTableName;
 
@@ -64,6 +87,11 @@ export class CadastrosAuxiliaresService {
 
     const tableName = rows[0]?.table_name ? String(rows[0].table_name) : null;
     this.entregadorTableName = /^[a-zA-Z0-9_]+$/.test(tableName || "") ? tableName : null;
+
+    if (!this.entregadorTableName) {
+      return this.ensureEntregadorTable();
+    }
+
     return this.entregadorTableName;
   }
 
