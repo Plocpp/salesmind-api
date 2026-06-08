@@ -106,7 +106,14 @@ export class CadastrosAuxiliaresService {
       tableName,
     );
 
-    return new Set(rows.map((row) => String(row.column_name || "")));
+    const columns = new Set<string>();
+    rows.forEach((row) => {
+      const name = String(row.column_name || "").trim();
+      if (!name) return;
+      columns.add(name);
+      columns.add(name.toLowerCase());
+    });
+    return columns;
   }
 
   private pickColumn(columns: Set<string>, candidates: string[]) {
