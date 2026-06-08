@@ -19,6 +19,8 @@ export type CadastroAcessoInput = {
 const TABELA_ACESSO = "acesso_restrito";
 const TABELA_AUDITORIA = "acesso_lgpd_auditoria";
 const TABELA_PERFIL_HIERARQUIA = "perfil_hierarquia_custom";
+const PERFIL_ENTREGADOR_NATIVO_ID = "entregador-transporte";
+const AREA_RASTREIO_TRANSPORTE = "rastreio-transporte";
 
 const ROLE_BASE_OPTIONS = ["ADMIN", "GERENTE", "VENDEDOR", "CAIXA", "ESTOQUISTA", "USER"] as const;
 type RoleBase = (typeof ROLE_BASE_OPTIONS)[number];
@@ -138,6 +140,15 @@ const PERFIS_HIERARQUIA: PerfilHierarquia[] = [
     roleBase: "USER",
     areasPadrao: ["dashboard", "agenda", "clientes"],
     dadosPermitidosPadrao: ["clientes-basico"],
+  },
+  {
+    id: PERFIL_ENTREGADOR_NATIVO_ID,
+    nome: "Entregador",
+    descricao: "Perfil nativo vinculado ao transporte de rastreamento e operação de entrega.",
+    nivel: 40,
+    roleBase: "USER",
+    areasPadrao: ["dashboard", AREA_RASTREIO_TRANSPORTE],
+    dadosPermitidosPadrao: ["rastreio", "entregas"],
   },
 ];
 
@@ -355,8 +366,9 @@ class AcessosService {
   }
 
   private perfilRepresentaEntregador(perfil: PerfilHierarquia) {
+    if (perfil.id === PERFIL_ENTREGADOR_NATIVO_ID) return true;
     const nome = String(perfil.nome || "").trim().toLowerCase();
-    const temAreaRastreio = this.normalizeAreas(perfil.areasPadrao || []).includes("rastreio-transporte");
+    const temAreaRastreio = this.normalizeAreas(perfil.areasPadrao || []).includes(AREA_RASTREIO_TRANSPORTE);
     return nome.includes("entregador") || (perfil.roleBase === "USER" && temAreaRastreio);
   }
 
@@ -500,6 +512,10 @@ class AcessosService {
     if (!descricao) throw new Error("descricao_perfil_obrigatoria");
     if (!Number.isFinite(nivel) || nivel <= 0) throw new Error("nivel_perfil_invalido");
 
+    if (nome.toLowerCase() === "entregador") {
+      throw new Error("perfil_entregador_e_nativo");
+    }
+
     const areasPadrao = roleBase === "ADMIN" ? ["*"] : this.normalizeAreas(input.areasPadrao || []);
     if (roleBase !== "ADMIN" && areasPadrao.length === 0) {
       throw new Error("areas_padrao_obrigatorias");
@@ -619,6 +635,13 @@ class AcessosService {
         finalidade: "controle_hierarquico_de_acesso",
         justificativa: `Perfil hierarquico inicial ${perfil.nome}`,
         autorUserId: input.autorUserId,
+      });
+    }
+
+    if (this.perfilRepresentaEntregador(perfil)) {
+      await this.sincronizarCadastroEntregador({
+        nome: novoUsuario.nome,
+        email: novoUsuario.email,
       });
     }
 
