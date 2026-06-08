@@ -216,6 +216,29 @@ class AcessosService {
   private _tablesReady = false;
   private entregadorTableName: string | null | undefined = undefined;
 
+  private async ensureEntregadorTable() {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS entregador (
+        id VARCHAR(191) PRIMARY KEY,
+        nome VARCHAR(191) NOT NULL,
+        email VARCHAR(191) NULL,
+        telefone VARCHAR(60) NULL,
+        cpf VARCHAR(60) NULL,
+        endereco TEXT NULL,
+        veiculoId VARCHAR(191) NULL,
+        ativo TINYINT(1) NOT NULL DEFAULT 1,
+        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        INDEX idx_entregador_nome (nome),
+        INDEX idx_entregador_email (email),
+        INDEX idx_entregador_ativo (ativo)
+      )
+    `);
+
+    this.entregadorTableName = "entregador";
+    return this.entregadorTableName;
+  }
+
   private normalizeRoleBase(role?: string): RoleBase {
     const normalized = String(role || "").trim().toUpperCase() as RoleBase;
     if (!ROLE_BASE_OPTIONS.includes(normalized)) {
@@ -267,7 +290,74 @@ class AcessosService {
 
     const tableName = rows[0]?.table_name ? String(rows[0].table_name) : null;
     this.entregadorTableName = /^[a-zA-Z0-9_]+$/.test(tableName || "") ? tableName : null;
+
+    if (!this.entregadorTableName) {
+      return this.ensureEntregadorTable();
+    }
+
     return this.entregadorTableName;
+  }
+
+  private async usuarioTemPerfilEntregadorNativo(userId: string) {
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT id
+      FROM ${TABELA_ACESSO}
+      WHERE user_id = ?
+        AND status = 'ATIVO'
+        AND nome_acesso = ?
+      LIMIT 1
+      `,
+      userId,
+      `perfil-hierarquia:${PERFIL_ENTREGADOR_NATIVO_ID}`,
+    );
+
+    return Boolean(rows[0]);
+  }
+
+  private async repararConsistenciaEntregadorNativo() {
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT a.id AS acesso_id, a.user_id, a.areas_json, u.nome, u.email, u.role
+      FROM ${TABELA_ACESSO} a
+      INNER JOIN Usuario u ON u.id = a.user_id
+      WHERE a.status = 'ATIVO'
+        AND a.nome_acesso = ?
+      LIMIT 500
+      `,
+      `perfil-hierarquia:${PERFIL_ENTREGADOR_NATIVO_ID}`,
+    );
+
+    for (const row of rows) {
+      const userId = String(row.user_id || "");
+      const nome = String(row.nome || "").trim();
+      const email = String(row.email || "").trim().toLowerCase();
+      const role = String(row.role || "").toUpperCase();
+      const areas = this.normalizeAreas(parseStoredStringList(row.areas_json));
+
+      if (!areas.includes(AREA_RASTREIO_TRANSPORTE)) {
+        const novasAreas = Array.from(new Set([...areas, AREA_RASTREIO_TRANSPORTE]));
+        await prisma.$executeRawUnsafe(
+          `
+          UPDATE ${TABELA_ACESSO}
+          SET areas_json = ?, updated_at = ?
+          WHERE id = ?
+          `,
+          JSON.stringify(novasAreas),
+          new Date(),
+          String(row.acesso_id || ""),
+        );
+      }
+
+      if (role !== "USER" && userId) {
+        await prisma.usuario.update({
+          where: { id: userId },
+          data: { role: "USER" },
+        });
+      }
+
+      await this.sincronizarCadastroEntregador({ nome, email });
+    }
   }
 
   private async resolverPerfilHierarquia(perfilId: string) {
@@ -686,9 +776,15 @@ class AcessosService {
     const baseAreas = this.getAreasPadraoPorRole(usuario.role);
     const extras = this.normalizeAreas(input.areasExtras || []);
     const removidas = this.normalizeAreas(input.areasRemovidas || []);
+    const entregadorNativo = await this.usuarioTemPerfilEntregadorNativo(usuario.id);
+
+    if (entregadorNativo && removidas.includes(AREA_RASTREIO_TRANSPORTE)) {
+      throw new Error("perfil_entregador_exige_area_rastreio");
+    }
 
     const mergedAreas = new Set<string>([...this.normalizeAreas(baseAreas), ...extras]);
     removidas.forEach((item) => mergedAreas.delete(item));
+    if (entregadorNativo) mergedAreas.add(AREA_RASTREIO_TRANSPORTE);
     const areasFinal = Array.from(mergedAreas);
 
     if (areasFinal.length === 0) {
@@ -701,6 +797,9 @@ class AcessosService {
     const dadosFinal = Array.from(new Set([...this.normalizeDadosPermitidos(baseDados), ...dadosExtras])).filter(
       (item) => !dadosRemovidos.includes(item)
     );
+    if (entregadorNativo && !dadosFinal.includes("rastreio")) {
+      dadosFinal.push("rastreio");
+    }
 
     await prisma.$executeRawUnsafe(
       `
@@ -888,6 +987,7 @@ class AcessosService {
 
   async listarFuncionariosHierarquia() {
     await this.ensureTables();
+    await this.repararConsistenciaEntregadorNativo();
 
     const usuarios = await prisma.usuario.findMany({
       select: {
