@@ -1,6 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { z } from 'zod';
 import prisma from '../database/prisma';
+import { CadastrosAuxiliaresService } from './cadastros-auxiliares.service';
+
+const cadastrosAuxiliaresService = new CadastrosAuxiliaresService();
 
 const criarDispositivoSchema = z.object({
   entregadorId: z.string().min(1),
@@ -161,6 +164,18 @@ export class RastreioTransporteService {
         where: { id: entregadorId },
         select: { id: true, nome: true, ativo: true },
       });
+    }
+
+    if (!entregador) {
+      const fallbackList = await cadastrosAuxiliaresService.listarEntregadores();
+      const fallbackMatch = (fallbackList || []).find((item: any) => item?.id === entregadorId);
+      if (fallbackMatch) {
+        entregador = {
+          id: String(fallbackMatch.id),
+          nome: String(fallbackMatch.nome || ''),
+          ativo: Boolean(fallbackMatch.ativo),
+        };
+      }
     }
 
     if (!entregador) {
