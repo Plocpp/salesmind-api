@@ -28,6 +28,11 @@ router.put(
 	authorizeRole(["ADMIN"]),
 	acessosController.atualizarCadastroHierarquia
 );
+router.post(
+	"/hierarquia/entregadores/reconciliar",
+	authorizeRole(["ADMIN"]),
+	acessosController.reconciliarEntregadoresNativos
+);
 
 router.get("/", authorizeRole(["ADMIN", "GERENTE"]), acessosController.listarAcessos);
 router.post("/", authorizeRole(["ADMIN", "GERENTE"]), acessosController.criarAcesso);

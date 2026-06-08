@@ -316,6 +316,14 @@ class AcessosService {
   }
 
   private async repararConsistenciaEntregadorNativo() {
+    const report = {
+      analisados: 0,
+      acessosAtualizados: 0,
+      rolesCorrigidas: 0,
+      entregadoresSincronizados: 0,
+      erros: 0,
+    };
+
     const rows = await prisma.$queryRawUnsafe<Array<any>>(
       `
       SELECT a.id AS acesso_id, a.user_id, a.areas_json, u.nome, u.email, u.role
@@ -329,35 +337,55 @@ class AcessosService {
     );
 
     for (const row of rows) {
-      const userId = String(row.user_id || "");
-      const nome = String(row.nome || "").trim();
-      const email = String(row.email || "").trim().toLowerCase();
-      const role = String(row.role || "").toUpperCase();
-      const areas = this.normalizeAreas(parseStoredStringList(row.areas_json));
+      report.analisados += 1;
 
-      if (!areas.includes(AREA_RASTREIO_TRANSPORTE)) {
-        const novasAreas = Array.from(new Set([...areas, AREA_RASTREIO_TRANSPORTE]));
-        await prisma.$executeRawUnsafe(
-          `
-          UPDATE ${TABELA_ACESSO}
-          SET areas_json = ?, updated_at = ?
-          WHERE id = ?
-          `,
-          JSON.stringify(novasAreas),
-          new Date(),
-          String(row.acesso_id || ""),
-        );
+      try {
+        const userId = String(row.user_id || "");
+        const nome = String(row.nome || "").trim();
+        const email = String(row.email || "").trim().toLowerCase();
+        const role = String(row.role || "").toUpperCase();
+        const areas = this.normalizeAreas(parseStoredStringList(row.areas_json));
+
+        if (!areas.includes(AREA_RASTREIO_TRANSPORTE)) {
+          const novasAreas = Array.from(new Set([...areas, AREA_RASTREIO_TRANSPORTE]));
+          await prisma.$executeRawUnsafe(
+            `
+            UPDATE ${TABELA_ACESSO}
+            SET areas_json = ?, updated_at = ?
+            WHERE id = ?
+            `,
+            JSON.stringify(novasAreas),
+            new Date(),
+            String(row.acesso_id || ""),
+          );
+          report.acessosAtualizados += 1;
+        }
+
+        if (role !== "USER" && userId) {
+          await prisma.usuario.update({
+            where: { id: userId },
+            data: { role: "USER" },
+          });
+          report.rolesCorrigidas += 1;
+        }
+
+        await this.sincronizarCadastroEntregador({ nome, email });
+        report.entregadoresSincronizados += 1;
+      } catch {
+        report.erros += 1;
       }
-
-      if (role !== "USER" && userId) {
-        await prisma.usuario.update({
-          where: { id: userId },
-          data: { role: "USER" },
-        });
-      }
-
-      await this.sincronizarCadastroEntregador({ nome, email });
     }
+
+    return report;
+  }
+
+  async reconciliarEntregadoresNativos() {
+    await this.ensureTables();
+    const report = await this.repararConsistenciaEntregadorNativo();
+    return {
+      ...report,
+      executadoEm: new Date().toISOString(),
+    };
   }
 
   private async resolverPerfilHierarquia(perfilId: string) {

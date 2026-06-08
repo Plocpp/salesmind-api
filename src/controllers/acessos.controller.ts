@@ -143,6 +143,19 @@ class AcessosController {
     }
   }
 
+  async reconciliarEntregadoresNativos(req: AuthRequest, res: Response) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ error: "Nao autenticado" });
+      }
+
+      const data = await acessosService.reconciliarEntregadoresNativos();
+      return res.json({ ok: true, reconciliacao: data });
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || "erro_reconciliar_entregadores_nativos" });
+    }
+  }
+
   async criarAcesso(req: AuthRequest, res: Response) {
     try {
       const autorUserId = req.userId || "";
