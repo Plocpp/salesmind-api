@@ -203,6 +203,7 @@ const parseStoredObject = (value: unknown): Record<string, any> => {
 
 class AcessosService {
   private _tablesReady = false;
+  private entregadorTableName: string | null | undefined = undefined;
 
   private normalizeRoleBase(role?: string): RoleBase {
     const normalized = String(role || "").trim().toUpperCase() as RoleBase;
@@ -233,6 +234,29 @@ class AcessosService {
       dadosPermitidosPadrao: parseStoredStringList(row.dados_permitidos_json),
       origem: "CUSTOM" as const,
     }));
+  }
+
+  private async resolveEntregadorTableName() {
+    if (this.entregadorTableName !== undefined) return this.entregadorTableName;
+
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = DATABASE()
+        AND LOWER(table_name) IN ('entregador', 'entregadores')
+      ORDER BY CASE
+        WHEN LOWER(table_name) = 'entregador' THEN 0
+        WHEN LOWER(table_name) = 'entregadores' THEN 1
+        ELSE 2
+      END
+      LIMIT 1
+      `,
+    );
+
+    const tableName = rows[0]?.table_name ? String(rows[0].table_name) : null;
+    this.entregadorTableName = /^[a-zA-Z0-9_]+$/.test(tableName || "") ? tableName : null;
+    return this.entregadorTableName;
   }
 
   private async resolverPerfilHierarquia(perfilId: string) {
@@ -342,7 +366,6 @@ class AcessosService {
     emailAnterior?: string;
   }) {
     const entregadorDelegate = (prisma as any)?.entregador;
-    if (!entregadorDelegate?.findFirst || !entregadorDelegate?.update || !entregadorDelegate?.create) return;
 
     const nome = String(input.nome || "").trim();
     const email = String(input.email || "").trim().toLowerCase();
@@ -350,31 +373,99 @@ class AcessosService {
 
     if (!nome || !email) return;
 
-    const existente = await entregadorDelegate.findFirst({
-      where: {
-        OR: [
-          { email },
-          ...(emailAnterior ? [{ email: emailAnterior }] : []),
-        ],
-      },
-      select: { id: true },
-    });
+    if (entregadorDelegate?.findFirst && entregadorDelegate?.update && entregadorDelegate?.create) {
+      const existente = await entregadorDelegate.findFirst({
+        where: {
+          OR: [
+            { email },
+            ...(emailAnterior ? [{ email: emailAnterior }] : []),
+          ],
+        },
+        select: { id: true },
+      });
 
-    if (existente?.id) {
-      await entregadorDelegate.update({
-        where: { id: existente.id },
-        data: { nome, email, ativo: true },
+      if (existente?.id) {
+        await entregadorDelegate.update({
+          where: { id: existente.id },
+          data: { nome, email, ativo: true },
+        });
+        return;
+      }
+
+      await entregadorDelegate.create({
+        data: {
+          nome,
+          email,
+          ativo: true,
+        },
       });
       return;
     }
 
-    await entregadorDelegate.create({
-      data: {
+    const entregadorTable = await this.resolveEntregadorTableName();
+    if (!entregadorTable) return;
+
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT id
+      FROM ${entregadorTable}
+      WHERE LOWER(email) = ?
+      LIMIT 1
+      `,
+      email,
+    );
+
+    const existenteId = rows[0]?.id ? String(rows[0].id) : null;
+    if (existenteId) {
+      await prisma.$executeRawUnsafe(
+        `
+        UPDATE ${entregadorTable}
+        SET nome = ?, email = ?, ativo = 1
+        WHERE id = ?
+        `,
         nome,
         email,
-        ativo: true,
-      },
-    });
+        existenteId,
+      );
+      return;
+    }
+
+    if (emailAnterior) {
+      const rowsEmailAntigo = await prisma.$queryRawUnsafe<Array<any>>(
+        `
+        SELECT id
+        FROM ${entregadorTable}
+        WHERE LOWER(email) = ?
+        LIMIT 1
+        `,
+        emailAnterior,
+      );
+
+      const existenteEmailAntigoId = rowsEmailAntigo[0]?.id ? String(rowsEmailAntigo[0].id) : null;
+      if (existenteEmailAntigoId) {
+        await prisma.$executeRawUnsafe(
+          `
+          UPDATE ${entregadorTable}
+          SET nome = ?, email = ?, ativo = 1
+          WHERE id = ?
+          `,
+          nome,
+          email,
+          existenteEmailAntigoId,
+        );
+        return;
+      }
+    }
+
+    await prisma.$executeRawUnsafe(
+      `
+      INSERT INTO ${entregadorTable} (id, nome, email, ativo)
+      VALUES (?, ?, ?, 1)
+      `,
+      crypto.randomUUID(),
+      nome,
+      email,
+    );
   }
 
   async listarPerfisHierarquia() {
