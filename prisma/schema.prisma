@@ -96,6 +96,7 @@ model Usuario {
   email String @unique
   senha String
   role  Role   @default(USER)
+  telefone String?
 
   refreshToken String? @db.Text
 

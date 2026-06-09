@@ -6,8 +6,15 @@ import emailService from "./email.service";
 
 const TABELA_PRE_CADASTRO = "saas_pre_cadastro";
 const TABELA_CODIGO_ACESSO = "saas_codigo_acesso";
+const TABELA_CODIGO_AUDITORIA = "saas_codigo_acesso_auditoria";
 
 type TipoCodigoAcesso = "ATIVACAO_PRIMEIRO_ACESSO" | "RECUPERACAO_SENHA";
+const ACCESS_CODE_REGEX = /^\d{6}$/;
+
+const ACCESS_CODE_MAX_ATTEMPTS = Number(process.env.ACCESS_CODE_MAX_ATTEMPTS || 5);
+const ACCESS_CODE_LOCK_MINUTES = Number(process.env.ACCESS_CODE_LOCK_MINUTES || 15);
+const ACCESS_CODE_RESEND_COOLDOWN_SECONDS = Number(process.env.ACCESS_CODE_RESEND_COOLDOWN_SECONDS || 30);
+const ACCESS_CODE_MAX_SENDS_PER_HOUR = Number(process.env.ACCESS_CODE_MAX_SENDS_PER_HOUR || 6);
 
 class OnboardingAcessoService {
   private _tablesReady = false;
@@ -30,6 +37,9 @@ class OnboardingAcessoService {
         expira_em DATETIME(3) NOT NULL,
         usado_em DATETIME(3) NULL,
         tentativas INT NOT NULL DEFAULT 0,
+        bloqueado_ate DATETIME(3) NULL,
+        janela_envio_inicio DATETIME(3) NULL,
+        janela_envio_count INT NOT NULL DEFAULT 1,
         created_at DATETIME(3) NOT NULL,
         updated_at DATETIME(3) NOT NULL,
         INDEX idx_codigo_email_tipo (email, tipo),
@@ -37,6 +47,80 @@ class OnboardingAcessoService {
         INDEX idx_codigo_pre_cadastro (pre_cadastro_id)
       )
     `);
+
+    const columns = await prisma.$queryRawUnsafe<Array<{ column_name: string }>>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+      `,
+      TABELA_CODIGO_ACESSO
+    );
+
+    const existing = new Set(columns.map((item) => String(item.column_name || "").toLowerCase()));
+
+    if (!existing.has("bloqueado_ate")) {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE ${TABELA_CODIGO_ACESSO} ADD COLUMN bloqueado_ate DATETIME(3) NULL`
+      );
+    }
+
+    if (!existing.has("janela_envio_inicio")) {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE ${TABELA_CODIGO_ACESSO} ADD COLUMN janela_envio_inicio DATETIME(3) NULL`
+      );
+    }
+
+    if (!existing.has("janela_envio_count")) {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE ${TABELA_CODIGO_ACESSO} ADD COLUMN janela_envio_count INT NOT NULL DEFAULT 1`
+      );
+    }
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS ${TABELA_CODIGO_AUDITORIA} (
+        id VARCHAR(191) PRIMARY KEY,
+        email VARCHAR(191) NOT NULL,
+        tipo VARCHAR(60) NOT NULL,
+        evento VARCHAR(80) NOT NULL,
+        pre_cadastro_id VARCHAR(191) NULL,
+        usuario_id VARCHAR(191) NULL,
+        detalhes_json JSON NULL,
+        created_at DATETIME(3) NOT NULL,
+        INDEX idx_codigo_auditoria_email_tipo_data (email, tipo, created_at),
+        INDEX idx_codigo_auditoria_evento_data (evento, created_at)
+      )
+    `);
+  }
+
+  private async registrarAuditoriaCodigo(input: {
+    email: string;
+    tipo: TipoCodigoAcesso;
+    evento: string;
+    preCadastroId?: string | null;
+    usuarioId?: string | null;
+    detalhes?: Record<string, unknown>;
+  }) {
+    try {
+      await prisma.$executeRawUnsafe(
+        `
+        INSERT INTO ${TABELA_CODIGO_AUDITORIA}
+        (id, email, tipo, evento, pre_cadastro_id, usuario_id, detalhes_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        crypto.randomUUID(),
+        this.normalizeEmail(input.email),
+        input.tipo,
+        input.evento,
+        input.preCadastroId || null,
+        input.usuarioId || null,
+        JSON.stringify(input.detalhes || {}),
+        new Date()
+      );
+    } catch {
+      // Auditoria nao deve quebrar o fluxo principal.
+    }
   }
 
   private normalizeEmail(value: string) {
@@ -44,11 +128,12 @@ class OnboardingAcessoService {
   }
 
   private gerarCodigoNumerico() {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
   }
 
   private hashCodigo(codigo: string) {
-    return crypto.createHash("sha256").update(codigo).digest("hex");
+    const pepper = process.env.ACCESS_CODE_HASH_PEPPER || process.env.JWT_ACCESS_SECRET || "salesmind-access-code-pepper";
+    return crypto.createHmac("sha256", pepper).update(String(codigo || "")).digest("hex");
   }
 
   private minutosExpiracao() {
@@ -75,6 +160,61 @@ class OnboardingAcessoService {
     const expiraEm = new Date(agora.getTime() + this.minutosExpiracao() * 60 * 1000);
     const codigo = this.gerarCodigoNumerico();
 
+    const ativoRows = await prisma.$queryRawUnsafe<any[]>(
+      `
+      SELECT id, created_at, janela_envio_inicio, janela_envio_count
+      FROM ${TABELA_CODIGO_ACESSO}
+      WHERE email = ?
+        AND tipo = ?
+        AND usado_em IS NULL
+        AND expira_em > ?
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      email,
+      input.tipo,
+      agora
+    );
+
+    const codigoAtivo = ativoRows[0] || null;
+    if (codigoAtivo?.created_at) {
+      const elapsed = agora.getTime() - new Date(codigoAtivo.created_at).getTime();
+      if (elapsed < ACCESS_CODE_RESEND_COOLDOWN_SECONDS * 1000) {
+        await this.registrarAuditoriaCodigo({
+          email,
+          tipo: input.tipo,
+          evento: "CODIGO_REENVIO_BLOQUEADO_COOLDOWN",
+          preCadastroId: input.preCadastroId,
+          usuarioId: input.usuarioId,
+          detalhes: { elapsedMs: elapsed, cooldownSeconds: ACCESS_CODE_RESEND_COOLDOWN_SECONDS },
+        });
+        throw new Error("codigo_reenvio_aguardar");
+      }
+    }
+
+    let janelaInicio = agora;
+    let janelaCount = 1;
+    if (codigoAtivo?.janela_envio_inicio) {
+      const inicio = new Date(codigoAtivo.janela_envio_inicio);
+      const withinWindow = agora.getTime() - inicio.getTime() < 60 * 60 * 1000;
+      if (withinWindow) {
+        const baseCount = Number(codigoAtivo.janela_envio_count || 1);
+        if (baseCount >= ACCESS_CODE_MAX_SENDS_PER_HOUR) {
+          await this.registrarAuditoriaCodigo({
+            email,
+            tipo: input.tipo,
+            evento: "CODIGO_REENVIO_BLOQUEADO_JANELA",
+            preCadastroId: input.preCadastroId,
+            usuarioId: input.usuarioId,
+            detalhes: { sendsInWindow: baseCount, maxSendsPerHour: ACCESS_CODE_MAX_SENDS_PER_HOUR },
+          });
+          throw new Error("codigo_limite_envio_excedido");
+        }
+        janelaInicio = inicio;
+        janelaCount = baseCount + 1;
+      }
+    }
+
     await prisma.$executeRawUnsafe(
       `
       UPDATE ${TABELA_CODIGO_ACESSO}
@@ -90,8 +230,8 @@ class OnboardingAcessoService {
     await prisma.$executeRawUnsafe(
       `
       INSERT INTO ${TABELA_CODIGO_ACESSO}
-      (id, pre_cadastro_id, usuario_id, email, tipo, codigo_hash, expira_em, usado_em, tentativas, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?)
+      (id, pre_cadastro_id, usuario_id, email, tipo, codigo_hash, expira_em, usado_em, tentativas, bloqueado_ate, janela_envio_inicio, janela_envio_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, ?, ?, ?, ?)
       `,
       crypto.randomUUID(),
       input.preCadastroId || null,
@@ -100,9 +240,23 @@ class OnboardingAcessoService {
       input.tipo,
       this.hashCodigo(codigo),
       expiraEm,
+      janelaInicio,
+      janelaCount,
       agora,
       agora
     );
+
+    await this.registrarAuditoriaCodigo({
+      email,
+      tipo: input.tipo,
+      evento: "CODIGO_GERADO",
+      preCadastroId: input.preCadastroId,
+      usuarioId: input.usuarioId,
+      detalhes: {
+        expiraEm: expiraEm.toISOString(),
+        janelaEnvioCount: janelaCount,
+      },
+    });
 
     return {
       codigo,
@@ -120,9 +274,18 @@ class OnboardingAcessoService {
     const email = this.normalizeEmail(input.email);
     const codigo = String(input.codigo || "").trim();
 
+    if (!ACCESS_CODE_REGEX.test(codigo)) {
+      await this.registrarAuditoriaCodigo({
+        email,
+        tipo: input.tipo,
+        evento: "CODIGO_FORMATO_INVALIDO",
+      });
+      throw new Error("codigo_invalido");
+    }
+
     const rows = await prisma.$queryRawUnsafe<any[]>(
       `
-      SELECT id, pre_cadastro_id, usuario_id, codigo_hash, expira_em, tentativas
+      SELECT id, pre_cadastro_id, usuario_id, codigo_hash, expira_em, tentativas, bloqueado_ate
       FROM ${TABELA_CODIGO_ACESSO}
       WHERE email = ?
         AND tipo = ?
@@ -134,30 +297,79 @@ class OnboardingAcessoService {
       input.tipo
     );
 
-    if (!rows.length) throw new Error("codigo_nao_encontrado");
+    if (!rows.length) {
+      await this.registrarAuditoriaCodigo({
+        email,
+        tipo: input.tipo,
+        evento: "CODIGO_NAO_ENCONTRADO",
+      });
+      throw new Error("codigo_nao_encontrado");
+    }
 
     const row = rows[0];
     const agora = new Date();
+
+    if (row.bloqueado_ate && new Date(row.bloqueado_ate).getTime() > agora.getTime()) {
+      await this.registrarAuditoriaCodigo({
+        email,
+        tipo: input.tipo,
+        evento: "CODIGO_BLOQUEADO_TENTATIVAS",
+        preCadastroId: row.pre_cadastro_id,
+        usuarioId: row.usuario_id,
+      });
+      throw new Error("codigo_bloqueado_por_tentativas");
+    }
+
     if (new Date(row.expira_em).getTime() < agora.getTime()) {
+      await this.registrarAuditoriaCodigo({
+        email,
+        tipo: input.tipo,
+        evento: "CODIGO_EXPIRADO",
+        preCadastroId: row.pre_cadastro_id,
+        usuarioId: row.usuario_id,
+      });
       throw new Error("codigo_expirado");
     }
 
-    if (Number(row.tentativas || 0) >= 5) {
+    if (Number(row.tentativas || 0) >= ACCESS_CODE_MAX_ATTEMPTS) {
+      await this.registrarAuditoriaCodigo({
+        email,
+        tipo: input.tipo,
+        evento: "CODIGO_BLOQUEADO_LIMITE_TENTATIVAS",
+        preCadastroId: row.pre_cadastro_id,
+        usuarioId: row.usuario_id,
+      });
       throw new Error("codigo_bloqueado_por_tentativas");
     }
 
     const hash = this.hashCodigo(codigo);
     if (hash !== row.codigo_hash) {
+      const tentativas = Number(row.tentativas || 0) + 1;
+      const bloqueadoAte = tentativas >= ACCESS_CODE_MAX_ATTEMPTS
+        ? new Date(agora.getTime() + ACCESS_CODE_LOCK_MINUTES * 60 * 1000)
+        : null;
+
       await prisma.$executeRawUnsafe(
         `
         UPDATE ${TABELA_CODIGO_ACESSO}
         SET tentativas = tentativas + 1,
+            bloqueado_ate = ?,
             updated_at = ?
         WHERE id = ?
         `,
+        bloqueadoAte,
         agora,
         row.id
       );
+
+      await this.registrarAuditoriaCodigo({
+        email,
+        tipo: input.tipo,
+        evento: "CODIGO_INVALIDO_TENTATIVA",
+        preCadastroId: row.pre_cadastro_id,
+        usuarioId: row.usuario_id,
+        detalhes: { tentativasAposFalha: tentativas },
+      });
       throw new Error("codigo_invalido");
     }
 
@@ -171,6 +383,14 @@ class OnboardingAcessoService {
       agora,
       row.id
     );
+
+    await this.registrarAuditoriaCodigo({
+      email,
+      tipo: input.tipo,
+      evento: "CODIGO_VALIDADO_SUCESSO",
+      preCadastroId: row.pre_cadastro_id,
+      usuarioId: row.usuario_id,
+    });
 
     return {
       preCadastroId: row.pre_cadastro_id as string | null,

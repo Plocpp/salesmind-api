@@ -93,8 +93,40 @@ const authLimiter = rateLimit({
   message: { success: false, message: "Muitas tentativas de autenticacao. Aguarde e tente novamente." },
 });
 
+const onboardingOtpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_MAX_ONBOARDING_OTP || 20),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Muitas tentativas de codigo. Aguarde alguns minutos." },
+});
+
+const onboardingWebhookLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_MAX_ONBOARDING_WEBHOOK || 120),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Limite de webhook excedido temporariamente." },
+});
+
+const rastreioMobileAtivacaoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_MAX_RASTREIO_ATIVACAO || 40),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Muitas tentativas de ativacao. Aguarde e tente novamente." },
+});
+
 app.use("/auth", authLimiter);
 app.use("/api/v1/auth", authLimiter);
+app.use("/onboarding/ativacao", onboardingOtpLimiter);
+app.use("/onboarding/senha", onboardingOtpLimiter);
+app.use("/api/v1/onboarding/ativacao", onboardingOtpLimiter);
+app.use("/api/v1/onboarding/senha", onboardingOtpLimiter);
+app.use("/onboarding/webhooks", onboardingWebhookLimiter);
+app.use("/api/v1/onboarding/webhooks", onboardingWebhookLimiter);
+app.use("/rastreio/mobile/ativar", rastreioMobileAtivacaoLimiter);
+app.use("/api/v1/rastreio/mobile/ativar", rastreioMobileAtivacaoLimiter);
 
 app.use(
   "/rastreio/mobile",

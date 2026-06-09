@@ -1,10 +1,36 @@
+import crypto from "crypto";
 import { Request, Response } from "express";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import comunicacaoCodigoService from "../services/comunicacao-codigo.service";
 import emailService from "../services/email.service";
 import onboardingAcessoService from "../services/onboarding-acesso.service";
 import onboardingPagamentoService from "../services/onboarding-pagamento.service";
 
 class OnboardingPagamentoController {
+  private statusForOnboardingCodeError(errorMessage: string) {
+    const throttledErrors = new Set([
+      "codigo_reenvio_aguardar",
+      "codigo_limite_envio_excedido",
+      "codigo_bloqueado_por_tentativas",
+    ]);
+
+    return throttledErrors.has(errorMessage) ? 429 : 400;
+  }
+
+  private validarTokenWebhook(req: Request) {
+    const expected = String(process.env.ONBOARDING_WEBHOOK_TOKEN || "");
+    const rawHeader = req.headers["x-onboarding-webhook-token"];
+    const provided = typeof rawHeader === "string" ? rawHeader : Array.isArray(rawHeader) ? rawHeader[0] || "" : "";
+
+    if (!expected || !provided) return false;
+
+    const expectedBuffer = Buffer.from(expected);
+    const providedBuffer = Buffer.from(provided);
+    if (expectedBuffer.length !== providedBuffer.length) return false;
+
+    return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+  }
+
   private ensureAdmin(req: AuthRequest, res: Response) {
     if (req.role !== "ADMIN") {
       res.status(403).json({ error: "acesso_restrito_admin" });
@@ -69,9 +95,7 @@ class OnboardingPagamentoController {
 
   async webhookPagamento(req: Request, res: Response) {
     try {
-      const authToken = req.headers["x-onboarding-webhook-token"];
-      const expected = process.env.ONBOARDING_WEBHOOK_TOKEN;
-      if (!expected || authToken !== expected) {
+      if (!this.validarTokenWebhook(req)) {
         return res.status(401).json({ error: "webhook_token_invalido" });
       }
 
@@ -124,15 +148,14 @@ class OnboardingPagamentoController {
       );
       return res.json(result);
     } catch (error: any) {
-      return res.status(400).json({ error: error?.message || "erro_enviar_codigo_ativacao" });
+      const message = error?.message || "erro_enviar_codigo_ativacao";
+      return res.status(this.statusForOnboardingCodeError(message)).json({ error: message });
     }
   }
 
   async testeEmail(req: Request, res: Response) {
     try {
-      const authToken = req.headers["x-onboarding-webhook-token"];
-      const expected = process.env.ONBOARDING_WEBHOOK_TOKEN;
-      if (!expected || authToken !== expected) {
+      if (!this.validarTokenWebhook(req)) {
         return res.status(401).json({ error: "webhook_token_invalido" });
       }
 
@@ -155,6 +178,42 @@ class OnboardingPagamentoController {
     }
   }
 
+  async testeTelefoneCodigo(req: Request, res: Response) {
+    try {
+      if (!this.validarTokenWebhook(req)) {
+        return res.status(401).json({ error: "webhook_token_invalido" });
+      }
+
+      const payload = req.body || {};
+      const telefone = String(payload.telefone || "").trim();
+      if (!telefone) {
+        return res.status(400).json({ error: "telefone_obrigatorio" });
+      }
+
+      const canaisPreferidos = Array.isArray(payload.canaisPreferidos)
+        ? payload.canaisPreferidos.filter((item: any) => item === "sms" || item === "whatsapp")
+        : undefined;
+
+      const codigo = comunicacaoCodigoService.gerarCodigoTeste();
+      const results = await comunicacaoCodigoService.enviarCodigo({
+        telefone,
+        codigo,
+        finalidade: "TESTE",
+        canaisPreferidos,
+      });
+
+      return res.json({
+        ok: true,
+        telefone,
+        results,
+        // Exibido somente se habilitado explicitamente para ambiente de teste.
+        ...(String(process.env.PHONE_DEV_RETURN_CODE || "false").toLowerCase() === "true" ? { codigo } : {}),
+      });
+    } catch (error: any) {
+      return res.status(400).json({ error: error?.message || "erro_teste_telefone_codigo" });
+    }
+  }
+
   async confirmarCodigoAtivacao(req: Request, res: Response) {
     try {
       const payload = req.body || {};
@@ -164,7 +223,8 @@ class OnboardingPagamentoController {
       });
       return res.json(result);
     } catch (error: any) {
-      return res.status(400).json({ error: error?.message || "erro_confirmar_codigo_ativacao" });
+      const message = error?.message || "erro_confirmar_codigo_ativacao";
+      return res.status(this.statusForOnboardingCodeError(message)).json({ error: message });
     }
   }
 
@@ -176,7 +236,8 @@ class OnboardingPagamentoController {
       );
       return res.json(result);
     } catch (error: any) {
-      return res.status(400).json({ error: error?.message || "erro_solicitar_reset_senha" });
+      const message = error?.message || "erro_solicitar_reset_senha";
+      return res.status(this.statusForOnboardingCodeError(message)).json({ error: message });
     }
   }
 
@@ -190,7 +251,8 @@ class OnboardingPagamentoController {
       });
       return res.json(result);
     } catch (error: any) {
-      return res.status(400).json({ error: error?.message || "erro_confirmar_reset_senha" });
+      const message = error?.message || "erro_confirmar_reset_senha";
+      return res.status(this.statusForOnboardingCodeError(message)).json({ error: message });
     }
   }
 

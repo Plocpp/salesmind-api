@@ -1,21 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
+    Platform,
     Pressable,
     SafeAreaView,
     ScrollView,
     StatusBar,
     Text,
     TextInput,
-    View
+    View,
 } from 'react-native';
 import {
+    ativarDispositivo,
     atualizarNotaAtiva,
     finalizarRastreio,
     iniciarRastreio,
     limparNotaAtiva,
     obterEstadoRastreio,
-    sincronizarPendencias
+    sincronizarPendencias,
 } from './src/tracking';
 
 const colors = {
@@ -57,9 +60,7 @@ export default function App() {
   }
 
   async function refreshEstado(origem: string) {
-    if (!mountedRef.current || isRefreshingRef.current) {
-      return;
-    }
+    if (!mountedRef.current || isRefreshingRef.current) return;
 
     isRefreshingRef.current = true;
     try {
@@ -129,6 +130,8 @@ export default function App() {
       Alert.alert('Aparelho ativado!', `Ola, ${ativacao.entregadorNome || 'entregador'}! O aparelho esta pronto para rastreio.`);
     });
   }
+
+  useEffect(() => {
     mountedRef.current = true;
     atualizarEtapa('ui-montada');
 
@@ -171,11 +174,7 @@ export default function App() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
 
-      <ScrollView
-        contentContainerStyle={{ padding: 20, gap: 16 }}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Cabeçalho */}
+      <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }} keyboardShouldPersistTaps="handled">
         <View style={{ backgroundColor: colors.panel, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: colors.panelSoft, gap: 6 }}>
           <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '800', letterSpacing: 1.2 }}>
             SALESMIND RASTREIO
@@ -186,12 +185,9 @@ export default function App() {
           {carregando ? <ActivityIndicator color={colors.accent} style={{ alignSelf: 'flex-start', marginTop: 4 }} /> : null}
         </View>
 
-        {/* ── TELA 1: aparelho ainda não ativado ── */}
         {!aparelhoAtivado && (
           <View style={{ backgroundColor: colors.panel, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: colors.panelSoft, gap: 14 }}>
-            <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>
-              Codigo de ativacao
-            </Text>
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>Codigo de ativacao</Text>
             <Text style={{ color: colors.muted, lineHeight: 20 }}>
               Peca o codigo de 6 digitos para o responsavel da loja e informe abaixo. Voce so precisa fazer isso uma vez.
             </Text>
@@ -237,26 +233,17 @@ export default function App() {
           </View>
         )}
 
-        {/* ── TELA 2: aparelho ativado ── */}
         {aparelhoAtivado && (
           <>
-            {/* Status da sessão */}
             <View style={{ backgroundColor: colors.panel, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.panelSoft, gap: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ativo ? '#43d6c2' : '#4a6361' }} />
-                <Text style={{ color: colors.text, fontWeight: '800' }}>
-                  {ativo ? 'Rastreio ativo' : 'Rastreio parado'}
-                </Text>
+                <Text style={{ color: colors.text, fontWeight: '800' }}>{ativo ? 'Rastreio ativo' : 'Rastreio parado'}</Text>
               </View>
-              {ativo && sessaoId ? (
-                <Text style={{ color: colors.muted, fontSize: 12 }}>Sessao: {sessaoId}</Text>
-              ) : null}
-              {pendentes > 0 ? (
-                <Text style={{ color: '#f0c96a', fontSize: 12 }}>{pendentes} ponto(s) pendentes para enviar</Text>
-              ) : null}
+              {ativo && sessaoId ? <Text style={{ color: colors.muted, fontSize: 12 }}>Sessao: {sessaoId}</Text> : null}
+              {pendentes > 0 ? <Text style={{ color: '#f0c96a', fontSize: 12 }}>{pendentes} ponto(s) pendentes para enviar</Text> : null}
             </View>
 
-            {/* Campos operacionais */}
             <View style={{ backgroundColor: colors.panel, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.panelSoft, gap: 10 }}>
               <TextInput
                 value={vendaId}
@@ -277,26 +264,40 @@ export default function App() {
               />
             </View>
 
-            {/* Ações */}
             <View style={{ gap: 10 }}>
               <Pressable
                 onPress={() => {
                   void withSafeAction('iniciar', async () => {
                     const nota = notaAtual.trim();
-                    if (nota) { await atualizarNotaAtiva(nota); } else { await limparNotaAtiva(); }
-                    await iniciarRastreio({ entregadorId: entregadorId.trim(), vendaId: vendaId.trim() || undefined, token: token.trim() });
+                    if (nota) {
+                      await atualizarNotaAtiva(nota);
+                    } else {
+                      await limparNotaAtiva();
+                    }
+                    await iniciarRastreio({
+                      entregadorId: entregadorId.trim(),
+                      vendaId: vendaId.trim() || undefined,
+                      token: token.trim(),
+                    });
                   });
                 }}
                 disabled={processando || ativo}
                 style={{ height: 52, borderRadius: 12, backgroundColor: processando || ativo ? '#40615d' : colors.accent, alignItems: 'center', justifyContent: 'center' }}
               >
-                <Text style={{ color: '#082120', fontWeight: '800', fontSize: 16 }}>
-                  {ativo ? 'Rastreio em andamento' : 'Iniciar rastreio'}
-                </Text>
+                <Text style={{ color: '#082120', fontWeight: '800', fontSize: 16 }}>{ativo ? 'Rastreio em andamento' : 'Iniciar rastreio'}</Text>
               </Pressable>
 
               <Pressable
-                onPress={() => { void withSafeAction('atualizar-nota', async () => { const v = notaAtual.trim(); if (v) { await atualizarNotaAtiva(v); } else { await limparNotaAtiva(); } }); }}
+                onPress={() => {
+                  void withSafeAction('atualizar-nota', async () => {
+                    const v = notaAtual.trim();
+                    if (v) {
+                      await atualizarNotaAtiva(v);
+                    } else {
+                      await limparNotaAtiva();
+                    }
+                  });
+                }}
                 disabled={processando || !ativo}
                 style={{ height: 44, borderRadius: 12, borderWidth: 1, borderColor: '#325872', backgroundColor: '#123036', alignItems: 'center', justifyContent: 'center', opacity: !ativo ? 0.5 : 1 }}
               >
@@ -304,7 +305,11 @@ export default function App() {
               </Pressable>
 
               <Pressable
-                onPress={() => { void withSafeAction('sincronizar', async () => { await sincronizarPendencias(); }); }}
+                onPress={() => {
+                  void withSafeAction('sincronizar', async () => {
+                    await sincronizarPendencias();
+                  });
+                }}
                 disabled={processando}
                 style={{ height: 44, borderRadius: 12, borderWidth: 1, borderColor: '#2f7a72', backgroundColor: '#123036', alignItems: 'center', justifyContent: 'center' }}
               >
@@ -312,7 +317,11 @@ export default function App() {
               </Pressable>
 
               <Pressable
-                onPress={() => { void withSafeAction('finalizar', async () => { await finalizarRastreio('FINALIZADO_NO_APP'); }); }}
+                onPress={() => {
+                  void withSafeAction('finalizar', async () => {
+                    await finalizarRastreio('FINALIZADO_NO_APP');
+                  });
+                }}
                 disabled={processando || !ativo}
                 style={{ height: 44, borderRadius: 12, borderWidth: 1, borderColor: '#7f4b56', backgroundColor: processando || !ativo ? '#3a2a2f' : '#5b2d36', alignItems: 'center', justifyContent: 'center' }}
               >
@@ -323,7 +332,18 @@ export default function App() {
                 onPress={() => {
                   Alert.alert('Trocar aparelho?', 'Isso vai apagar o vinculo atual. Um novo codigo sera necessario.', [
                     { text: 'Cancelar', style: 'cancel' },
-                    { text: 'Confirmar', style: 'destructive', onPress: () => { void withSafeAction('desativar', async () => { await finalizarRastreio('DESATIVADO_MANUALMENTE'); setToken(''); setEntregadorId(''); setNomeEntregador(''); }); } },
+                    {
+                      text: 'Confirmar',
+                      style: 'destructive',
+                      onPress: () => {
+                        void withSafeAction('desativar', async () => {
+                          await finalizarRastreio('DESATIVADO_MANUALMENTE');
+                          setToken('');
+                          setEntregadorId('');
+                          setNomeEntregador('');
+                        });
+                      },
+                    },
                   ]);
                 }}
                 disabled={processando}
@@ -345,323 +365,6 @@ export default function App() {
             style={{ marginTop: 12, alignSelf: 'flex-start', backgroundColor: '#2b4044', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
           >
             <Text style={{ color: colors.text, fontWeight: '700' }}>Fechar</Text>
-          </Pressable>
-        </View>
-      ) : null}
-    </SafeAreaView>
-  );
-}
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-
-      <ScrollView
-        contentContainerStyle={{ padding: 20, gap: 16 }}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View
-          style={{
-            backgroundColor: colors.panel,
-            borderRadius: 20,
-            padding: 20,
-            borderWidth: 1,
-            borderColor: colors.panelSoft,
-            gap: 10,
-          }}
-        >
-          <Text style={{ color: colors.accent, fontSize: 14, fontWeight: '800', letterSpacing: 1.2 }}>
-            SALESMIND RASTREIO MOBILE
-          </Text>
-          <Text style={{ color: colors.text, fontSize: 26, fontWeight: '900', lineHeight: 32 }}>
-            Controle operacional
-          </Text>
-          <Text style={{ color: colors.muted, lineHeight: 21 }}>
-            Fluxo protegido contra loop: sem auto-start, sem recursao de acoes e com refresh controlado de estado.
-          </Text>
-          <Text style={{ color: colors.muted }}>Etapa atual: {etapaAtual}</Text>
-        </View>
-
-        <View
-          style={{
-            backgroundColor: colors.panel,
-            borderRadius: 20,
-            padding: 16,
-            borderWidth: 1,
-            borderColor: colors.panelSoft,
-            gap: 12,
-          }}
-        >
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>Estado da sessao</Text>
-          <Text style={{ color: colors.muted }}>Ativo: {ativo ? 'SIM' : 'NAO'}</Text>
-          <Text style={{ color: colors.muted }}>Sessao: {sessaoId || '-'}</Text>
-          <Text style={{ color: colors.muted }}>Pendentes offline: {pendentes}</Text>
-          {carregando ? <ActivityIndicator color={colors.accent} /> : null}
-        </View>
-
-        <View
-          style={{
-            backgroundColor: colors.panel,
-            borderRadius: 20,
-            padding: 16,
-            borderWidth: 1,
-            borderColor: colors.panelSoft,
-            gap: 10,
-          }}
-        >
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>Ativacao e parametros</Text>
-
-          <Text style={{ color: colors.muted, lineHeight: 20 }}>
-            Use o codigo curto enviado pela administracao para ativar este aparelho. O preenchimento manual fica apenas como contingencia.
-          </Text>
-
-          <TextInput
-            value={codigoAtivacao}
-            onChangeText={setCodigoAtivacao}
-            placeholder="Codigo de ativacao"
-            placeholderTextColor={colors.muted}
-            autoCapitalize="characters"
-            style={{
-              backgroundColor: '#0f262b',
-              color: colors.text,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: '#29555c',
-              paddingHorizontal: 12,
-              height: 46,
-            }}
-          />
-
-          <TextInput
-            value={nomeDispositivo}
-            onChangeText={setNomeDispositivo}
-            placeholder="Nome do aparelho (opcional)"
-            placeholderTextColor={colors.muted}
-            style={{
-              backgroundColor: '#0f262b',
-              color: colors.text,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: '#29555c',
-              paddingHorizontal: 12,
-              height: 46,
-            }}
-          />
-
-          <Pressable
-            onPress={ativarNoAparelho}
-            disabled={processando}
-            style={{
-              height: 48,
-              borderRadius: 12,
-              backgroundColor: '#2f6f73',
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: processando ? 0.7 : 1,
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '800' }}>
-              {processando ? 'Ativando...' : 'Ativar aparelho por codigo'}
-            </Text>
-          </Pressable>
-
-          <Text style={{ color: colors.muted, fontSize: 12 }}>
-            Contingencia tecnica: se necessario, voce ainda pode preencher token e Entregador ID manualmente abaixo.
-          </Text>
-
-          <TextInput
-            value={entregadorId}
-            onChangeText={setEntregadorId}
-            placeholder="Entregador ID"
-            placeholderTextColor={colors.muted}
-            autoCapitalize="none"
-            style={{
-              backgroundColor: '#0f262b',
-              color: colors.text,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: '#29555c',
-              paddingHorizontal: 12,
-              height: 46,
-            }}
-          />
-
-          <TextInput
-            value={vendaId}
-            onChangeText={setVendaId}
-            placeholder="Venda ID (opcional)"
-            placeholderTextColor={colors.muted}
-            autoCapitalize="none"
-            style={{
-              backgroundColor: '#0f262b',
-              color: colors.text,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: '#29555c',
-              paddingHorizontal: 12,
-              height: 46,
-            }}
-          />
-
-          <TextInput
-            value={token}
-            onChangeText={setToken}
-            placeholder="Token do dispositivo"
-            placeholderTextColor={colors.muted}
-            autoCapitalize="none"
-            secureTextEntry
-            style={{
-              backgroundColor: '#0f262b',
-              color: colors.text,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: '#29555c',
-              paddingHorizontal: 12,
-              height: 46,
-            }}
-          />
-
-          <TextInput
-            value={notaAtual}
-            onChangeText={setNotaAtual}
-            placeholder="Nota atual (opcional)"
-            placeholderTextColor={colors.muted}
-            autoCapitalize="characters"
-            style={{
-              backgroundColor: '#0f262b',
-              color: colors.text,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: '#29555c',
-              paddingHorizontal: 12,
-              height: 46,
-            }}
-          />
-        </View>
-
-        <View style={{ gap: 10 }}>
-          <Pressable
-            onPress={() => {
-              if (!validarInicio()) return;
-              void withSafeAction('iniciar', async () => {
-                const nota = notaAtual.trim();
-                if (nota) {
-                  await atualizarNotaAtiva(nota);
-                } else {
-                  await limparNotaAtiva();
-                }
-
-                await iniciarRastreio({
-                  entregadorId: entregadorId.trim(),
-                  vendaId: vendaId.trim() || undefined,
-                  token: token.trim(),
-                });
-              });
-            }}
-            disabled={processando || ativo}
-            style={{
-              height: 46,
-              borderRadius: 12,
-              backgroundColor: processando || ativo ? '#40615d' : colors.accent,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ color: '#082120', fontWeight: '800' }}>{ativo ? 'Rastreio ativo' : 'Iniciar rastreio'}</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => {
-              void withSafeAction('sincronizar', async () => {
-                await sincronizarPendencias();
-              });
-            }}
-            disabled={processando}
-            style={{
-              height: 44,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: '#2f7a72',
-              backgroundColor: '#123036',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '700' }}>Sincronizar pendencias</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => {
-              void withSafeAction('finalizar', async () => {
-                await finalizarRastreio('FINALIZADO_NO_APP');
-              });
-            }}
-            disabled={processando || !ativo}
-            style={{
-              height: 44,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: '#7f4b56',
-              backgroundColor: processando || !ativo ? '#3a2a2f' : '#5b2d36',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '700' }}>Finalizar rastreio</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => {
-              void withSafeAction('atualizar-nota', async () => {
-                const value = notaAtual.trim();
-                if (value) {
-                  await atualizarNotaAtiva(value);
-                } else {
-                  await limparNotaAtiva();
-                }
-              });
-            }}
-            disabled={processando}
-            style={{
-              height: 44,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: '#325872',
-              backgroundColor: '#123036',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '700' }}>Salvar nota atual</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
-
-      {diagnosticoVisivel ? (
-        <View
-          style={{
-            position: 'absolute',
-            left: 16,
-            right: 16,
-            bottom: 24,
-            backgroundColor: '#1b2224',
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: '#3a4a4d',
-            padding: 14,
-          }}
-        >
-          <Text style={{ color: '#ff8d8d', fontSize: 16, fontWeight: '800' }}>{diagnosticoTitulo}</Text>
-          <Text style={{ color: colors.text, marginTop: 8, lineHeight: 21 }}>{diagnosticoMensagem}</Text>
-          <Pressable
-            onPress={() => setDiagnosticoVisivel(false)}
-            style={{
-              marginTop: 12,
-              alignSelf: 'flex-start',
-              backgroundColor: '#2b4044',
-              borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '700' }}>Fechar popup</Text>
           </Pressable>
         </View>
       ) : null}

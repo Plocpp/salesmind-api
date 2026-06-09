@@ -1,9 +1,18 @@
-import { createHash, randomBytes, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { z } from 'zod';
 import prisma from '../database/prisma';
 import { CadastrosAuxiliaresService } from './cadastros-auxiliares.service';
+import comunicacaoCodigoService from './comunicacao-codigo.service';
 
 const cadastrosAuxiliaresService = new CadastrosAuxiliaresService();
+
+type EntregadorContato = {
+  id: string;
+  nome: string;
+  ativo: boolean;
+  telefone?: string | null;
+  email?: string | null;
+};
 
 const criarDispositivoSchema = z.object({
   entregadorId: z.string().min(1),
@@ -22,7 +31,7 @@ const gerarCodigoAtivacaoSchema = z.object({
 });
 
 const ativarDispositivoSchema = z.object({
-  codigo: z.string().min(4).max(12),
+  codigo: z.string().regex(/^\d{6}$/),
   nomeDispositivo: z.string().max(120).optional(),
   plataforma: z.enum(['ANDROID', 'IOS', 'OUTRO']).default('ANDROID'),
   deviceId: z.string().max(120).optional(),
@@ -55,6 +64,10 @@ const MAX_FUTURO_MS = 5 * 60 * 1000;
 const MAX_PASSADO_MS = 7 * 24 * 60 * 60 * 1000;
 const STALE_MINUTES_DEFAULT = 5;
 const ACTIVATION_CODE_MINUTES_DEFAULT = 30;
+const ACTIVATION_CODE_MAX_ATTEMPTS = Number(process.env.RASTREIO_ACTIVATION_MAX_ATTEMPTS || 5);
+const ACTIVATION_CODE_LOCK_MINUTES = Number(process.env.RASTREIO_ACTIVATION_LOCK_MINUTES || 15);
+const ACTIVATION_CODE_RESEND_COOLDOWN_SECONDS = Number(process.env.RASTREIO_ACTIVATION_RESEND_COOLDOWN_SECONDS || 30);
+const TABELA_ATIVACAO_AUDITORIA = 'rastreio_ativacao_mobile_auditoria';
 
 const lerRawJson = (raw: unknown) => {
   if (!raw) return null;
@@ -110,7 +123,58 @@ export class RastreioTransporteService {
   }
 
   private gerarCodigoAtivacao() {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    return String(randomInt(0, 1000000)).padStart(6, '0');
+  }
+
+  private hashCodigoAtivacao(codigo: string) {
+    const pepper = process.env.RASTREIO_ACTIVATION_HASH_PEPPER || process.env.JWT_ACCESS_SECRET || 'salesmind-rastreio-activation-pepper';
+    return createHash('sha256').update(`${pepper}:${String(codigo || '').trim()}`).digest('hex');
+  }
+
+  private async registrarTentativaInvalidaAtivacao(activationId: string, tentativasAtuais: number) {
+    const agora = new Date();
+    const tentativas = tentativasAtuais + 1;
+    const bloqueadoAte = tentativas >= ACTIVATION_CODE_MAX_ATTEMPTS
+      ? new Date(agora.getTime() + ACTIVATION_CODE_LOCK_MINUTES * 60 * 1000)
+      : null;
+
+    await prisma.$executeRawUnsafe(
+      `
+      UPDATE rastreio_ativacao_mobile
+      SET tentativas = ?, blocked_until = ?
+      WHERE id = ?
+      `,
+      tentativas,
+      bloqueadoAte,
+      activationId,
+    );
+  }
+
+  private async registrarAuditoriaAtivacao(input: {
+    evento: string;
+    activationId?: string | null;
+    entregadorId?: string | null;
+    deviceId?: string | null;
+    detalhes?: Record<string, unknown>;
+  }) {
+    try {
+      await prisma.$executeRawUnsafe(
+        `
+        INSERT INTO ${TABELA_ATIVACAO_AUDITORIA}
+        (id, activation_id, entregador_id, device_id, evento, detalhes_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        randomUUID(),
+        input.activationId || null,
+        input.entregadorId || null,
+        input.deviceId || null,
+        input.evento,
+        JSON.stringify(input.detalhes || {}),
+        new Date(),
+      );
+    } catch {
+      // Auditoria nao deve bloquear o fluxo principal.
+    }
   }
 
   private async createDeviceRecord(input: {
@@ -214,7 +278,8 @@ export class RastreioTransporteService {
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS rastreio_ativacao_mobile (
         id VARCHAR(36) PRIMARY KEY,
-        codigo VARCHAR(12) NOT NULL UNIQUE,
+        codigo VARCHAR(12) NULL,
+        codigo_hash CHAR(64) NULL,
         entregador_id VARCHAR(191) NOT NULL,
         nome_dispositivo VARCHAR(120) NULL,
         plataforma VARCHAR(40) NOT NULL,
@@ -222,24 +287,75 @@ export class RastreioTransporteService {
         metadata JSON NULL,
         expires_at DATETIME(3) NOT NULL,
         used_at DATETIME(3) NULL,
+        tentativas INT NOT NULL DEFAULT 0,
+        blocked_until DATETIME(3) NULL,
         created_by_user_id VARCHAR(191) NULL,
         created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
         INDEX idx_rastreio_ativacao_entregador (entregador_id, expires_at),
-        INDEX idx_rastreio_ativacao_codigo (codigo, used_at)
+        INDEX idx_rastreio_ativacao_codigo (codigo, used_at),
+        INDEX idx_rastreio_ativacao_codigo_hash (codigo_hash, used_at)
+      )
+    `);
+
+    const activationColumns = await prisma.$queryRawUnsafe<Array<{ column_name: string }>>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'rastreio_ativacao_mobile'
+      `,
+    );
+    const activationExisting = new Set(activationColumns.map((item) => String(item.column_name || '').toLowerCase()));
+
+    if (!activationExisting.has('codigo_hash')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE rastreio_ativacao_mobile ADD COLUMN codigo_hash CHAR(64) NULL`);
+      await prisma.$executeRawUnsafe(`CREATE INDEX idx_rastreio_ativacao_codigo_hash ON rastreio_ativacao_mobile (codigo_hash, used_at)`);
+    }
+
+    if (!activationExisting.has('tentativas')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE rastreio_ativacao_mobile ADD COLUMN tentativas INT NOT NULL DEFAULT 0`);
+    }
+
+    if (!activationExisting.has('blocked_until')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE rastreio_ativacao_mobile ADD COLUMN blocked_until DATETIME(3) NULL`);
+    }
+
+    await prisma.$executeRawUnsafe(
+      `
+      UPDATE rastreio_ativacao_mobile
+      SET codigo_hash = SHA2(CONCAT(?, ':', codigo), 256)
+      WHERE codigo_hash IS NULL
+        AND codigo IS NOT NULL
+      `,
+      process.env.RASTREIO_ACTIVATION_HASH_PEPPER || process.env.JWT_ACCESS_SECRET || 'salesmind-rastreio-activation-pepper',
+    );
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS ${TABELA_ATIVACAO_AUDITORIA} (
+        id VARCHAR(36) PRIMARY KEY,
+        activation_id VARCHAR(36) NULL,
+        entregador_id VARCHAR(191) NULL,
+        device_id VARCHAR(120) NULL,
+        evento VARCHAR(80) NOT NULL,
+        detalhes_json JSON NULL,
+        created_at DATETIME(3) NOT NULL,
+        INDEX idx_ativacao_auditoria_activation_data (activation_id, created_at),
+        INDEX idx_ativacao_auditoria_entregador_data (entregador_id, created_at),
+        INDEX idx_ativacao_auditoria_evento_data (evento, created_at)
       )
     `);
 
     this.schemaReady = true;
   }
 
-  private async validarEntregador(entregadorId: string) {
+  private async validarEntregador(entregadorId: string): Promise<EntregadorContato> {
     const delegate = this.getEntregadorDelegate();
-    let entregador: { id: string; nome: string; ativo: boolean } | null = null;
+    let entregador: EntregadorContato | null = null;
 
     if (delegate?.findUnique) {
       entregador = await delegate.findUnique({
         where: { id: entregadorId },
-        select: { id: true, nome: true, ativo: true },
+        select: { id: true, nome: true, ativo: true, telefone: true, email: true },
       });
     }
 
@@ -251,6 +367,8 @@ export class RastreioTransporteService {
           id: String(fallbackMatch.id),
           nome: String(fallbackMatch.nome || ''),
           ativo: Boolean(fallbackMatch.ativo),
+          telefone: fallbackMatch.telefone || null,
+          email: fallbackMatch.email || null,
         };
       }
     }
@@ -262,7 +380,7 @@ export class RastreioTransporteService {
       } else {
       const rows = await prisma.$queryRawUnsafe<Array<any>>(
         `
-        SELECT id, nome, ativo
+        SELECT id, nome, ativo, telefone, email
         FROM ${entregadorTable}
         WHERE id = ?
         LIMIT 1
@@ -275,6 +393,8 @@ export class RastreioTransporteService {
           id: rows[0].id,
           nome: rows[0].nome,
           ativo: Boolean(rows[0].ativo),
+          telefone: rows[0].telefone || null,
+          email: rows[0].email || null,
         };
       }
       }
@@ -284,6 +404,34 @@ export class RastreioTransporteService {
     if (!entregador.ativo) throw new Error('Entregador esta inativo para rastreio.');
 
     return entregador;
+  }
+
+  private async enviarCodigoAtivacaoParaEntregador(entregador: EntregadorContato, codigo: string) {
+    if (!entregador.telefone) return null;
+
+    try {
+      const results = await comunicacaoCodigoService.enviarCodigo({
+        telefone: String(entregador.telefone),
+        codigo,
+        finalidade: 'ATIVACAO',
+        canaisPreferidos: ['sms', 'whatsapp'],
+      });
+
+      await this.registrarAuditoriaAtivacao({
+        evento: 'CODIGO_ATIVACAO_ENVIADO_TELEFONE',
+        entregadorId: entregador.id,
+        detalhes: { results },
+      });
+
+      return results;
+    } catch (error: any) {
+      await this.registrarAuditoriaAtivacao({
+        evento: 'CODIGO_ATIVACAO_FALHA_ENVIO_TELEFONE',
+        entregadorId: entregador.id,
+        detalhes: { error: error?.message || String(error) },
+      });
+      throw new Error(error?.message || 'falha_envio_codigo_telefone');
+    }
   }
 
   private async autenticarDispositivo(token?: string | null) {
@@ -363,6 +511,32 @@ export class RastreioTransporteService {
     const payload = gerarCodigoAtivacaoSchema.parse(data);
     await this.validarEntregador(payload.entregadorId);
 
+    const codigoAtivoRows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT created_at
+      FROM rastreio_ativacao_mobile
+      WHERE entregador_id = ?
+        AND used_at IS NULL
+        AND expires_at > NOW(3)
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      payload.entregadorId,
+    );
+
+    if (codigoAtivoRows[0]?.created_at) {
+      const elapsed = Date.now() - new Date(codigoAtivoRows[0].created_at).getTime();
+      if (elapsed < ACTIVATION_CODE_RESEND_COOLDOWN_SECONDS * 1000) {
+        await this.registrarAuditoriaAtivacao({
+          evento: 'CODIGO_ATIVACAO_REENVIO_BLOQUEADO_COOLDOWN',
+          entregadorId: payload.entregadorId,
+          deviceId: payload.deviceId || null,
+          detalhes: { elapsedMs: elapsed, cooldownSeconds: ACTIVATION_CODE_RESEND_COOLDOWN_SECONDS },
+        });
+        throw new Error('codigo_ativacao_reenvio_aguardar');
+      }
+    }
+
     await prisma.$executeRawUnsafe(
       `
       UPDATE rastreio_ativacao_mobile
@@ -375,16 +549,19 @@ export class RastreioTransporteService {
     );
 
     const codigo = this.gerarCodigoAtivacao();
+    const codigoHash = this.hashCodigoAtivacao(codigo);
     const expiresAt = new Date(Date.now() + (payload.validadeMinutos || ACTIVATION_CODE_MINUTES_DEFAULT) * 60 * 1000);
+
+    const entregador = await this.validarEntregador(payload.entregadorId);
 
     await prisma.$executeRawUnsafe(
       `
       INSERT INTO rastreio_ativacao_mobile (
-        id, codigo, entregador_id, nome_dispositivo, plataforma, device_id, metadata, expires_at, created_by_user_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, codigo, codigo_hash, entregador_id, nome_dispositivo, plataforma, device_id, metadata, expires_at, tentativas, blocked_until, created_by_user_id
+      ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)
       `,
       randomUUID(),
-      codigo,
+      codigoHash,
       payload.entregadorId,
       payload.nomeDispositivo || null,
       payload.plataforma,
@@ -394,8 +571,21 @@ export class RastreioTransporteService {
       userId,
     );
 
-    return {
-      codigo,
+    await this.registrarAuditoriaAtivacao({
+      evento: 'CODIGO_ATIVACAO_GERADO',
+      entregadorId: payload.entregadorId,
+      deviceId: payload.deviceId || null,
+      detalhes: {
+        plataforma: payload.plataforma,
+        expiraEm: expiresAt.toISOString(),
+      },
+    });
+
+    if (entregador.telefone) {
+      await this.enviarCodigoAtivacaoParaEntregador(entregador, codigo);
+    }
+
+    const response: any = {
       entregadorId: payload.entregadorId,
       plataforma: payload.plataforma,
       nomeDispositivo: payload.nomeDispositivo || null,
@@ -403,26 +593,97 @@ export class RastreioTransporteService {
       expiraEm: expiresAt.toISOString(),
       instrucoes: 'Informe este codigo no app mobile do entregador para ativar o aparelho sem copiar token manualmente.',
     };
+
+    if (String(process.env.PHONE_DEV_RETURN_CODE || 'false').toLowerCase() === 'true' || !entregador.telefone) {
+      response.codigo = codigo;
+    }
+
+    return response;
   }
 
   async ativarDispositivoPorCodigo(data: unknown) {
     await this.ensureSchema();
     const payload = ativarDispositivoSchema.parse(data);
+    const codigoHash = this.hashCodigoAtivacao(payload.codigo.trim());
+    const normalizedDeviceId = String(payload.deviceId || '').trim() || null;
 
     const rows = await prisma.$queryRawUnsafe<Array<any>>(
       `
-      SELECT id, codigo, entregador_id, nome_dispositivo, plataforma, device_id, created_by_user_id, expires_at, used_at
+      SELECT id, entregador_id, nome_dispositivo, plataforma, device_id, created_by_user_id, expires_at, used_at, tentativas, blocked_until
       FROM rastreio_ativacao_mobile
-      WHERE codigo = ?
+      WHERE codigo_hash = ?
       LIMIT 1
       `,
-      payload.codigo.trim(),
+      codigoHash,
     );
 
-    const ativacao = rows[0];
-    if (!ativacao) throw new Error('Codigo de ativacao invalido.');
+    let ativacao = rows[0];
+
+    if (!ativacao && normalizedDeviceId) {
+      const fallbackRows = await prisma.$queryRawUnsafe<Array<any>>(
+        `
+        SELECT id, tentativas, blocked_until
+        FROM rastreio_ativacao_mobile
+        WHERE device_id = ?
+          AND used_at IS NULL
+          AND expires_at > NOW(3)
+        ORDER BY created_at DESC
+        LIMIT 1
+        `,
+        normalizedDeviceId,
+      );
+
+      const fallback = fallbackRows[0];
+      if (fallback) {
+        if (!fallback.blocked_until || new Date(fallback.blocked_until).getTime() <= Date.now()) {
+          await this.registrarTentativaInvalidaAtivacao(String(fallback.id), Number(fallback.tentativas || 0));
+          await this.registrarAuditoriaAtivacao({
+            evento: 'CODIGO_ATIVACAO_INVALIDO_TENTATIVA',
+            activationId: String(fallback.id),
+            deviceId: normalizedDeviceId,
+            detalhes: { tentativasAtuais: Number(fallback.tentativas || 0) + 1 },
+          });
+        }
+      }
+    }
+
+    if (!ativacao) {
+      await this.registrarAuditoriaAtivacao({
+        evento: 'CODIGO_ATIVACAO_INVALIDO_SEM_CORRESPONDENCIA',
+        deviceId: normalizedDeviceId,
+      });
+      throw new Error('Codigo de ativacao invalido.');
+    }
+
+    if (ativacao.blocked_until && new Date(ativacao.blocked_until).getTime() > Date.now()) {
+      await this.registrarAuditoriaAtivacao({
+        evento: 'CODIGO_ATIVACAO_BLOQUEADO_TENTATIVAS',
+        activationId: String(ativacao.id),
+        entregadorId: String(ativacao.entregador_id),
+        deviceId: normalizedDeviceId || String(ativacao.device_id || ''),
+      });
+      throw new Error('Codigo de ativacao bloqueado por tentativas. Gere um novo codigo no painel.');
+    }
+
+    const tentativasAtual = Number(ativacao.tentativas || 0);
+    if (tentativasAtual >= ACTIVATION_CODE_MAX_ATTEMPTS) {
+      await this.registrarAuditoriaAtivacao({
+        evento: 'CODIGO_ATIVACAO_BLOQUEADO_LIMITE',
+        activationId: String(ativacao.id),
+        entregadorId: String(ativacao.entregador_id),
+        deviceId: normalizedDeviceId || String(ativacao.device_id || ''),
+      });
+      throw new Error('Codigo de ativacao bloqueado por tentativas. Gere um novo codigo no painel.');
+    }
+
     if (ativacao.used_at) throw new Error('Codigo de ativacao ja utilizado.');
     if (ativacao.expires_at && new Date(ativacao.expires_at).getTime() <= Date.now()) {
+      await this.registrarAuditoriaAtivacao({
+        evento: 'CODIGO_ATIVACAO_EXPIRADO',
+        activationId: String(ativacao.id),
+        entregadorId: String(ativacao.entregador_id),
+        deviceId: normalizedDeviceId || String(ativacao.device_id || ''),
+      });
       throw new Error('Codigo de ativacao expirado. Gere um novo codigo no painel.');
     }
 
@@ -443,6 +704,14 @@ export class RastreioTransporteService {
       `,
       String(ativacao.id),
     );
+
+    await this.registrarAuditoriaAtivacao({
+      evento: 'CODIGO_ATIVACAO_VALIDADO_SUCESSO',
+      activationId: String(ativacao.id),
+      entregadorId: String(ativacao.entregador_id),
+      deviceId: normalizedDeviceId || String(ativacao.device_id || ''),
+      detalhes: { dispositivoIdCriado: dispositivo.id },
+    });
 
     return {
       ...dispositivo,

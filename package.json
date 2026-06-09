@@ -18,6 +18,10 @@
     "test:nfce-cnpj": "node scripts/test-nfce-cnpj.js",
     "test:compras-riscos": "ts-node --transpile-only scripts/test-compras-riscos.ts",
     "test:smoke": "node scripts/test-smoke-system.js",
+    "test:phone-code-delivery": "node scripts/test-phone-code-delivery.js",
+    "test:phone-code-direct": "ts-node --transpile-only scripts/test-phone-code-direct.ts",
+    "security:audit-codes": "node scripts/security-audit-codes.js",
+    "security:audit-codes:strict": "node scripts/security-audit-codes.js --strict-missing-tables=true",
     "release:check": "node scripts/release-ready-check.js",
     "contracts:lint": "node scripts/lint-openapi-contracts.js",
     "contracts:breaking": "node scripts/check-openapi-breaking.js"

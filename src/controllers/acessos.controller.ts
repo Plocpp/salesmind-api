@@ -134,6 +134,7 @@ class AcessosController {
         userIdAlvo,
         nome: payload.nome ? String(payload.nome) : undefined,
         email: payload.email ? String(payload.email) : undefined,
+        telefone: payload.telefone !== undefined ? String(payload.telefone) : undefined,
         autorUserId: req.userId,
       });
 

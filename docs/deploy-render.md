@@ -37,6 +37,14 @@ Se a URL vier com host interno do Railway (`*.railway.internal`), configure tamb
    - `EMAIL_FROM`
    - `SMTP_USER`
    - `SMTP_PASS`
+
+Se quiser enviar códigos de ativação por telefone em produção, também configure:
+   - `PHONE_MOCK_MODE=false`
+   - `TWILIO_ACCOUNT_SID`
+   - `TWILIO_AUTH_TOKEN`
+   - `TWILIO_SMS_FROM`
+   - `TWILIO_WHATSAPP_FROM`
+
 5. Clique em **Apply** para criar os servicos.
 
 ## 4. Ajustes apos primeiro deploy

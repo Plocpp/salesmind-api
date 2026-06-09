@@ -17,6 +17,7 @@ router.post("/webhooks/pagamento", onboardingPagamentoController.webhookPagament
 
 // Endpoint de teste de comunicação por e-mail.
 router.post("/email/teste", onboardingPagamentoController.testeEmail);
+router.post("/telefone/teste-codigo", onboardingPagamentoController.testeTelefoneCodigo);
 
 // Fluxo de primeiro acesso e recuperação por e-mail.
 router.post("/ativacao/enviar", onboardingPagamentoController.enviarCodigoAtivacao);

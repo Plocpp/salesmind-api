@@ -78,6 +78,12 @@ Habilitar venda da plataforma para varias empresas com onboarding self-service:
 
 - `ONBOARDING_WEBHOOK_TOKEN`
 - `PUBLIC_BASE_URL`
+- `PHONE_MOCK_MODE` (definir `false` para habilitar envio real por Twilio)
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_SMS_FROM`
+- `TWILIO_WHATSAPP_FROM`
+- `PHONE_DEV_RETURN_CODE` (opcional, retorna o código no JSON de teste)
 
 Links de checkout por plano/provedor:
 

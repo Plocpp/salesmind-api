@@ -215,6 +215,7 @@ const parseStoredObject = (value: unknown): Record<string, any> => {
 class AcessosService {
   private _tablesReady = false;
   private entregadorTableName: string | null | undefined = undefined;
+  private usuarioTelefoneColumnReady = false;
 
   private async ensureEntregadorTable() {
     await prisma.$executeRawUnsafe(`
@@ -468,6 +469,32 @@ class AcessosService {
         UNIQUE KEY uk_perfil_hierarquia_nome (nome)
       )
     `);
+
+    await this.ensureUsuarioTelefoneColumn();
+  }
+
+  private async ensureUsuarioTelefoneColumn() {
+    if (this.usuarioTelefoneColumnReady) return;
+
+    const rows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'Usuario'
+        AND column_name = 'telefone'
+      LIMIT 1
+      `,
+    );
+
+    if (!rows[0]) {
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE Usuario
+        ADD COLUMN telefone VARCHAR(60) NULL
+      `);
+    }
+
+    this.usuarioTelefoneColumnReady = true;
   }
 
   private normalizeAreas(areas: string[]) {
@@ -482,6 +509,16 @@ class AcessosService {
       .map((item) => String(item || "").trim().toLowerCase())
       .filter(Boolean);
     return Array.from(new Set(normalized));
+  }
+
+  private normalizeTelefoneDdd(value?: string) {
+    if (value === undefined) return undefined;
+    const digits = String(value || "").replace(/\D/g, "");
+    if (!digits) return null;
+    if (digits.length < 10 || digits.length > 11) {
+      throw new Error("telefone_invalido_ddd");
+    }
+    return digits;
   }
 
   private perfilRepresentaEntregador(perfil: PerfilHierarquia) {
@@ -960,6 +997,7 @@ class AcessosService {
     userIdAlvo: string;
     nome?: string;
     email?: string;
+    telefone?: string;
     autorUserId: string;
   }) {
     await this.ensureTables();
@@ -987,11 +1025,34 @@ class AcessosService {
 
     if (emailExistente) throw new Error("email_ja_cadastrado");
 
+    const telefoneAtualRows = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT telefone
+      FROM Usuario
+      WHERE id = ?
+      LIMIT 1
+      `,
+      usuario.id,
+    );
+    const telefoneAtual = telefoneAtualRows[0]?.telefone ? String(telefoneAtualRows[0].telefone) : null;
+    const telefoneNormalizado = this.normalizeTelefoneDdd(input.telefone);
+    const telefoneFinal = telefoneNormalizado !== undefined ? telefoneNormalizado : telefoneAtual;
+
     const atualizado = await prisma.usuario.update({
       where: { id: usuario.id },
       data: { nome, email },
       select: { id: true, nome: true, email: true, role: true, createdAt: true },
     });
+
+    await prisma.$executeRawUnsafe(
+      `
+      UPDATE Usuario
+      SET telefone = ?
+      WHERE id = ?
+      `,
+      telefoneFinal,
+      usuario.id,
+    );
 
     await this.sincronizarCadastroEntregador({
       nome,
@@ -1007,34 +1068,43 @@ class AcessosService {
         nomeNovo: nome,
         emailAnterior: usuario.email,
         emailNovo: email,
+        telefoneAnterior: telefoneAtual,
+        telefoneNovo: telefoneFinal,
       },
       autorUserId: input.autorUserId,
     });
 
-    return { usuario: atualizado };
+    return {
+      usuario: {
+        ...atualizado,
+        telefone: telefoneFinal,
+      },
+    };
   }
 
   async listarFuncionariosHierarquia() {
     await this.ensureTables();
     await this.repararConsistenciaEntregadorNativo();
 
-    const usuarios = await prisma.usuario.findMany({
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        role: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 500,
-    });
+    const usuarios = await prisma.$queryRawUnsafe<Array<any>>(
+      `
+      SELECT id, nome, email, role, telefone, createdAt AS created_at
+      FROM Usuario
+      ORDER BY createdAt DESC
+      LIMIT 500
+      `,
+    );
 
     return Promise.all(
       usuarios.map(async (usuario) => {
         const areasPermitidas = await this.listarAreasPermitidas(usuario.id, usuario.role);
         return {
-          ...usuario,
+          id: String(usuario.id),
+          nome: String(usuario.nome || ""),
+          email: String(usuario.email || ""),
+          role: String(usuario.role || "USER"),
+          telefone: usuario.telefone ? String(usuario.telefone) : null,
+          createdAt: usuario.created_at,
           areasPermitidas,
         };
       })

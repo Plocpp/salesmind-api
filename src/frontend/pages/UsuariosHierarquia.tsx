@@ -16,6 +16,7 @@ type FuncionarioHierarquia = {
   id: string;
   nome: string;
   email: string;
+  telefone?: string | null;
   role: string;
   createdAt: string;
   areasPermitidas: string[];
@@ -146,6 +147,7 @@ export default function UsuariosHierarquia() {
   const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
   const [cadastroNome, setCadastroNome] = useState('');
   const [cadastroEmail, setCadastroEmail] = useState('');
+  const [cadastroTelefone, setCadastroTelefone] = useState('');
   const [upAreasExtrasCsv, setUpAreasExtrasCsv] = useState('');
   const [upAreasRemovidasCsv, setUpAreasRemovidasCsv] = useState('');
   const [upAreasExtrasSelecionadas, setUpAreasExtrasSelecionadas] = useState<string[]>([]);
@@ -200,6 +202,7 @@ export default function UsuariosHierarquia() {
       setCargoPerfilId('');
       setCadastroNome('');
       setCadastroEmail('');
+      setCadastroTelefone('');
       return;
     }
 
@@ -208,6 +211,7 @@ export default function UsuariosHierarquia() {
 
     setCadastroNome(atual.nome);
     setCadastroEmail(atual.email);
+    setCadastroTelefone(atual.telefone || '');
 
     const perfilAtual = atual.perfilAtualId
       ? perfis.find((item) => item.id === atual.perfilAtualId)
@@ -493,6 +497,7 @@ export default function UsuariosHierarquia() {
       await api.acessos.atualizarCadastroHierarquia(token, funcionarioSelecionado, {
         nome: cadastroNome,
         email: cadastroEmail,
+        telefone: cadastroTelefone,
       });
       setSucesso('Cadastro do usuário atualizado com sucesso.');
       await carregarTudo();
@@ -520,7 +525,9 @@ export default function UsuariosHierarquia() {
       const nomeNovo = String(detalhes.nomeNovo || '-');
       const emailAnterior = String(detalhes.emailAnterior || '-');
       const emailNovo = String(detalhes.emailNovo || '-');
-      return `Nome: ${nomeAnterior} → ${nomeNovo} | E-mail: ${emailAnterior} → ${emailNovo}`;
+      const telefoneAnterior = String(detalhes.telefoneAnterior || '-');
+      const telefoneNovo = String(detalhes.telefoneNovo || '-');
+      return `Nome: ${nomeAnterior} → ${nomeNovo} | E-mail: ${emailAnterior} → ${emailNovo} | Telefone: ${telefoneAnterior} → ${telefoneNovo}`;
     }
 
     if (item.acao === 'CARGO_ALTERADO') {
@@ -1063,6 +1070,15 @@ export default function UsuariosHierarquia() {
           <label style={{ display: 'grid', gap: 4 }}>
             <span>E-mail</span>
             <input type="email" value={cadastroEmail} onChange={(e) => setCadastroEmail(e.target.value)} required />
+          </label>
+
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>Telefone (com DDD)</span>
+            <input
+              value={cadastroTelefone}
+              onChange={(e) => setCadastroTelefone(e.target.value)}
+              placeholder="11999998888"
+            />
           </label>
 
           <button

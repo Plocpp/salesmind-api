@@ -30,6 +30,30 @@ const requireUser = (req: AuthRequest) => {
 };
 
 export class RastreioTransporteController {
+  private statusForMobileError(message: string) {
+    const unauthorized = new Set([
+      'Token de rastreio nao informado.',
+      'Token de rastreio invalido.',
+      'Dispositivo revogado para rastreio.',
+      'Usuario nao autenticado.',
+    ]);
+
+    const tooManyRequests = new Set([
+      'codigo_ativacao_reenvio_aguardar',
+      'Codigo de ativacao bloqueado por tentativas. Gere um novo codigo no painel.',
+    ]);
+
+    const notFound = new Set([
+      'Sessao de rastreio nao encontrada.',
+    ]);
+
+    if (unauthorized.has(message)) return 401;
+    if (tooManyRequests.has(message)) return 429;
+    if (notFound.has(message)) return 404;
+
+    return 400;
+  }
+
   async listarEntregadores(req: AuthRequest, res: Response) {
     requireUser(req);
     const entregadores = await service.listarEntregadores();
@@ -110,23 +134,43 @@ export class RastreioTransporteController {
 
   // Endpoints para app mobile (ativacao por codigo ou sessao autenticada por token do dispositivo)
   async ativarDispositivoMobile(req: AuthRequest, res: Response) {
-    return res.status(201).json(await service.ativarDispositivoPorCodigo(req.body));
+    try {
+      return res.status(201).json(await service.ativarDispositivoPorCodigo(req.body));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'erro_ativar_dispositivo_mobile';
+      return res.status(this.statusForMobileError(message)).json({ success: false, message });
+    }
   }
 
   async iniciarSessaoMobile(req: AuthRequest, res: Response) {
-    const token = getBearerToken(req);
-    return res.status(201).json(await service.iniciarSessaoMobile(token, req.body));
+    try {
+      const token = getBearerToken(req);
+      return res.status(201).json(await service.iniciarSessaoMobile(token, req.body));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'erro_iniciar_sessao_mobile';
+      return res.status(this.statusForMobileError(message)).json({ success: false, message });
+    }
   }
 
   async registrarPontoMobile(req: AuthRequest, res: Response) {
-    const token = getBearerToken(req);
-    const sessaoId = Array.isArray(req.params.sessaoId) ? req.params.sessaoId[0] : req.params.sessaoId;
-    return res.status(201).json(await service.registrarPontoMobile(sessaoId, token, req.body));
+    try {
+      const token = getBearerToken(req);
+      const sessaoId = Array.isArray(req.params.sessaoId) ? req.params.sessaoId[0] : req.params.sessaoId;
+      return res.status(201).json(await service.registrarPontoMobile(sessaoId, token, req.body));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'erro_registrar_ponto_mobile';
+      return res.status(this.statusForMobileError(message)).json({ success: false, message });
+    }
   }
 
   async finalizarSessaoMobile(req: AuthRequest, res: Response) {
-    const token = getBearerToken(req);
-    const sessaoId = Array.isArray(req.params.sessaoId) ? req.params.sessaoId[0] : req.params.sessaoId;
-    return res.json(await service.finalizarSessaoMobile(sessaoId, token, req.body));
+    try {
+      const token = getBearerToken(req);
+      const sessaoId = Array.isArray(req.params.sessaoId) ? req.params.sessaoId[0] : req.params.sessaoId;
+      return res.json(await service.finalizarSessaoMobile(sessaoId, token, req.body));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'erro_finalizar_sessao_mobile';
+      return res.status(this.statusForMobileError(message)).json({ success: false, message });
+    }
   }
 }
